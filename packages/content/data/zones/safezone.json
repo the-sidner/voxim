@@ -6,17 +6,5 @@
       "spawnZoneOnly": true
     }
   ],
-  "dangerLevel": 0,
-  "npcSpawnDensity": 0.08,
-  "nodeSpawnDensity": 0.5,
-  "propSpawnDensity": 1.5,
-  "npcWeights": {
-    "villager": 3,
-    "archer": 1
-  },
-  "entityWeights": {},
-  "propWeights": {
-    "model_building_well": 2,
-    "model_building_cottage": 3
-  }
+  "dangerLevel": 0
 }

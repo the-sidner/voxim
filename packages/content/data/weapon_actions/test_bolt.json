@@ -1,0 +1,18 @@
+{
+  "id": "test_bolt",
+  "actionType": "ranged",
+  "windupTicks": 12,
+  "activeTicks": 1,
+  "winddownTicks": 10,
+  "clipId": "standing_aim_recoil",
+  "staminaCost": 4,
+  "muzzleParticleId": "spell_muzzle",
+  "projectile": {
+    "speed": 18,
+    "gravityScale": 0.18,
+    "radius": 0.35,
+    "maxHits": 1,
+    "lifetimeTicks": 120,
+    "modelId": "model_bolt"
+  }
+}

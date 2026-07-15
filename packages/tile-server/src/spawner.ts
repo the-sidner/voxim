@@ -16,7 +16,7 @@
  * coordinates once the placement is validated.
  */
 import type { World, EntityId, ComponentDef, PrefabSpawnContext } from "@voxim/engine";
-import { newEntityId, spawnPrefab as engineSpawnPrefab } from "@voxim/engine";
+import { newEntityId, spawnPrefab as engineSpawnPrefab, mix32 } from "@voxim/engine";
 import {
   Position,
   Velocity,
@@ -31,7 +31,7 @@ import { Resource } from "./components/resource.ts";
 import { NpcTag, NpcJobQueue } from "./components/npcs.ts";
 import { AnimationSlots } from "./components/animation_slots.ts";
 import { ActorSlots, ActiveActions } from "./components/action.ts";
-import { Inventory, CraftingQueue, ItemData } from "./components/items.ts";
+import { Inventory, ItemData } from "./components/items.ts";
 import { Equipment } from "./components/equipment.ts";
 import { Heritage } from "./components/heritage.ts";
 import { Species } from "./components/species.ts";
@@ -44,6 +44,7 @@ import { Blueprint, WorkstationTag } from "./components/building.ts";
 import { LoreLoadout } from "./components/lore_loadout.ts";
 import { FogState } from "./components/fog_state.ts";
 import { Hitbox } from "./components/hitbox.ts";
+import { Bone } from "./components/bone.ts";
 import { Stats, Durability } from "./components/instance.ts";
 import type {
   ContentService,
@@ -51,6 +52,8 @@ import type {
   PrefabResourceNodeData,
   PrefabNpcData,
   PrefabPlayerData,
+  SkeletonDef,
+  EquipSlot,
 } from "@voxim/content";
 import { applyHitboxTemplate } from "@voxim/content";
 import { DEF_BY_NAME } from "./component_registry.ts";
@@ -168,10 +171,16 @@ const installPlayer: CompoundInstaller = (world, content, id, _prefab, rawData, 
     eq[slot as keyof EquipmentData] = spawnEquipEntity(world, content, prefabId as string);
   }
   world.write(id, Equipment, eq);
+  // T-219/T-220: attach starter equipment onto its resolved bone (or the
+  // player root, if bone-less). Safe here — preInstall (which spawns the
+  // skeleton's bone subtree, if any) already ran before this compound
+  // installer, and every item entity spawnEquipEntity just created above
+  // has never been visible to any session yet.
+  reattachAllEquipment(world, id);
 
   writeDefaults(
     world, id,
-    CraftingQueue, AnimationState,
+    AnimationState,
     FogState,
   );
 
@@ -231,7 +240,17 @@ const installNpc: CompoundInstaller = (world, content, id, _prefab, rawData, ove
   if (template?.weaponItemType) {
     eq.weapon = spawnEquipEntity(world, content, template.weaponItemType as string);
   }
+  // T-306: archetype-declared armor, each slot its own item entity (own
+  // EntityId → own seed) so armor_grammar-backed pieces render seed-unique
+  // per NPC instance even when many NPCs share one NpcTemplate.
+  for (const [slot, prefabId] of Object.entries(template?.armorItemTypes ?? {})) {
+    if (!prefabId) continue;
+    eq[slot as keyof EquipmentData] = spawnEquipEntity(world, content, prefabId);
+  }
   world.write(id, Equipment, eq);
+  // T-219/T-220: attach starter equipment onto its resolved bone (or the
+  // NPC root — e.g. a wolf, which has no hand_r). See installPlayer's note.
+  reattachAllEquipment(world, id);
 
   // No LoreLoadout for NPCs (T-260b): it existed for strike slots, which
   // are weapon/archetype triggers now (T-259b); NPCs don't learn lore.
@@ -296,6 +315,12 @@ export const COMPOUND_ARCHETYPE_KEYS: ReadonlySet<string> = new Set(COMPOUND_INS
  * A prefab may override by declaring its own `hitbox` component; the generic
  * direct-write in spawnPrefab runs after this and wins. This function never
  * writes a Hitbox if the prefab already declares one.
+ *
+ * `speciesId` (T-085) supplies the species' `morphValues` as a visual-
+ * archetype base — dwarf shorter+wider, elf taller+slender — on the SAME
+ * `biped` skeleton/clip set every humanoid shares (T-179/T-180 retired
+ * per-creature skeletons). Only the player installer resolves a species, so
+ * this is a no-op for NPCs/props (`speciesId` undefined).
  */
 function installVisualShell(
   world: World,
@@ -303,6 +328,7 @@ function installVisualShell(
   id: EntityId,
   prefab: Prefab,
   seed: number,
+  speciesId?: string,
 ): void {
   if (!prefab.modelId) return;
   const defaultScale = content.getGameConfig().world.defaultEntityScale;
@@ -312,7 +338,10 @@ function installVisualShell(
   // entity (same seed → same body across reload / respawn). Explicit
   // prefab.morphValues entries win per-key — they're authored overrides,
   // not variation.
-  const morphValues = sampleMorphValues(prefab, seed);
+  const speciesMorphs = speciesId
+    ? content.getGameConfig().species[speciesId]?.morphValues
+    : undefined;
+  const morphValues = sampleMorphValues(prefab, seed, speciesMorphs);
   world.write(id, ModelRef, {
     modelId: prefab.modelId,
     scaleX: entityScale, scaleY: entityScale, scaleZ: entityScale,
@@ -325,6 +354,7 @@ function installVisualShell(
   const skeleton = content.getSkeletonForModel(prefab.modelId);
   if (skeleton) {
     world.write(id, Hitbox, { derive: true, parts: [] });
+    installSkeletonBones(world, id, skeleton);
     return;
   }
 
@@ -333,27 +363,150 @@ function installVisualShell(
   world.write(id, Hitbox, { derive: false, parts });
 }
 
+// ---- skeletal bone entities (T-219) ----
+
 /**
- * Sample a per-entity morph value dict from prefab.morphRanges (T-190).
+ * Spawn one entity per `skeleton.bones` entry, scene-graph parented to
+ * mirror the skeleton's own hierarchy exactly: a bone whose `parent` is
+ * `null` (the skeleton root) parents to `characterId`; every other bone
+ * parents to its own parent bone's freshly-spawned entity.
+ *
+ * IMMEDIATE writes (`world.create`/`world.write`/`world.setParent`) — this
+ * runs inside `installVisualShell`, itself inside `preInstall`, i.e. the
+ * synchronous construction of a brand-new entity subtree before it has
+ * ever been visible to any session. Same safety argument as
+ * `engine/prefab.ts`'s child-prefab recursion and `buff.ts`'s
+ * `spawnBuffChild`: whatever is committed by the time AoI next runs ships
+ * as one atomic spawn message regardless of write() vs set() timing.
+ *
+ * Relies on `skeleton.bones` being parent-before-child ordered — validated
+ * at content load (`loader.ts`'s `validateSkeletonBoneOrder`), the SAME
+ * authoring convention the client's `entity_mesh.ts` already assumes.
+ *
+ * Bone TRANSFORMS are never written here — no Position, no Transform.
+ * Structure only; motion is derived client-side from AnimationState. See
+ * `components/bone.ts` for the full doctrine note.
+ */
+function installSkeletonBones(world: World, characterId: EntityId, skeleton: SkeletonDef): void {
+  const boneEntityByBoneId = new Map<string, EntityId>();
+  for (const bone of skeleton.bones) {
+    const boneEntityId = newEntityId();
+    world.create(boneEntityId);
+    world.write(boneEntityId, Bone, { boneId: bone.id });
+    const parentEntityId = bone.parent ? boneEntityByBoneId.get(bone.parent) : undefined;
+    world.setParent(boneEntityId, parentEntityId ?? characterId);
+    boneEntityByBoneId.set(bone.id, boneEntityId);
+  }
+}
+
+/**
+ * Find `holderId`'s bone entity carrying `Bone.boneId === boneId`, or null
+ * if `holderId` has no skeleton (a bare test fixture, a non-skeletal
+ * prefab) or the named bone doesn't exist on its skeleton (e.g. a wolf has
+ * no `hand_r`). O(bone count) — called only at equip/unequip frequency
+ * (player input, not per-tick) and once per starter-equipment slot at
+ * spawn, so a linear scan over ~11-17 descendants is negligible.
+ */
+export function findBoneEntity(world: World, holderId: EntityId, boneId: string): EntityId | null {
+  for (const d of world.descendants(holderId)) {
+    if (world.get(d, Bone)?.boneId === boneId) return d;
+  }
+  return null;
+}
+
+/**
+ * Single-bone equip slots only. `legs`/`feet` are deliberately absent: a
+ * `Parent` edge is 1:1 and those slots cover MULTIPLE bones (upper leg ×
+ * L/R, etc.) — a single item entity has no one bone to parent to, so they
+ * keep parenting to the holder root via `resolveAttachParent`'s fallback
+ * below, same as an item on a skeleton-less holder.
+ *
+ * T-223 (client render-scope scene graph, DONE): the client's own former
+ * mirror of this table (`entity_mesh_registry.ts`'s `SLOT_REST_BONE`/
+ * `ARMOR_SLOTS`) is GONE — it now resolves every equipped item's attach
+ * bone by walking the replicated scene graph (`resolveItemAttachment`),
+ * reading this table's OUTPUT (the `Parent` this function resolves items
+ * onto) instead of duplicating its input. This is now the ONLY slot→bone
+ * table in the codebase, server-side only. legs/feet's client-side
+ * multi-bone fan-out is content data (`ArmorData.coversBones`), not a
+ * second table.
+ */
+const EQUIP_SLOT_PRIMARY_BONE: Partial<Record<EquipSlot, string>> = {
+  weapon: "hand_r",
+  offHand: "hand_l",
+  head: "head",
+  chest: "torso_upper",
+  back: "torso_upper",
+};
+
+/**
+ * Resolve the scene-graph parent an item equipped into `slot` on `holderId`
+ * should attach to: the matching bone entity if one exists, else the
+ * holder root itself (no skeleton at all, or a slot with no single-bone
+ * attach point — see `EQUIP_SLOT_PRIMARY_BONE`). Always returns a valid
+ * parent — never null — so callers can pass the result straight to
+ * `world.setParent`/`world.reparent`.
+ */
+export function resolveAttachParent(world: World, holderId: EntityId, slot: EquipSlot): EntityId {
+  const boneId = EQUIP_SLOT_PRIMARY_BONE[slot];
+  if (!boneId) return holderId;
+  return findBoneEntity(world, holderId, boneId) ?? holderId;
+}
+
+/**
+ * Reparent every currently-equipped item on `holderId` onto its resolved
+ * attach point (bone or holder root). IMMEDIATE (`world.setParent`) —
+ * spawn-time/handoff-restore use only, where every referenced item entity
+ * was itself just created in this same synchronous call (starter
+ * equipment, tile-handoff item restoration) and so has never been visible
+ * to any session yet. Runtime equip/unequip/drop (EquipmentSystem, a live
+ * system touching already-known entities) must use `world.reparent`
+ * instead — see that system for why.
+ */
+export function reattachAllEquipment(world: World, holderId: EntityId): void {
+  const eq = world.get(holderId, Equipment);
+  if (!eq) return;
+  const slots: EquipSlot[] = ["weapon", "offHand", "head", "chest", "legs", "feet", "back"];
+  for (const slot of slots) {
+    const equipped = eq[slot];
+    if (!equipped || !world.isAlive(equipped.entityId as EntityId)) continue;
+    world.setParent(equipped.entityId as EntityId, resolveAttachParent(world, holderId, slot));
+  }
+}
+
+/**
+ * Sample a per-entity morph value dict from prefab.morphRanges (T-190),
+ * layered on an optional species visual-archetype base (T-085).
+ *
+ * Precedence (most to least specific): prefab.morphValues (authored
+ * override) > speciesMorphs (species archetype default) > prefab.morphRanges
+ * (per-instance sampled variety). A key present in prefab.morphValues always
+ * wins — authoring a prefab-level proportion is the most specific override.
+ * Otherwise, a key the species names is fixed to the species value: a dwarf
+ * must read as consistently shorter+wider than a human, so the species
+ * archetype overrides the T-190 per-instance roll for any key it touches
+ * (dwarves still vary on the keys the species DOESN'T name). Species-silent
+ * keys fall through to morphRanges sampling as before.
  *
  * Determinism: the same seed yields the same body every time, so a
  * respawned/reloaded entity looks identical. Each morph key gets its own
  * sub-seed from `mix32(seed, hash32(key))`, so adding a new morph to a
  * prefab doesn't shift the others.
- *
- * prefab.morphValues entries win per-key — they're explicit author
- * overrides, not variation. Range-only keys get sampled; keys present in
- * both `morphValues` and `morphRanges` keep the authored value.
  */
-function sampleMorphValues(prefab: Prefab, seed: number): Record<string, number> | undefined {
+function sampleMorphValues(
+  prefab: Prefab,
+  seed: number,
+  speciesMorphs?: Record<string, number>,
+): Record<string, number> | undefined {
   const overrides = prefab.morphValues;
   const ranges = prefab.morphRanges;
-  if (!overrides && !ranges) return undefined;
+  if (!overrides && !ranges && !speciesMorphs) return undefined;
 
-  const out: Record<string, number> = { ...(overrides ?? {}) };
+  const out: Record<string, number> = { ...(speciesMorphs ?? {}), ...(overrides ?? {}) };
   if (ranges) {
     for (const key of Object.keys(ranges).sort()) {
-      if (key in out) continue; // explicit value wins
+      if (overrides && key in overrides) continue; // explicit value wins
+      if (speciesMorphs && key in speciesMorphs) continue; // species archetype wins
       const { min, max } = ranges[key];
       if (max <= min) { out[key] = min; continue; }
       const r = unitRandom(mix32(seed, hash32(key)));
@@ -371,14 +524,6 @@ function hash32(s: string): number {
     h = Math.imul(h, 0x01000193) >>> 0;
   }
   return h >>> 0;
-}
-
-/** Mix two 32-bit seeds into one via xorshift; reused per morph key. */
-function mix32(a: number, b: number): number {
-  let x = (a ^ b) >>> 0;
-  x = Math.imul(x ^ (x >>> 16), 0x85ebca6b) >>> 0;
-  x = Math.imul(x ^ (x >>> 13), 0xc2b2ae35) >>> 0;
-  return (x ^ (x >>> 16)) >>> 0;
 }
 
 /** [0, 1) from a 32-bit seed via mulberry32 one-step. */
@@ -475,7 +620,7 @@ export function spawnPrefab(
       // prefab later (save/load restart, tile handoff) without losing the
       // installers' additions (ModelRef/Hitbox/server-only Resources).
       w.write(id, SpawnedFrom, { prefabId: prefab.id });
-      installVisualShell(w, content, id, prefab, seed);
+      installVisualShell(w, content, id, prefab, seed, ov.speciesId);
 
       // Per-prefab animation slot map — copied onto the entity so
       // AnimationSystem picks clips per-prefab without re-walking the
@@ -515,6 +660,12 @@ export function spawnPrefab(
         z: p.z + local.z,
       });
     },
+    // Seed the children pool/probability draw (T-334) with the SAME value
+    // installVisualShell just used for this entity's own ModelRef/sub-object
+    // variance — one seed governs both, so they can never disagree about
+    // "how procedurally varied is this entity". Identical fallback to
+    // preInstall's `seed` above (ov.seed ?? hash32(id)).
+    resolveSeed: (ov, id) => ov.seed ?? hash32(id),
   };
 
   return engineSpawnPrefab(world, ctx, prefabId, overrides);

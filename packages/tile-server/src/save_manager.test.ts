@@ -115,12 +115,13 @@ Deno.test("T-251: WorldClock round-trips", async () => {
   const src = new World();
   const clockId = newEntityId();
   src.create(clockId);
-  src.write(clockId, WorldClock, { ticksElapsed: 7777, dayLengthTicks: 14400 });
+  src.write(clockId, WorldClock, { ticksElapsed: 7777, dayLengthTicks: 14400, biomeTag: "forest" });
 
   const payload = manager(c).serialize(src);
   const dst = new World();
   assert(manager(c).deserialize(dst, payload));
   assertEquals(dst.get(clockId, WorldClock)!.ticksElapsed, 7777);
+  assertEquals(dst.get(clockId, WorldClock)!.biomeTag, "forest");
 });
 
 Deno.test("T-251: a truncated payload is rejected without mutating the world", async () => {

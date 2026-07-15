@@ -14,7 +14,7 @@
  *   . . . . . . . .
  *
  * The path zone id = 1; the wilderness blob = 2; off-tile = 0xFFFF.
- * Anchor at (3, 2) (last path pixel before the wilderness).
+ * Anchor at (3, 2) (last path cell before the wilderness).
  */
 
 import { assert, assertEquals } from "jsr:@std/assert";
@@ -60,12 +60,12 @@ function makeFixture() {
 
 Deno.test("applyStairUnlock: opens the wilderness blob walkability", () => {
   const { height, open, zone } = makeFixture();
-  // Pre-condition: every wilderness pixel is openMask = 0.
+  // Pre-condition: every wilderness cell is openMask = 0.
   let wildBlocked = 0;
   for (let i = 0; i < zone.length; i++) {
     if (zone[i] === WILD_ZID) wildBlocked++;
   }
-  assert(wildBlocked > 0, "fixture should have wilderness pixels");
+  assert(wildBlocked > 0, "fixture should have wilderness cells");
 
   const touched = applyStairUnlock(height, open, zone, TS, {
     wildernessZoneId: WILD_ZID,
@@ -74,12 +74,12 @@ Deno.test("applyStairUnlock: opens the wilderness blob walkability", () => {
     rampDepth: 2,
     rampHalfWidth: 1,
   });
-  assert(touched > 0, "expected at least one mutated pixel");
+  assert(touched > 0, "expected at least one mutated cell");
 
-  // Post-condition: every wilderness pixel is now openMask = 1.
+  // Post-condition: every wilderness cell is now openMask = 1.
   for (let i = 0; i < zone.length; i++) {
     if (zone[i] === WILD_ZID) {
-      assertEquals(open[i], 1, `wilderness pixel ${i} still blocked after unlock`);
+      assertEquals(open[i], 1, `wilderness cell ${i} still blocked after unlock`);
     }
   }
 });
@@ -93,9 +93,9 @@ Deno.test("applyStairUnlock: lerps ramp from floor to plateau height", () => {
     rampDepth: 2,
     rampHalfWidth: 0,
   });
-  // The anchor pixel stays at floor height (t=0 in the lerp).
+  // The anchor cell stays at floor height (t=0 in the lerp).
   assertEquals(height[2 * TS + 3], FLOOR);
-  // First ramp step into the wilderness (one pixel east of anchor):
+  // First ramp step into the wilderness (one cell east of anchor):
   // t = 0.5 → height = 0 + 2.0 * 0.5 = 1.0.
   assertEquals(height[2 * TS + 4], 1.0);
   // The plateau reaches wallHeight at the end of the ramp.
@@ -131,6 +131,8 @@ Deno.test("applyStairUnlock: leaves an unrelated wilderness zone alone", () => {
     wildernessZoneId: WILD_ZID,
     anchor: { x: 3, y: 5 },
     wallHeight: WALL,
+    rampDepth: 4,
+    rampHalfWidth: 2,
   });
 
   // Top wilderness — opened.
@@ -151,10 +153,12 @@ Deno.test("applyStairUnlock: no-ops when anchor is not adjacent to the target wi
     wildernessZoneId: WILD_ZID,
     anchor: { x: 1, y: 1 },
     wallHeight: WALL,
+    rampDepth: 4,
+    rampHalfWidth: 2,
   });
   // Helper returns 0 touched + buffers unchanged.
   for (let i = 0; i < open.length; i++) {
-    assertEquals(open[i], before[i], `pixel ${i} changed despite no-op anchor`);
+    assertEquals(open[i], before[i], `cell ${i} changed despite no-op anchor`);
   }
 });
 
@@ -165,6 +169,8 @@ Deno.test("applyStairUnlock: anchor out of bounds → no-op", () => {
     wildernessZoneId: WILD_ZID,
     anchor: { x: -1, y: 2 },
     wallHeight: WALL,
+    rampDepth: 4,
+    rampHalfWidth: 2,
   });
   assertEquals(touched, 0);
   for (let i = 0; i < open.length; i++) assertEquals(open[i], before[i]);
@@ -183,14 +189,14 @@ Deno.test("markStairAnchor: paints a patch of marker material at the anchor", ()
     markerDepth: 3,
     markerHalfWidth: 1,
   });
-  assert(touched > 0, "expected at least one pixel painted");
-  // Anchor pixel itself + at least one pixel deeper into the wilderness
+  assert(touched > 0, "expected at least one cell painted");
+  // Anchor cell itself + at least one cell deeper into the wilderness
   // should be STONE now.
   assertEquals(materials[2 * TS + 3], STONE);
   assertEquals(materials[2 * TS + 4], STONE);
 });
 
-Deno.test("markStairAnchor: doesn't touch unrelated wilderness pixels", () => {
+Deno.test("markStairAnchor: doesn't touch unrelated wilderness cells", () => {
   const TS2 = 8;
   const materials = new Uint16Array(TS2 * TS2).fill(1); // baseline grass
   const zone = new Uint16Array(TS2 * TS2).fill(0xFFFF);

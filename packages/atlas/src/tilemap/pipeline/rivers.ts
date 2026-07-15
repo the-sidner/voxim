@@ -1,6 +1,6 @@
 /**
- * Stage — rasterise the cell's river segments into the openMask and
- * tag the touched pixels as BOUNDARY_KIND_WATER.
+ * Stage 7 — rasterise the cell's river segments into the openMask and
+ * tag the touched cells as BOUNDARY_KIND_WATER.
  *
  * Runs AFTER boundary kinds (so kinds has already tagged the noise-built
  * walls) and BEFORE terrain (so terrain sees the river kinds and
@@ -8,9 +8,9 @@
  *
  * For each RiverSegment:
  *   - Convert both endpoints from world coords (or edge+offset) into
- *     sample-grid pixel coords.
- *   - Bresenham-walk the line, brush a 2-pixel-radius disk at each step.
- *   - Mark every brushed pixel: openMask = 0, kindOf = WATER.
+ *     sample-grid cell coords.
+ *   - Bresenham-walk the line, brush a 2-cell-radius disk at each step.
+ *   - Mark every brushed cell: openMask = 0, kindOf = WATER.
  *
  * The brush IS impassable on its own (closed) — the player needs a
  * future bridge boundary to cross. Visual rendering of water vs.
@@ -18,7 +18,7 @@
  */
 
 import type { Transformer } from "@voxim/levelgen";
-import { BOUNDARY_KIND_WATER } from "./boundary_kinds.ts";
+import { BoundaryKind } from "@voxim/protocol";
 import type { RiverEndpoint } from "../../worldmap/types.ts";
 import type { GenParams } from "../../genparams.ts";
 import type { KindsState, RiversState } from "./state.ts";
@@ -32,19 +32,19 @@ export const rivers: Transformer<KindsState, RiversState, GenParams["river"]> =
     const { openMask, kindOf, gridSize, tileSize, worldCell } = state;
     if (worldCell.rivers.length === 0) return state;
     const px2world = tileSize / gridSize;
-    const widthPixels = params.widthPixels;
+    const widthCells = params.widthCells;
 
     for (const seg of worldCell.rivers) {
-      const a = endpointToPixel(seg.a, gridSize, px2world);
-      const b = endpointToPixel(seg.b, gridSize, px2world);
-      rasterLine(a.x, a.y, b.x, b.y, gridSize, (px, py) => {
-        brushDisk(px, py, widthPixels, gridSize, openMask, kindOf);
+      const a = endpointToCell(seg.a, gridSize, px2world);
+      const b = endpointToCell(seg.b, gridSize, px2world);
+      rasterLine(a.x, a.y, b.x, b.y, gridSize, (cx, cy) => {
+        brushDisk(cx, cy, widthCells, gridSize, openMask, kindOf);
       });
     }
     return state;
   };
 
-function endpointToPixel(
+function endpointToCell(
   e: RiverEndpoint,
   gridSize: number,
   px2world: number,
@@ -65,11 +65,11 @@ function endpointToPixel(
   return { x, y };
 }
 
-/** 8-connected Bresenham. Calls `pixel` once per step including endpoints. */
+/** 8-connected Bresenham. Calls `cell` once per step including endpoints. */
 function rasterLine(
   x0: number, y0: number, x1: number, y1: number,
   gridSize: number,
-  pixel: (px: number, py: number) => void,
+  cell: (cx: number, cy: number) => void,
 ): void {
   let x = x0, y = y0;
   const dx = Math.abs(x1 - x0);
@@ -80,7 +80,7 @@ function rasterLine(
   // Cap to prevent runaway from bad input.
   let safety = gridSize * 4;
   while (safety-- > 0) {
-    if (x >= 0 && x < gridSize && y >= 0 && y < gridSize) pixel(x, y);
+    if (x >= 0 && x < gridSize && y >= 0 && y < gridSize) cell(x, y);
     if (x === x1 && y === y1) return;
     const e2 = 2 * err;
     if (e2 > -dy) { err -= dy; x += sx; }
@@ -88,7 +88,7 @@ function rasterLine(
   }
 }
 
-/** Stamp a filled disk of `r` pixels around (cx, cy). */
+/** Stamp a filled disk of `r` cells around (cx, cy). */
 function brushDisk(
   cx: number, cy: number, r: number,
   gridSize: number,
@@ -102,7 +102,7 @@ function brushDisk(
       if (px < 0 || py < 0 || px >= gridSize || py >= gridSize) continue;
       const idx = py * gridSize + px;
       openMask[idx] = 0;
-      kindOf[idx]   = BOUNDARY_KIND_WATER;
+      kindOf[idx]   = BoundaryKind.water;
     }
   }
 }

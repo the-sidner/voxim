@@ -25,14 +25,14 @@
  */
 
 import { ORDERED_STAGES, type StageId } from "./pipeline/stages.ts";
-import type { PipelineBase, PoiNetworkState } from "./pipeline/state.ts";
+import type { PipelineBase, FieldsState } from "./pipeline/state.ts";
 import { emptyLevel } from "./level/types.ts";
 import type { GenParams } from "../genparams.ts";
 import type { WorldCellRecord } from "../worldmap/types.ts";
 import type { ContentService } from "@voxim/content";
-
-const DEFAULT_TILE_SIZE = 512;
-const DEFAULT_GRID_SIZE = 512;
+import { hashString, hashBytes } from "@voxim/levelgen";
+import { DEFAULT_TILE_SIZE, DEFAULT_GRID_SIZE } from "./types.ts";
+import { bytesToBase64, base64ToBytes } from "./generate.ts";
 
 // ---- cache ----------------------------------------------------------------
 
@@ -123,7 +123,7 @@ export interface InstrumentedRunInput {
 
 export interface InstrumentedRunOutput {
   /** Final state after the full pipeline (POI network is the last stage). */
-  final: PoiNetworkState;
+  final: FieldsState;
   /** One entry per stage actually run (or skipped, in resume mode). */
   trace: StageTrace[];
   /** Per-stage output snapshot. Keys = StageId; values = the stage's TOut. */
@@ -203,7 +203,7 @@ export function runInstrumented(input: InstrumentedRunInput): InstrumentedRunOut
           cacheHit: false, inputHash: prevHash, outputHash: 0,
           error: (err as Error)?.message ?? String(err),
         });
-        return { final: state as PoiNetworkState, trace, intermediates };
+        return { final: state as FieldsState, trace, intermediates };
       }
       outputHash = hashStageOutput(stage.id, state);
       input.cache?.store(input.tileSeed, prefix, { state, outputHash });
@@ -222,33 +222,10 @@ export function runInstrumented(input: InstrumentedRunInput): InstrumentedRunOut
     prevHash = outputHash;
   }
 
-  return { final: state as PoiNetworkState, trace, intermediates };
+  return { final: state as FieldsState, trace, intermediates };
 }
 
 // ---- hashing --------------------------------------------------------------
-
-/**
- * FNV-1a 32-bit over a byte view. Cheap (~1 ms / 512² Uint16Array on
- * a modern CPU) and stable across engines. Caller passes a Uint8Array
- * view so we don't allocate.
- */
-function fnv1aBytes(bytes: Uint8Array): number {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < bytes.length; i++) {
-    h ^= bytes[i];
-    h = Math.imul(h, 0x01000193);
-  }
-  return h >>> 0;
-}
-
-function fnv1aString(s: string): number {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
-  }
-  return h >>> 0;
-}
 
 function viewOf(arr: ArrayBufferView): Uint8Array {
   return new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength);
@@ -270,6 +247,7 @@ function viewOf(arr: ArrayBufferView): Uint8Array {
  *   rivers:          openMask (mutated), kindOf (mutated)
  *   terrain:         heightMap
  *   materials:       materials
+ *   fields:          all FieldPlanes planes (T-315 A5)
  *
  * Hash always covers the union of all mutable fields a stage might
  * have touched, even if no actual change occurred — that's a strict
@@ -280,55 +258,71 @@ function hashStageOutput(stageId: StageId, state: unknown): number {
   let h = 0;
   switch (stageId) {
     case "noiseField":
-      h ^= fnv1aBytes(viewOf(s.noiseField as Float32Array));
+      h ^= hashBytes(viewOf(s.noiseField as Float32Array));
       break;
     case "junctions":
-      h ^= fnv1aString(JSON.stringify(s.seeds));
+      h ^= hashString(JSON.stringify(s.seeds));
       break;
     case "network":
-      h ^= fnv1aBytes(s.openMask as Uint8Array);
-      h ^= fnv1aBytes(s.degrees as Uint8Array);
-      h ^= fnv1aString(JSON.stringify(s.corridors));
+      h ^= hashBytes(s.openMask as Uint8Array);
+      h ^= hashBytes(s.degrees as Uint8Array);
+      h ^= hashString(JSON.stringify(s.corridors));
       break;
     case "rooms":
-      h ^= fnv1aBytes(s.openMask as Uint8Array);
-      h ^= fnv1aBytes(viewOf(s.chamberOf as Uint16Array));
-      h ^= fnv1aString(JSON.stringify(s.chambers));
+      h ^= hashBytes(s.openMask as Uint8Array);
+      h ^= hashBytes(viewOf(s.chamberOf as Uint16Array));
+      h ^= hashString(JSON.stringify(s.chambers));
       break;
     case "portalPlacement":
-      h ^= fnv1aBytes(s.openMask as Uint8Array);
-      h ^= fnv1aBytes(viewOf(s.roomOf as Uint16Array));
-      h ^= fnv1aString(JSON.stringify(s.rooms));
-      h ^= fnv1aString(JSON.stringify(s.portals));
-      h ^= fnv1aString(JSON.stringify(s.corridors));
+      h ^= hashBytes(s.openMask as Uint8Array);
+      h ^= hashBytes(viewOf(s.roomOf as Uint16Array));
+      h ^= hashString(JSON.stringify(s.rooms));
+      h ^= hashString(JSON.stringify(s.portals));
+      h ^= hashString(JSON.stringify(s.corridors));
       break;
     case "boundaryKinds":
-      h ^= fnv1aBytes(viewOf(s.kindOf as Uint16Array));
+      h ^= hashBytes(viewOf(s.kindOf as Uint16Array));
       break;
     case "rivers":
-      h ^= fnv1aBytes(s.openMask as Uint8Array);
-      h ^= fnv1aBytes(viewOf(s.kindOf as Uint16Array));
+      h ^= hashBytes(s.openMask as Uint8Array);
+      h ^= hashBytes(viewOf(s.kindOf as Uint16Array));
       break;
     case "terrain":
-      h ^= fnv1aBytes(viewOf(s.heightMap as Float32Array));
+      h ^= hashBytes(viewOf(s.heightMap as Float32Array));
       break;
     case "materials":
-      h ^= fnv1aBytes(viewOf(s.materials as Uint16Array));
+      h ^= hashBytes(viewOf(s.materials as Uint16Array));
       break;
     case "zoneGraph":
-      h ^= fnv1aBytes(viewOf(s.zoneOf as Uint16Array));
+      h ^= hashBytes(viewOf(s.zoneOf as Uint16Array));
       // T-214: regions live on state.level after zoneGraph; hash both
       // the legacy `zones` (still used by poi_network) and the LevelDef
       // regions so a divergence in either flags as a fixture diff.
-      h ^= fnv1aString(JSON.stringify(s.zones));
-      h ^= fnv1aString(JSON.stringify((s.level as { regions: unknown }).regions));
+      h ^= hashString(JSON.stringify(s.zones));
+      h ^= hashString(JSON.stringify((s.level as { regions: unknown }).regions));
       break;
+    case "cliff": {
+      // T-311 P6 — same "never let a new stage's output go unhashed"
+      // discipline the T-315 A5 fields fix established.
+      const c = s.cliff as Record<string, ArrayBufferView>;
+      for (const k of Object.keys(c).sort()) h ^= hashBytes(viewOf(c[k]));
+      break;
+    }
     case "poiNetwork":
       // T-214: narrative + stairs are now on state.level; their JSON
       // shape is the canonical hash input for the matcher's output.
-      h ^= fnv1aString(JSON.stringify((s.level as { narrative: unknown }).narrative));
-      h ^= fnv1aString(JSON.stringify((s.level as { edges: { stairs: unknown } }).edges.stairs));
+      h ^= hashString(JSON.stringify((s.level as { narrative: unknown }).narrative));
+      h ^= hashString(JSON.stringify((s.level as { edges: { stairs: unknown } }).edges.stairs));
       break;
+    case "fields": {
+      // T-315 A5: was silently excluded — a corrupted/regressed field
+      // plane was invisible to divergence detection. Sorted key order
+      // keeps the xor combination deterministic (doesn't affect the
+      // result, which is order-independent anyway, per the doc above).
+      const f = s.fields as Record<string, ArrayBufferView>;
+      for (const k of Object.keys(f).sort()) h ^= hashBytes(viewOf(f[k]));
+      break;
+    }
   }
   return h >>> 0;
 }
@@ -339,16 +333,43 @@ function hashStageOutput(stageId: StageId, state: unknown): number {
  * Encode a pipeline state to a wire-friendly JSON object: typed arrays
  * become base64 with a kind tag. Anything else passes through as JSON.
  */
+function encodeTA(v: unknown): { __ta: string; b64: string } | null {
+  if (v instanceof Uint8Array)   return { __ta: "u8",  b64: bytesToBase64(v) };
+  if (v instanceof Uint16Array)  return { __ta: "u16", b64: bytesToBase64(viewOf(v)) };
+  if (v instanceof Float32Array) return { __ta: "f32", b64: bytesToBase64(viewOf(v)) };
+  return null;
+}
+
+/** A flat object whose every value is a typed array — e.g. the T-311 `fields`
+ *  plane bundle. Encoded under `__planes` so decode can recurse one level. */
+function isPlaneBundle(v: unknown): boolean {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return false;
+  const vals = Object.values(v as Record<string, unknown>);
+  return vals.length > 0 && vals.every((x) =>
+    x instanceof Uint8Array || x instanceof Uint16Array || x instanceof Float32Array);
+}
+
 export function encodeState(state: unknown): unknown {
   const s = state as Record<string, unknown>;
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(s)) {
-    if (v instanceof Uint8Array)   out[k] = { __ta: "u8",  b64: b64Of(v) };
-    else if (v instanceof Uint16Array)  out[k] = { __ta: "u16", b64: b64Of(viewOf(v)) };
-    else if (v instanceof Float32Array) out[k] = { __ta: "f32", b64: b64Of(viewOf(v)) };
-    else out[k] = v;
+    const ta = encodeTA(v);
+    if (ta) out[k] = ta;
+    else if (isPlaneBundle(v)) {
+      const planes: Record<string, unknown> = {};
+      for (const [ik, iv] of Object.entries(v as Record<string, unknown>)) planes[ik] = encodeTA(iv);
+      out[k] = { __planes: planes };
+    } else out[k] = v;
   }
   return out;
+}
+
+function decodeTA(tagged: { __ta: string; b64: string }): unknown {
+  const bytes = base64ToBytes(tagged.b64);
+  if (tagged.__ta === "u8")  return bytes;
+  if (tagged.__ta === "u16") return new Uint16Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 2);
+  if (tagged.__ta === "f32") return new Float32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4);
+  throw new Error(`unknown typed-array tag ${tagged.__ta}`);
 }
 
 export function decodeState(payload: unknown): unknown {
@@ -356,12 +377,13 @@ export function decodeState(payload: unknown): unknown {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(p)) {
     if (v && typeof v === "object" && "__ta" in v && "b64" in v) {
-      const tagged = v as { __ta: string; b64: string };
-      const bytes = bytesFromB64(tagged.b64);
-      if      (tagged.__ta === "u8")  out[k] = bytes;
-      else if (tagged.__ta === "u16") out[k] = new Uint16Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 2);
-      else if (tagged.__ta === "f32") out[k] = new Float32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4);
-      else throw new Error(`unknown typed-array tag ${tagged.__ta}`);
+      out[k] = decodeTA(v as { __ta: string; b64: string });
+    } else if (v && typeof v === "object" && "__planes" in v) {
+      const planes: Record<string, unknown> = {};
+      for (const [ik, iv] of Object.entries((v as { __planes: Record<string, { __ta: string; b64: string }> }).__planes)) {
+        planes[ik] = decodeTA(iv);
+      }
+      out[k] = planes;
     } else {
       out[k] = v;
     }
@@ -369,18 +391,3 @@ export function decodeState(payload: unknown): unknown {
   return out;
 }
 
-function b64Of(bytes: Uint8Array): string {
-  let s = "";
-  const chunk = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunk) {
-    s += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + chunk)));
-  }
-  return btoa(s);
-}
-
-function bytesFromB64(b64: string): Uint8Array {
-  const s = atob(b64);
-  const out = new Uint8Array(s.length);
-  for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i);
-  return out;
-}

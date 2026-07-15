@@ -1,22 +1,25 @@
 /**
- * Upsample a TileInit's sample-grid buffers (gridSize²) to a target voxel
+ * Upsample a TileInit's sample-grid buffers (gridSize²) to a target cell
  * resolution (targetSize²). Used by tile-server at boot to fit atlas's
- * coarse generation grid into its own finer voxel grid.
+ * coarse generation grid into its own finer runtime terrain cell grid —
+ * the client's later voxelization of each terrain cell into a stacked
+ * column of render voxels is a separate downstream step this function
+ * has no awareness of.
  *
  * Sampling rules:
  *
  *   openMask, materials  → NEAREST. The wall edge MUST stay a hard step;
  *                          bilinear smoothing of the binary mask would
- *                          produce a 4-voxel ramp the player could climb,
+ *                          produce a 4-cell ramp the player could climb,
  *                          and material ids aren't blendable anyway.
  *
  *   heightMap            → "nearest with re-added wall step". The atlas
  *                          heightMap already encodes the wall step, so a
  *                          straight bilinear of it would smooth the step
  *                          out. We sample the underlying floor (height
- *                          minus the closed-pixel wall contribution)
+ *                          minus the closed-cell wall contribution)
  *                          bilinearly, then re-add WALL_HEIGHT for any
- *                          target voxel whose nearest source pixel is
+ *                          target cell whose nearest source cell is
  *                          closed. Keeps the floor smooth, keeps the
  *                          wall edge sharp.
  *
@@ -28,11 +31,54 @@
  */
 
 import type { TileInit } from "./types.ts";
-import { WALL_HEIGHT } from "./pipeline/terrain.ts";
+import type { FieldPlanes } from "./pipeline/fields.ts";
+import type { CliffPlanes } from "./pipeline/cliff.ts";
 import { levelToZoneOf } from "./level/types.ts";
 
+/** Nearest-resample a gridSize² plane to targetSize² (T-311 P3). Render fields
+ *  are coherent descriptors (not collision) so nearest is correct + NaN-safe for
+ *  the f32 water level; bilinear refinement can come later if gradients read blocky. */
+function nearestResample<T extends Uint8Array | Float32Array>(src: T, g: number, target: number): T {
+  const out = (src instanceof Float32Array ? new Float32Array(target * target) : new Uint8Array(target * target)) as T;
+  const ratio = g / target;
+  for (let ty = 0; ty < target; ty++) {
+    const sy = Math.min(g - 1, Math.max(0, Math.round((ty + 0.5) * ratio - 0.5)));
+    for (let tx = 0; tx < target; tx++) {
+      const sx = Math.min(g - 1, Math.max(0, Math.round((tx + 0.5) * ratio - 0.5)));
+      out[ty * target + tx] = src[sy * g + sx];
+    }
+  }
+  return out;
+}
+
+function upsampleFieldPlanes(f: FieldPlanes, g: number, target: number): FieldPlanes {
+  return {
+    canopyLight: nearestResample(f.canopyLight, g, target),
+    corruption:  nearestResample(f.corruption, g, target),
+    fertility:   nearestResample(f.fertility, g, target),
+    wetness:     nearestResample(f.wetness, g, target),
+    overgrowth:  nearestResample(f.overgrowth, g, target),
+    wear:        nearestResample(f.wear, g, target),
+    variantIndex: nearestResample(f.variantIndex, g, target),
+    ruinAge:     nearestResample(f.ruinAge, g, target),
+    traffic:     nearestResample(f.traffic, g, target),
+    surfaceLevel: nearestResample(f.surfaceLevel, g, target),
+  };
+}
+
+/** Nearest-resample the cliff planes (T-311 P6) — discrete descriptors, same
+ *  rationale as the render fields (never bilinear a profile/erosion id). */
+function upsampleCliffPlanes(c: CliffPlanes, g: number, target: number): CliffPlanes {
+  return {
+    profileId: nearestResample(c.profileId, g, target),
+    erosion:   nearestResample(c.erosion, g, target),
+    tier:      nearestResample(c.tier, g, target),
+    edge:      nearestResample(c.edge, g, target),
+  };
+}
+
 export interface UpsampleOptions {
-  /** Target side length in voxels (e.g. 512 for tile-server). */
+  /** Target side length in cells (e.g. 512 for tile-server). */
   targetSize: number;
   /**
    * Atlas material id → consumer material id. Atlas's id 0 (NONE) is
@@ -42,6 +88,12 @@ export interface UpsampleOptions {
   materialMap: ReadonlyMap<number, number>;
   /** Fallback for atlas ids not present in materialMap. */
   defaultMaterialId: number;
+  /**
+   * The world's actual wall-step height (GenParams.terrain.wallHeight),
+   * used to strip/re-add the wall step during floor bilinear resampling.
+   * Must match the value the source tile's heightMap was generated with.
+   */
+  wallHeight: number;
 }
 
 export interface UpsampleOutput {
@@ -57,20 +109,24 @@ export interface UpsampleOutput {
   openBuffer: Uint8Array;
   /**
    * Nearest-sampled boundary-kind ids at target resolution, length
-   * targetSize². 0 (OPEN) on open pixels; per-kind id on closed pixels.
+   * targetSize². 0 (OPEN) on open cells; per-kind id on closed cells.
    * Used by phase 4C for per-kind rendering.
    */
   kindBuffer: Uint16Array;
   /**
    * Nearest-sampled zone ids at target resolution (T-211), length
-   * targetSize². 0xFFFF for un-zoned pixels. Tile-server reads this
+   * targetSize². 0xFFFF for un-zoned cells. Tile-server reads this
    * to map player position → zone for the "You are in:" HUD.
    */
   zoneBuffer: Uint16Array;
+  /** T-311 P3 render-field planes, nearest-resampled to targetSize². */
+  fields: FieldPlanes;
+  /** T-311 P6 cliff planes, nearest-resampled to targetSize². */
+  cliff: CliffPlanes;
 }
 
 export function upsampleTile(tile: TileInit, options: UpsampleOptions): UpsampleOutput {
-  const { targetSize, materialMap, defaultMaterialId } = options;
+  const { targetSize, materialMap, defaultMaterialId, wallHeight } = options;
   const g = tile.gridSize;
   const N = targetSize * targetSize;
 
@@ -80,27 +136,27 @@ export function upsampleTile(tile: TileInit, options: UpsampleOptions): Upsample
   const kindBuffer     = new Uint16Array(N);
   const zoneBuffer     = new Uint16Array(N);
 
-  // Derive gridSize² zoneOf from regions[].pixels — regions own their
-  // pixel set; the per-pixel index is derived on demand here so the
+  // Derive gridSize² zoneOf from regions[].cells — regions own their
+  // cell set; the per-cell index is derived on demand here so the
   // wire doesn't have to ship it separately.
   const tileZoneOf = levelToZoneOf(tile.level);
 
   // Source-of-truth floor heights — atlas's heightMap minus the wall step
-  // wherever the pixel is closed. Lets us bilinear the floor without
+  // wherever the cell is closed. Lets us bilinear the floor without
   // smoothing the step.
   const floor = new Float32Array(g * g);
   for (let i = 0; i < g * g; i++) {
     floor[i] = tile.openMask[i] === 0
-      ? tile.heightMap[i] - WALL_HEIGHT
+      ? tile.heightMap[i] - wallHeight
       : tile.heightMap[i];
   }
 
-  // Map target voxel index → source pixel index (nearest), and
+  // Map target cell index → source cell index (nearest), and
   // bilinear-interpolation weights for the floor sample.
   const ratio = g / targetSize;
   for (let ty = 0; ty < targetSize; ty++) {
-    // Source y in [0, g). Centred on the voxel midpoint so we don't
-    // bias toward the upper-left of each source pixel.
+    // Source y in [0, g). Centred on the cell midpoint so we don't
+    // bias toward the upper-left of each source cell.
     const sy = (ty + 0.5) * ratio - 0.5;
     const sy0 = Math.max(0, Math.floor(sy));
     const sy1 = Math.min(g - 1, sy0 + 1);
@@ -128,8 +184,8 @@ export function upsampleTile(tile: TileInit, options: UpsampleOptions): Upsample
         f01 * (1 - fx) * fy +
         f11 * fx       * fy;
 
-      // Re-add wall step from the nearest pixel's openness.
-      const wall = tile.openMask[nIdx] === 0 ? WALL_HEIGHT : 0;
+      // Re-add wall step from the nearest cell's openness.
+      const wall = tile.openMask[nIdx] === 0 ? wallHeight : 0;
       heightBuffer[tIdx] = fInterp + wall;
 
       // Material: nearest only, with caller-supplied translation.
@@ -147,5 +203,7 @@ export function upsampleTile(tile: TileInit, options: UpsampleOptions): Upsample
     }
   }
 
-  return { heightBuffer, materialBuffer, openBuffer, kindBuffer, zoneBuffer };
+  const fields = upsampleFieldPlanes(tile.fields, g, targetSize);
+  const cliff = upsampleCliffPlanes(tile.cliff, g, targetSize);
+  return { heightBuffer, materialBuffer, openBuffer, kindBuffer, zoneBuffer, fields, cliff };
 }

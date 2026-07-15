@@ -427,7 +427,45 @@ byte-identical.
 
 **Acceptance:** an end-to-end bake → boot → render shows the sanctum POI with its altar and braziers visible at the host region's centroid. Inspector can navigate the subtree.
 
-### T-219 — Skeletal entities use scene-graph for bone hierarchy
+### T-219 — Skeletal entities use scene-graph for bone hierarchy — **LANDED (server-side structure)**
+
+> Landed as one merged arc with T-220 (lane/t219-bones) — invasive enough,
+> per this section's own note below, that splitting them would have meant
+> re-deriving the same equip-slot-to-bone resolution twice. `spawner.ts`'s
+> `installSkeletonBones` spawns one real ECS entity per `SkeletonDef.bones`
+> entry at skeletal-installer time (17 for biped, 11 for wolf),
+> `world.setParent`-chained to mirror the skeleton hierarchy exactly. `Bone`
+> (wireId 59) carries ONLY `boneId` — deliberately NOT `parentBoneId`/
+> `restPose` as originally scoped below: both are already content data
+> (`SkeletonDef.bones`), and the parent-bone ENTITY relationship is the
+> engine's own `Parent`, so wiring them too would be pure duplication.
+> **Bone transforms are never replicated** — the plan's own central
+> warning, held to exactly: motion stays derived client-side from
+> `AnimationState` (already on the wire), the same derivation
+> `entity_mesh.ts`'s `boneGroups` pipeline already computed pre-T-219.
+> Surfaced and fixed one required engine prerequisite: `world.setParent`
+> writes immediately, invisible to the wire delta builder for an
+> already-AoI-known entity — `world.reparent()` (deferred) is the
+> system-safe twin T-220's live equip/unequip needs; `applyChangeset()`'s
+> commit loop now maintains the child index on a committed Parent set too.
+> `aoi.ts` gained a generic scene-graph subtree-expansion pass so bone/
+> equipped-item entities (no Position) actually reach any client.
+> **Diverges from this section's original file-touched table**:
+> `skeleton_evaluator.ts` and `entity_mesh.ts`'s `boneGroups` retirement did
+> NOT happen — the client has no general entity-materialization pipeline to
+> replace `boneGroups` with yet (that's T-223's stated job); building a
+> one-off entity-driven pipeline just for bones ahead of T-223 would be
+> throwaway work T-223 immediately replaces. Same precedent T-218 already
+> set for POI props ("live transform composition is still T-223"), applied
+> here identically. Client visual output is therefore trivially identical
+> to pre-T-219 (nothing changed rendering-side) — the acceptance bar below
+> holds, just not via the mechanism originally imagined.
+> `packages/tile-server/src/components/equipment.ts` was NOT touched —
+> the scene-graph attach logic lives in `spawner.ts`
+> (`resolveAttachParent`/`reattachAllEquipment`) and
+> `systems/equipment.ts`, not the component definition file itself.
+> See TICKETS.md's T-219/T-220 arc entries for the full closing notes
+> (engine prerequisite, AoI mechanism, test coverage, scope decisions).
 
 **Goal:** The skeletal bone hierarchy (today in `entity_mesh.ts`'s `boneGroups` Map) becomes scene-graph parented entities, one entity per bone. Equipment attachments become children of bone entities.
 
@@ -452,7 +490,18 @@ byte-identical.
 
 **Acceptance:** characters animate correctly, equipped items follow bones, snapshot determinism intact, client visual output identical to pre-T-219.
 
-### T-220 — Equipment + attachment via scene-graph
+### T-220 — Equipment + attachment via scene-graph — **LANDED (merged into T-219, see above)**
+
+> `world.reparent` (not `setParent` — see T-219's note) to
+> `resolveAttachParent`'s resolved bone entity on equip; `world.reparent(_,
+> null)` on unequip/drop. `EQUIP_SLOT_PRIMARY_BONE` covers the five
+> SINGLE-bone slots (weapon/offHand/head/chest/back); `legs`/`feet` fall
+> back to the holder root — the client's own attachment table maps those to
+> 2–4 bones each, so a single item entity has no one bone to parent to.
+> CraftingSystem / on-hit drop handlers: audited, nothing to touch (no
+> disarm-on-hit mechanic exists in the codebase). Every character-destroy
+> site converted to `world.destroySubtree` so bones/equipment never leak
+> past a death/disconnect.
 
 **Goal:** Fold the existing equipment attachment system into the scene-graph. Equipping = `setParent` to bone; unequipping = `setParent(null)`; dropping = `setParent(null) + Position write`.
 
@@ -479,14 +528,101 @@ This may merge with T-219 depending on how invasive T-219 is. Listed separately 
 
 This unlocks future tiers: instanced dungeons are subtrees of the coordinator world; lobbies are parent-less mini-worlds; vehicles are movable subtrees.
 
-### T-223 — Client render-scope scene graph
+### T-223 — Client render-scope scene graph — **LANDED**
 
-**Goal:** Client's rendering hierarchy (camera + chunks + props) becomes a scene-graph subtree, replacing today's `Map<chunkKey, mesh>` and `entityMeshes` map.
+> Landed as specified by this section's own recon rewrite (6cecdd5) — the
+> "entities supply structure, content supplies transform" governing
+> principle held throughout, no re-litigation needed. `ClientWorld` gained
+> the parent→children reverse index (`childrenOf`/`descendants`, mirroring
+> engine `World.descendants()`'s exact DFS shape) as an EXTENSION, not a
+> fork — closing open call #3 below exactly as decided. Each skeletal
+> `EntityMeshGroup` gained a `boneEntityByBoneId`/`boneIdByEntity` identity
+> map, built once per skeleton from a full-subtree walk of the character's
+> replicated bone children; bone entities acquired identity, never geometry
+> — `boneGroups` (the pose write target) is byte-for-byte untouched.
+> `syncEquipment` now resolves every equipped item's attach bone through a
+> new pure `resolveItemAttachment(world, mesh, characterId, itemEntityId)`
+> — a 3-way result (`bone` / `holderRoot` / `unresolved`) that cleanly
+> separates "the graph names a bone", "T-220's deliberate holder-root
+> parenting for legs/feet (no single bone fits a 1:1 `Parent` edge)", and
+> "transient, not resolved yet — self-heals next tick" — deleting
+> `ARMOR_SLOTS`/`SLOT_REST_BONE` outright, the stated primary deliverable.
+> **One design call this section left implicit, resolved during
+> implementation:** legs/feet's old static 4-anchor table cannot be
+> replaced by "enumerate every bone the item's `armorGrammar` authors" —
+> `plate_armor_iron` is one procModel SHARED across three different items
+> (chest/head/legs), so its full plate set spans bones beyond any single
+> piece's coverage. Resolved as content data, not a code table:
+> `ArmorData.coversBones` (new optional field, boot-validated) names the
+> subset THIS item covers; `syncArmorEquipSlot` fans out over exactly that
+> set. Draw calls unchanged by construction (fan-out only creates anchors
+> for bones the item actually covers — fewer than the old table's
+> always-4-slots-2-empty shape). Pose pipeline (`swing_pose.ts`/
+> `ik_solver.ts`/`skeleton_solver.ts`/`skeleton_evaluator.ts`) untouched —
+> confirmed via empty `git diff`, the tripwire this section named
+> explicitly. See TICKETS.md's T-223 entry for full closing notes (commits,
+> test counts, live-verification procedure).
+
+> **Re-specified after recon.** The original text of this section said render
+> systems would "iterate the client's `World` scene-graph, materializing Three.js
+> objects from entity transforms." Both halves of that sentence were false, and an
+> implementer taking them literally would build something that cannot work:
+>
+> - **There is no client `World`.** `ClientWorld` is a purpose-built flat
+>   `Map<entityId, EntityState>` with no component registry and no parent→children
+>   index. It is not an engine `World` and shares no code with one. (Open
+>   architectural call #3 below never got resolved; this ticket resolves it.)
+> - **Bone entities carry no transform, ever, by design.** `spawner.ts`: *"Bone
+>   TRANSFORMS are never written here — no Position, no Transform."* `BoneData` is
+>   `{boneId}`; `ParentData` is `{entityId}`. There is no server-side value to
+>   materialize a Three.js transform *from*. The pose is client-derived, per frame,
+>   by the content pipeline (`swing_pose.ts` → `updateSkeletonPose`).
+>
+> The governing principle, which the rest of this section is an application of:
+>
+> **Entities supply STRUCTURE. Content and the pose pipeline supply TRANSFORM.**
+
+**Goal:** the client resolves *what is attached to what* from the replicated scene
+graph instead of from hand-maintained lookup tables, and gains the per-part entity
+addressability that dynamic-part features (T-339 dismemberment / destructible
+props) need. Rendering *geometry* and *pose* stay exactly where they are.
 
 **What lands:**
-- Render systems iterate the client's `World` scene-graph, materializing Three.js objects from entity transforms.
-- Chunk culling becomes "skip this subtree if its bounding box is outside the camera frustum."
-- LOD switching becomes "swap this subtree for a lower-poly variant."
+- `ClientWorld` gains a **parent→children reverse index**, maintained on spawn /
+  `Parent`-delta / destroy, plus `childrenOf(id)` and `descendants(id)`. This is
+  the client's half of the scene graph — an extension of `ClientWorld`, not a fork
+  of engine `World` (see call #3, now decided).
+- Each skeletal `EntityMeshGroup` gains a **boneId ↔ bone-entityId** map, built
+  from the entity's replicated bone children. Bone entities thereby acquire an
+  *identity* the renderer can address — they do **not** acquire meshes.
+- **Attachment is resolved through the graph.** An equipped item renders because
+  its entity *is a child of a bone entity*; its model comes from its own
+  `itemData.prefabId`, and the bone it hangs on comes from its parent's `boneId`.
+  This **deletes** `ARMOR_SLOTS` / `SLOT_REST_BONE` / the table-driven slot
+  resolution in `syncEquipment` — the slot→bone mapping then exists exactly once,
+  server-side, in the graph itself, closing the `ARMOR_SLOTS` ↔
+  `EQUIP_SLOT_PRIMARY_BONE` drift hazard T-220 flagged and left open.
+
+**What explicitly does NOT change** (each of these is a trap that has already cost
+someone once):
+- **The pose pipeline.** `swing_pose.ts` / `ik_solver.ts` / `skeleton_solver.ts` /
+  `skeleton_evaluator.ts` are pure math over `Map<boneId, BoneRotation>` with zero
+  THREE and zero entity awareness. T-219 touched **zero bytes** of them; T-223 must
+  too. `boneGroups` stays the pose write target — boneId is the *correct* key for a
+  pose, because the pose is content-authored per boneId. Routing pose through
+  entity transforms is not a stretch goal, it is impossible (bones have no wire
+  transform) and would break the four closed-form no-foot-slide proofs.
+- **T-281's mesh merging.** Geometry is already collapsed to ~one merged mesh per
+  material per sub-object. Giving each bone entity its own mesh record would
+  fragment draw calls back toward the pre-T-281 state — re-opening a solved
+  problem. Bone entities own identity, not geometry.
+- **`InstancePool` (scatter + settled props), terrain chunk meshes, water, roofs,
+  decals.** Out of scope. Chunk culling / LOD-by-subtree were speculative extras in
+  the original text with no requirement behind them; they are dropped, not deferred.
+
+**Done looks like:** an equipped weapon's mesh hangs off the hand because the graph
+says so; grep finds no second slot→bone table; the pose-pipeline files show an
+empty `git diff`; draw calls per humanoid are unchanged (measured, not asserted).
 
 ### T-224 — Inspector / editor tooling against any World
 
@@ -524,9 +660,20 @@ Atlas's `generateTile` could either:
 
 Today's coordinator is small (city placement, world-graph, faction tick). T-222 puts a full ECS World inside it. Worth doing only if cross-tile state propagation, faction tick, or future features (instanced dungeons) need it. If coordinator stays small, T-222 may be deferred indefinitely.
 
-**3. Client `ClientWorld` retirement.**
+**3. Client `ClientWorld` retirement. — DECIDED (T-223): keep it, extend it.**
 
-The client today has a separate `ClientWorld` because some access patterns differ (interpolation buffers, prediction state). Lifting the client onto engine `World` directly is the cleanest end state, but may require keeping client-specific extensions (prediction component, interpolation history). Could land as an extension to `World` rather than parallel code.
+The client has a separate `ClientWorld` because its access patterns genuinely
+differ: interpolation buffers, prediction state, and a decode path keyed by wire
+id. Lifting it onto engine `World` was floated as "the cleanest end state" — it
+isn't. Engine `World` exists to run *systems* over *authoritative* state; the
+client runs neither. Adopting it would drag in the changeset/op-log machinery the
+client has no use for, to obtain one thing the client actually needs: a
+parent→children index.
+
+So: `ClientWorld` gains that index (`childrenOf` / `descendants`) and stays the
+client's store. This is an extension, not a parallel path — there is still exactly
+one client entity store. Revisit only if a second consumer ever needs real system
+scheduling client-side (prediction rollback would be the plausible one).
 
 **4. Modding API surface.**
 

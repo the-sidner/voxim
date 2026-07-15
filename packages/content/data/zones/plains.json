@@ -4,22 +4,5 @@
   "classifyRules": [
     {}
   ],
-  "dangerLevel": 1,
-  "npcSpawnDensity": 0.12,
-  "nodeSpawnDensity": 0.5,
-  "propSpawnDensity": 1.5,
-  "npcWeights": {
-    "villager": 4,
-    "archer": 2,
-    "wolf": 2,
-    "bandit": 1
-  },
-  "entityWeights": {
-    "tree": 4,
-    "fiber_bush": 5,
-    "berry_bush": 3
-  },
-  "propWeights": {
-    "model_dead_tree": 1
-  }
+  "dangerLevel": 1
 }

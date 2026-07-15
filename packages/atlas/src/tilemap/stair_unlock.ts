@@ -1,18 +1,18 @@
 /**
  * Stair unlock — heightmap ramp + openMask flip (T-213).
  *
- * A StairInstance lives at a path-pixel adjacent to a wilderness blob.
+ * A StairInstance lives at a path-cell adjacent to a wilderness blob.
  * When the stair is unlocked (either at tile boot for `lockedBy === null`
  * "found" stairs, or at runtime when a player consumes the gating
  * trinket — that path is T-212), two surfaces become traversable:
  *
- *   1. THE RAMP — heightmap-lerped pixels at the anchor that transition
+ *   1. THE RAMP — heightmap-lerped cells at the anchor that transition
  *      from path floor (~0) up to wilderness plateau height (wallHeight,
- *      typically 2u). The lerp runs from the path-side pixel deepest
- *      into the wilderness blob, a few pixels deep, so the player walks
+ *      typically 2u). The lerp runs from the path-side cell deepest
+ *      into the wilderness blob, a few cells deep, so the player walks
  *      a smooth slope up rather than facing a sheer 2u wall.
  *
- *   2. THE WILDERNESS PLATEAU — every pixel of the wilderness zone the
+ *   2. THE WILDERNESS PLATEAU — every cell of the wilderness zone the
  *      stair leads to becomes walkable (openMask = 1). The heightmap
  *      stays at wallHeight up there; that IS the plateau surface.
  *      Flood-fill bounded by zoneOf so an unlocked stair only opens
@@ -23,10 +23,19 @@
  * buffers ship through the existing terrain chunk path. Heightmap
  * lerps for run-time unlocks will need a delta wire format later
  * (T-212 territory).
+ *
+ * T-311 P6 coexistence note: this module needed NO changes for terraced
+ * cliffs. `applyStairUnlock` is height-agnostic (it lerps whatever
+ * heightBuffer values it's given) and never touches CliffGrid — the ramp
+ * cells it carves simply keep whatever CliffGrid values the atlas
+ * `cliffStage` assigned them (typically edge=0/profileId=0, since a ramp
+ * cell already reads as open ground, not a cliff perimeter). Physics
+ * agrees for the same reason CliffGrid never gates collision anywhere:
+ * `buildTerrainLookup`/`buildOpennessLookup` read only Heightmap/OpenMask.
  */
 
 export interface StairAnchor {
-  /** Anchor pixel in tile-server's TILE_SIZE² grid. */
+  /** Anchor cell in tile-server's TILE_SIZE² grid. */
   x: number;
   y: number;
 }
@@ -35,22 +44,22 @@ export interface StairMarkerOptions {
   wildernessZoneId: number;
   anchor: StairAnchor;
   /**
-   * Material id to paint the stair pixels with. Should be the
+   * Material id to paint the stair cells with. Should be the
    * tile-server-translated id for "stone" or "path" — a contrasting
    * surface so the player can spot the stair from a distance.
    */
   markerMaterialId: number;
-  /** How many pixels along the climb axis the marker spans. Default 5. */
+  /** How many cells along the climb axis the marker spans. Default 5. */
   markerDepth?: number;
-  /** Half-width perpendicular to climb. Default 2 (5-pixel-wide tread). */
+  /** Half-width perpendicular to climb. Default 2 (5-cell-wide tread). */
   markerHalfWidth?: number;
 }
 
 /**
  * Paint a visible marker patch at a stair anchor regardless of lock
  * state (T-213 visibility fix). Locked stairs get the marker on the
- * wilderness wall pixels so the player sees "stairs here, locked";
- * unlocked stairs get it on the ramp pixels (called from
+ * wilderness wall cells so the player sees "stairs here, locked";
+ * unlocked stairs get it on the ramp cells (called from
  * `applyStairUnlock` below).
  *
  * Independent of openMask + heightmap — purely a visual cue so the
@@ -99,16 +108,16 @@ export function markStairAnchor(
 }
 
 export interface StairUnlockOptions {
-  /** Wilderness zone id whose pixels become walkable. */
+  /** Wilderness zone id whose cells become walkable. */
   wildernessZoneId: number;
   /** Anchor in TILE_SIZE coords (NOT atlas grid coords). */
   anchor: StairAnchor;
-  /** Wall step height the wilderness pixels currently carry. */
+  /** Wall step height the wilderness cells currently carry. */
   wallHeight: number;
-  /** Ramp depth (pixels) — how far into the wilderness the lerp extends. */
-  rampDepth?: number;
-  /** Ramp half-width perpendicular to the climb direction (pixels). */
-  rampHalfWidth?: number;
+  /** Ramp depth (cells) — how far into the wilderness the lerp extends. */
+  rampDepth: number;
+  /** Ramp half-width perpendicular to the climb direction (cells). */
+  rampHalfWidth: number;
 }
 
 /**
@@ -116,16 +125,29 @@ export interface StairUnlockOptions {
  *
  *   heightBuffer + openBuffer + zoneBuffer are at TILE_SIZE² resolution
  *   (post-upsample). zoneBuffer is read-only here; the others are
- *   mutated. Returns the count of pixels affected so callers can log /
+ *   mutated. Returns the count of cells affected so callers can log /
  *   verify.
+ *
+ * ACCEPTED DIVERGENCE (T-315 A4): this carves a ramp through wilderness
+ * AFTER the atlas's derived render-field planes (fertility/wetness/
+ * overgrowth/traffic, `FieldPlanes`) have already been computed — the
+ * fields under the fresh ramp surface keep reading "wild" instead of
+ * "path". Left as-is deliberately: the disturbance-driven roughness
+ * response is already a continuous gradient across the wilderness/path
+ * boundary, so this reads as a soft edge rather than a visible seam, and
+ * a correct fix needs a directional gradient (not a flat overwrite like
+ * the POI room stamp gets) — more machinery than a substrate-bugfix
+ * phase should absorb. If it becomes visually offensive, it belongs in
+ * P6's terraced-cliff rework, which already owns this file's CLIFF_MIN/
+ * STONE_H-adjacent territory.
  *
  * Algorithm:
  *   1. Determine climb direction: from anchor → wilderness centroid.
  *      Approximated by sampling the 4 neighbours and picking the one
  *      whose zone is `wildernessZoneId` — that's the immediate "up"
  *      direction.
- *   2. Walk `rampDepth` pixels into the wilderness, half-width to each
- *      side. For each ramp pixel, lerp heightmap from floor (the
+ *   2. Walk `rampDepth` cells into the wilderness, half-width to each
+ *      side. For each ramp cell, lerp heightmap from floor (the
  *      anchor's current height) up to plateau (anchor + wallHeight),
  *      and flip openMask to 1.
  *   3. Flood-fill openMask = 1 across the entire `wildernessZoneId`
@@ -138,9 +160,7 @@ export function applyStairUnlock(
   tileSize: number,
   opts: StairUnlockOptions,
 ): number {
-  const { wildernessZoneId, anchor, wallHeight } = opts;
-  const rampDepth     = opts.rampDepth     ?? 4;
-  const rampHalfWidth = opts.rampHalfWidth ?? 2;
+  const { wildernessZoneId, anchor, wallHeight, rampDepth, rampHalfWidth } = opts;
 
   const stride = tileSize;
   if (anchor.x < 0 || anchor.y < 0 || anchor.x >= stride || anchor.y >= stride) return 0;
@@ -172,7 +192,7 @@ export function applyStairUnlock(
       const ry = anchor.y + dy * i + py * j;
       if (rx < 0 || ry < 0 || rx >= stride || ry >= stride) continue;
       const idx = ry * stride + rx;
-      // Only mutate pixels that are EITHER the path-side anchor row
+      // Only mutate cells that are EITHER the path-side anchor row
       // OR the target wilderness zone. We don't want to bulldoze a
       // neighbouring wilderness zone that happens to be perpendicular.
       const zoneOk = i === 0 ? true : zoneBuffer[idx] === wildernessZoneId;

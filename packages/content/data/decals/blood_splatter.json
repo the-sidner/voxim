@@ -1,0 +1,17 @@
+{
+  "id": "blood_splatter",
+  "source": "damage",
+  "material": "blood",
+  "count": [
+    2,
+    5
+  ],
+  "radius": 0.8,
+  "sizeRange": [
+    0.22,
+    0.5
+  ],
+  "ttlSeconds": 75,
+  "fadeSeconds": 45,
+  "fullIntensityAt": 30
+}

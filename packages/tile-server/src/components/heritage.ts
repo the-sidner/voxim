@@ -1,6 +1,5 @@
 import { defineComponent } from "@voxim/engine";
-import { ComponentType } from "@voxim/protocol";
-import { heritageCodec } from "@voxim/codecs";
+import { ComponentType, networkedCodec } from "@voxim/protocol";
 
 // ---- Heritage ----
 // Tracks a character's place in their dynasty.
@@ -26,7 +25,7 @@ export interface HeritageData {
 export const Heritage = defineComponent({
   name: "heritage" as const,
   wireId: ComponentType.heritage,
-  codec: heritageCodec,
+  codec: networkedCodec<HeritageData>(ComponentType.heritage),
   default: (): HeritageData => ({
     dynastyId: "",
     generation: 0,

@@ -94,6 +94,30 @@ export interface WeaponBlade {
   radius?:   number;
 }
 
+/** actor-local fwd/right/up, world units — matches content SwingKeyframe's point shape. */
+export interface SwingPoint { fwd: number; right: number; up: number }
+
+export interface SwingKeyframe {
+  t: number;
+  hilt: SwingPoint;
+  blade: SwingPoint;
+}
+
+export interface SwingGrip {
+  bone: string;
+  along: number;
+  drivesBlade?: boolean;
+  poleHint?: SwingPoint;
+}
+
+/** Mirrors content's SwingPathDef — the T-307 authored blade arc. */
+export interface SwingPath {
+  length: number;
+  radius: number;
+  keyframes: SwingKeyframe[];
+  grips?: SwingGrip[];
+}
+
 export interface WeaponActionDef {
   id: string;
   windupTicks?: number;
@@ -102,11 +126,52 @@ export interface WeaponActionDef {
   clipId?: string;
   blade?: WeaponBlade;
   holdHand?: string;
+  swingPath?: SwingPath;
 }
 
 export async function loadWeaponAction(id: string): Promise<WeaponActionDef | null> {
   try {
     return await readJson<WeaponActionDef>(`weapon_actions/${id}.json`);
+  } catch {
+    return null;
+  }
+}
+
+// ---- ActionDef (T-327 Phases panel) ----------------------------------------
+//
+// Mirrors content's ActionDef — the universal action primitive
+// (data/actions/*.json), NOT WeaponActionDef above. An ActionDef's phases
+// carry TIMING (windup/active/winddown/recovery ticks); WeaponActionDef
+// carries GEOMETRY (swingPath). The Phases panel shows the former; the Sweep
+// panel (T-322) shows the latter — this loader only pulls the fields the
+// timeline needs, not the full effect/gate/animation vocabulary.
+
+export interface ActionPhaseDef {
+  /** Duration in ticks; -1 = perpetual (ambient actions only — held, not timed). */
+  ticks: number;
+}
+
+export interface ActionEffectRef {
+  /** "<phaseName>:enter" | "<phaseName>:exit" | "<phaseName>:tick" */
+  phase: string;
+  kind: string;
+  params?: Record<string, unknown>;
+}
+
+export interface ActionDefSummary {
+  id: string;
+  kind: string;
+  slot: string;
+  /** Declaration order matters — it's the timeline's left-to-right order. */
+  phases: Record<string, ActionPhaseDef>;
+  hitStopTicks?: number;
+  cooldownTicks?: number;
+  effects: ActionEffectRef[];
+}
+
+export async function loadActionDef(id: string): Promise<ActionDefSummary | null> {
+  try {
+    return await readJson<ActionDefSummary>(`actions/${id}.json`);
   } catch {
     return null;
   }

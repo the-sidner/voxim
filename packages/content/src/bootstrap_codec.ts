@@ -28,11 +28,13 @@ import type {
   MaterialDef, ModelDefinition, SkeletonDef, Recipe, NpcTemplate,
   BehaviorTreeSpec, BiomeDef, ZoneDef, LoreFragment, WeaponActionDef,
   ActionDef, GameConfig, TileLayout, Prefab,
-  ResourceDef, TriggerDef, ProcModelDef, ScatterDef, Palette,
+  ResourceDef, TriggerDef, ProcModelDef, ScatterDef, GradeDef, LightDef,
+  AtmosphereDef, WaterStyleDef, DecalDef, ParticleEmitterDef, DissolveProfileDef, DeathStyleDef, CliffProfileDef, Palette,
+  GaitDef,
 } from "./types.ts";
 
 /** Wire schema version — bump when the envelope shape changes. */
-export const BOOTSTRAP_VERSION = 15;
+export const BOOTSTRAP_VERSION = 24;
 
 /** Magic 4-byte prefix on every blob. Catches misrouted bytes early. */
 const MAGIC = 0x564f5842; // "VOXB" little-endian-readable
@@ -49,11 +51,21 @@ interface ContentBootstrapJson {
   zones:               ZoneDef[];
   loreFragments:       LoreFragment[];
   weaponActions:       WeaponActionDef[];
+  gaits:               GaitDef[];
   actions:             ActionDef[];
   resources:           ResourceDef[];
   triggers:            TriggerDef[];
   procModels:          ProcModelDef[];
   scatter:             ScatterDef[];
+  grades:              GradeDef[];
+  lights:              LightDef[];
+  atmospheres:         AtmosphereDef[];
+  waterStyles:         WaterStyleDef[];
+  decals:              DecalDef[];
+  particles:           ParticleEmitterDef[];
+  dissolveProfiles:    DissolveProfileDef[];
+  deathStyles:         DeathStyleDef[];
+  cliffProfiles:       CliffProfileDef[];
   gameConfig:          GameConfig;
   tileLayout:          TileLayout | null;
   palette:             Palette;
@@ -121,11 +133,21 @@ export async function encodeBootstrap(service: ContentService): Promise<Uint8Arr
     zones:               [...service.zones.values()],
     loreFragments:       [...service.loreFragments.values()],
     weaponActions:       [...service.weaponActions.values()],
+    gaits:               [...service.gaits.values()],
     actions:             [...service.actions.values()],
     resources:           [...service.resources.values()],
     triggers:            [...service.triggers.values()],
     procModels:          [...service.procModels.values()],
     scatter:             [...service.scatter.values()],
+    grades:              [...service.grades.values()],
+    lights:              [...service.lights.values()],
+    atmospheres:         [...service.atmospheres.values()],
+    waterStyles:         [...service.waterStyles.values()],
+    decals:              [...service.decals.values()],
+    particles:           [...service.particles.values()],
+    dissolveProfiles:    [...service.dissolveProfiles.values()],
+    deathStyles:         [...service.deathStyles.values()],
+    cliffProfiles:       [...service.cliffProfiles.values()],
     gameConfig:          service.getGameConfig(),
     tileLayout:          service.getTileLayout(),
     palette:             service.getPalette(),
@@ -202,6 +224,7 @@ export async function decodeBootstrap(blob: Uint8Array): Promise<ContentService>
   for (const z of body.zones)                store.registerZone(z);
   for (const l of body.loreFragments)        store.registerLoreFragment(l);
   for (const w of body.weaponActions)        store.registerWeaponAction(w);
+  for (const g of body.gaits)                store.registerGait(g);
   for (const a of body.actions)              store.registerAction(a);
   // version is strictly enforced above, so a decoded blob always carries
   // every array the current envelope declares — no per-field guards
@@ -210,6 +233,15 @@ export async function decodeBootstrap(blob: Uint8Array): Promise<ContentService>
   for (const t of body.triggers)             store.registerTrigger(t);
   for (const p of body.procModels ?? [])     store.registerProcModel(p);
   for (const s of body.scatter ?? [])        store.registerScatter(s);
+  for (const g of body.grades ?? [])         store.registerGrade(g);
+  for (const l of body.lights ?? [])         store.registerLight(l);
+  for (const a of body.atmospheres ?? [])    store.registerAtmosphere(a);
+  for (const w of body.waterStyles ?? [])    store.registerWaterStyle(w);
+  for (const d of body.decals ?? [])         store.registerDecal(d);
+  for (const p of body.particles ?? [])      store.registerParticle(p);
+  for (const d of body.dissolveProfiles ?? []) store.registerDissolveProfile(d);
+  for (const d of body.deathStyles ?? [])    store.registerDeathStyle(d);
+  for (const c of body.cliffProfiles ?? [])  store.registerCliffProfile(c);
   store.setGameConfig(body.gameConfig);
   if (body.tileLayout !== null) store.setTileLayout(body.tileLayout);
   store.setPalette(body.palette);

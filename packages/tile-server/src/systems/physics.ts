@@ -11,6 +11,7 @@ import { ActiveActions } from "../components/action.ts";
 import { effective } from "../modifiers/modifier.ts";
 import type { ModifierSourceRegistry } from "../modifiers/modifier.ts";
 import { buildTerrainLookup, buildOpennessLookup } from "../physics/terrain_lookup.ts";
+import { collectHitStopFreezes } from "../combat/hitstop.ts";
 
 const log = createLogger("PhysicsSystem");
 
@@ -32,10 +33,19 @@ export class PhysicsSystem implements System {
    */
   private offGroundTicks = new Map<string, number>();
 
+  /** Current server tick, latched by `prepare()` — hitstop freeze windows
+   *  are expressed as absolute tick numbers, so PhysicsSystem needs to know
+   *  "now" to test them (T-296). */
+  private serverTick = 0;
+
   constructor(
     private readonly content: ContentService,
     private readonly modifierSources: ModifierSourceRegistry,
   ) {}
+
+  prepare(serverTick: number): void {
+    this.serverTick = serverTick;
+  }
 
   run(world: World, _events: EventEmitter, dt: number): void {
     const gameCfg = this.content.getGameConfig();
@@ -55,6 +65,13 @@ export class PhysicsSystem implements System {
     const getHeight = buildTerrainLookup(world);
     const isOpen    = buildOpennessLookup(world);
 
+    // Hitstop (T-296): entities frozen this tick (attacker + target of a
+    // just-landed hit). Computed once — every entity in the set holds its
+    // current position and zeroes velocity instead of integrating, reusing
+    // the exact same "locked" commit shape as the movement-locked branch
+    // below (just an earlier short-circuit), so no new physics code path.
+    const frozen = collectHitStopFreezes(world, this.content, this.serverTick);
+
     // Pass 1 — integrate every moving entity into a local map. We defer
     // writes so the post-integration entity-vs-entity separation pass can
     // mutate next positions before they land in the changeset.
@@ -72,6 +89,19 @@ export class PhysicsSystem implements System {
     )) {
       const groundZ = getHeight(position.x, position.y);
       const onGround = position.z <= groundZ + 0.01;
+
+      if (frozen.has(entityId)) {
+        // Hitstop (T-296): hold position, zero velocity, skip integration
+        // entirely for the freeze window — the "thump" reads as the whole
+        // body stopping dead, not just losing input control.
+        steps.push({
+          entityId,
+          position: { x: position.x, y: position.y, z: position.z },
+          velocity: { x: 0, y: 0, z: 0 },
+          facing: inputState.facing,
+        });
+        continue;
+      }
 
       // Movement enum (T-229): a slot action whose current phase declares
       // `movement: "locked"` (dodge_roll dash, swing active) holds the
@@ -97,12 +127,13 @@ export class PhysicsSystem implements System {
         1.0,
       );
       if (crouching) speedMultiplier *= crouchSpeedMultiplier;
+      // What you are DOING slows you (T-345) — drawing a bow, blocking, mid-swing.
+      // Multiplicative with the modifier stack and crouch, so encumbrance and a
+      // channelled cast compound rather than one masking the other.
+      speedMultiplier *= actionSpeedMultiplier(world, this.content, entityId);
 
       let movement: { x: number; y: number };
       let physicsConfig = baseConfig;
-      // (T-227: swing root-motion push via ActionImpulse was removed with
-      // ActionSystem — root-motion is reintroduced later as an apply_force
-      // action effect.)
       if (locked) {
         // Hold whatever velocity the locking action's effect committed
         // (dodge_impulse wrote the dash vector on dash:enter).
@@ -218,9 +249,7 @@ const COYOTE_TICKS = 3;
 /**
  * True if any occupied action slot's current phase declares
  * `movement: "locked"` — the generic "stuck executing this action" signal
- * (dodge_roll dash, swing active). `"slowed"` is currently treated as
- * `"free"` (no consumer yet — a speed-scale pass is deferred retune, per
- * the structure-over-parity pivot); only `"locked"` changes physics today.
+ * (dodge_roll dash, swing active).
  */
 function isMovementLocked(
   world: World,
@@ -235,5 +264,34 @@ function isMovementLocked(
     }
   }
   return false;
+}
+
+/**
+ * Speed multiplier imposed by whatever the actor is currently doing (T-345).
+ *
+ * Every occupied slot's CURRENT phase may name a number in (0,1]; the strictest
+ * one wins (a channelled cast should not be rescued by a permissive second slot).
+ * 1 = unrestricted.
+ *
+ * This is the consumer `movement: 0.5` never had. That string named a mode
+ * nobody implemented — it was read as `"free"` — so every ActionDef declaring it
+ * was lying about its own behaviour, and drawing a bow felt exactly like walking.
+ * The value is now the number itself, per phase, so the penalty DEPENDS on what
+ * is being done: reloading a crossbow roots you to a shuffle (0.25), a shield
+ * block barely touches you (0.55), a light swing hardly at all (0.70).
+ */
+function actionSpeedMultiplier(
+  world: World,
+  content: ContentService,
+  entityId: string,
+): number {
+  const aa = world.get(entityId, ActiveActions);
+  if (!aa) return 1;
+  let mult = 1;
+  for (const st of Object.values(aa.states)) {
+    const m = content.actions.get(st.actionId)?.movement?.[st.phase];
+    if (typeof m === "number" && m < mult) mult = m;
+  }
+  return mult;
 }
 

@@ -27,6 +27,38 @@
  */
 
 import * as THREE from "three";
+import type { GradeDef } from "@voxim/content";
+
+/**
+ * The pre-bootstrap fallback grade — every value here matches
+ * `data/grades/default.json` exactly. Single named source for the
+ * constructor's uniform initial values instead of 19 scattered literals
+ * (13 grade fields + bloom threshold/knee/strength + height-shade band +
+ * emissive HDR scale); once the bootstrap blob arrives, `setGrade` /
+ * `setContentCache` overwrite these from the authored content.
+ */
+export const PRE_BOOTSTRAP_GRADE: GradeDef = {
+  id: "default",
+  exposure: 1.12,
+  saturation: 1.66,
+  vignetteStart: 0.34,
+  vignetteStrength: 0.32,
+  splitTone: 0.62,
+  grimGain: [1.0, 0.99, 0.95],
+  grimGamma: [1.05, 1.0, 1.07],
+  grimLift: [0.012, 0.015, 0.02],
+  grimDesat: 0.26,
+  warmGain: 2.5,
+  grimCast: [0.95, 1.0, 0.97],
+  grainStrength: 0.05,
+  grainShadowFloor: 0.4,
+  bloomThreshold: 0.85,
+  bloomKnee: 0.5,
+  bloomStrength: 1.0,
+  heightShadeBelow: 8.0,
+  heightShadeAbove: 24.0,
+  emissiveHdrScale: 2.2,
+};
 
 const VERT = /* glsl */`
   varying vec2 vUv;
@@ -44,6 +76,15 @@ const FRAG = /* glsl */`
   uniform sampler2D tHoverMask;
   uniform sampler2D tDepth;
   uniform sampler2D tFog;
+  uniform sampler2D tBloom;            // half-res blurred HDR bright-pass
+  uniform float     uBloomStrength;    // how much glow to add back (0 = off)
+  uniform sampler2D tGodRay;           // half-res radial light-shaft buffer
+  uniform float     uGodRayStrength;   // light-shaft intensity (0 = off)
+  uniform vec3      uGodRayColor;      // warm shaft tint
+  uniform vec3      uMistColor;        // ground-mist tint (T-311 P5a, GroundMistLayer)
+  uniform float     uMistHeightMin;    // world-Y band floor the mist pools in
+  uniform float     uMistHeightMax;    // world-Y band ceiling (fully faded above this)
+  uniform float     uMistWeight;       // this phase's density (0 = off), from AtmosphereDef
   uniform mat4      uProjInv;
   uniform mat4      uViewInv;
   uniform float     uTileSize;          // world units per tile axis (= fog texture side)
@@ -60,6 +101,18 @@ const FRAG = /* glsl */`
   uniform float     uHoverRadius;
   uniform float     uExposure;            // pre-tonemap radiance lift
   uniform float     uSaturation;          // post-tonemap chroma gain (>1 = bunter)
+  uniform float     uAoRadius;            // SSAO sampling reach (view-space, folds in proj scale)
+  uniform float     uAoStrength;          // SSAO darkening amount (0 = off)
+  uniform float     uSplitTone;           // forest split-tone strength (0 = off)
+  uniform vec3      uGrimGain;            // grim grade — highlight tint
+  uniform vec3      uGrimGamma;           // grim grade — midtone power
+  uniform vec3      uGrimLift;            // grim grade — raised cool blacks
+  uniform float     uGrimDesat;           // grim desaturation (warm pixels spared)
+  uniform float     uWarmGain;            // ember/warm detector sensitivity
+  uniform vec3      uGrimCast;            // cool weathered cast on cool pixels
+  uniform float     uGrainStrength;       // film-grain amount
+  uniform float     uGrainShadowFloor;    // how much grain survives into shadow
+  uniform float     uTime;                // seconds — animates the grain
   uniform float     uVignetteStart;       // radius where corner darkening begins
   uniform float     uVignetteStrength;    // max corner darkening (0 = off)
 
@@ -85,6 +138,45 @@ const FRAG = /* glsl */`
   vec3 aces(vec3 x) {
     const float a = 2.51, b = 0.03, c = 2.43, d = 0.59, e2 = 0.14;
     return clamp((x * (a * x + b)) / (x * (c * x + d) + e2), 0.0, 1.0);
+  }
+
+  // ---- Screen-space ambient occlusion ---------------------------------
+  // Reconstructs the view position + a central-difference normal from the depth
+  // buffer, then samples a per-pixel-rotated ring: every neighbour that rises in
+  // front of this surface along its normal contributes occlusion. The result is
+  // the soft contact darkening in every voxel crevice and terrain step that makes
+  // the blocky world read as dense and grounded (T-310, phase B). Depth-only, so
+  // voxels of ANY size are handled uniformly — no grid/neighbour assumptions.
+  float computeSsao(vec2 uv, float dC, vec2 e) {
+    vec3 pC = vpos(uv, dC);
+    float dist = max(-pC.z, 0.001);
+    float dR = texture2D(tDepth, uv + vec2(e.x, 0.0)).r;
+    float dL = texture2D(tDepth, uv - vec2(e.x, 0.0)).r;
+    float dU = texture2D(tDepth, uv + vec2(0.0, e.y)).r;
+    float dD = texture2D(tDepth, uv - vec2(0.0, e.y)).r;
+    vec3 N = normalize(cross(
+      vpos(uv + vec2(e.x, 0.0), dR) - vpos(uv - vec2(e.x, 0.0), dL),
+      vpos(uv + vec2(0.0, e.y), dU) - vpos(uv - vec2(0.0, e.y), dD)));
+    // per-pixel rotation breaks up banding from the fixed 8-direction ring
+    float ang = fract(sin(dot(uv, vec2(12.9898, 78.233))) * 43758.5453) * 6.2831853;
+    // world reach → screen uv reach (shrinks with distance), clamped so near
+    // surfaces don't smear the whole screen.
+    float uvRad = clamp(uAoRadius / dist, 1.5 * e.x, 28.0 * e.x);
+    float occ = 0.0;
+    // 4 rotated samples — half the taps of the original 8-ring. The per-pixel
+    // rotation (ang) + the radius jitter keep it from banding at the lower count.
+    for (int i = 0; i < 4; i++) {
+      float a2 = (float(i) + 0.5) * 1.5707963 + ang;   // 2π/4
+      float r  = uvRad * (0.4 + 0.6 * fract(float(i) * 0.61803));
+      vec2 off = vec2(cos(a2), sin(a2)) * r;
+      float ds = texture2D(tDepth, uv + off).r;
+      if (ds >= 0.9999) continue;                    // sky never occludes
+      vec3 diff = vpos(uv + off, ds) - pC;
+      float l = length(diff);
+      float rangeCheck = smoothstep(1.0, 0.0, l / 2.0);   // ignore far / other-surface hits
+      occ += max(dot(N, diff / (l + 1e-4)) - 0.025, 0.0) * rangeCheck;
+    }
+    return clamp(1.0 - (occ / 4.0) * uAoStrength, 0.0, 1.0);
   }
 
   void main() {
@@ -171,6 +263,12 @@ const FRAG = /* glsl */`
     float aoFactor = 1.0 - occlusion;
     color.rgb *= hFactor * aoFactor;
 
+    // True screen-space AO on top of the coarse height term — the contact
+    // shadows that ground voxels in their crevices. Sky pixels are exempt.
+    if (dCC < 0.9999 && uAoStrength > 0.0) {
+      color.rgb *= computeSsao(uv, dCC, e);
+    }
+
     // edgeColor is sRGB; convert to linear for correct mixing.
     vec3 edgeLinear = pow(max(edgeColor, vec3(0.0)), vec3(2.2));
     color.rgb = mix(color.rgb, edgeLinear, edge);
@@ -180,19 +278,35 @@ const FRAG = /* glsl */`
     // (2R+1)×(2R+1) window.  Cost is small at our pixel-art resolutions (R≈4
     // → 81 samples) and the ring is fully continuous regardless of radius —
     // the previous +× sample produced a star-pattern that read as dots.
-    float hMask = texture2D(tHoverMask, vUv).r;
-    float hDil  = hMask;
-    int   r     = int(uHoverRadius);
-    for (int j = -8; j <= 8; j++) {
-      if (j < -r || j > r) continue;
-      for (int i = -8; i <= 8; i++) {
-        if (i < -r || i > r) continue;
-        hDil = max(hDil, texture2D(tHoverMask, vUv + e * vec2(float(i), float(j))).r);
+    // Only run the (expensive) dilation when something is actually hovered —
+    // otherwise this was ~25 texture taps per pixel every frame for nothing.
+    if (uHoverActive > 0.0) {
+      float hMask = texture2D(tHoverMask, vUv).r;
+      float hDil  = hMask;
+      int   r     = int(uHoverRadius);
+      for (int j = -8; j <= 8; j++) {
+        if (j < -r || j > r) continue;
+        for (int i = -8; i <= 8; i++) {
+          if (i < -r || i > r) continue;
+          hDil = max(hDil, texture2D(tHoverMask, vUv + e * vec2(float(i), float(j))).r);
+        }
       }
+      // Rim = dilated minus original.  The model itself stays untouched.
+      float hRim = hDil * (1.0 - hMask);
+      color.rgb = mix(color.rgb, uHoverColor, hRim);
     }
-    // Rim = dilated minus original.  The model itself stays untouched.
-    float hRim = hDil * (1.0 - hMask) * uHoverActive;
-    color.rgb = mix(color.rgb, uHoverColor, hRim);
+
+    // ---- Bloom (HDR glow) -----------------------------------------------
+    // Add the blurred bright-pass back into the linear HDR radiance BEFORE the
+    // ACES tonemap, so torch/ember/sun glow rolls off filmically with the rest
+    // of the image instead of clipping to flat white. Sampled with linear
+    // upscaling from the half-res bloom target → a smooth halo.
+    color.rgb += texture2D(tBloom, vUv).rgb * uBloomStrength;
+
+    // ---- God rays (volumetric light shafts) -----------------------------
+    // Add the radial light-scatter buffer, warm-tinted, into the HDR scene
+    // before tone-mapping — sun/canopy shafts that roll off filmically.
+    color.rgb += texture2D(tGodRay, vUv).rgb * uGodRayStrength * uGodRayColor;
 
     // ---- Tone (lit radiance) --------------------------------------------
     // Exposure lift then the ACES curve, applied to the LIT scene BEFORE the
@@ -208,6 +322,17 @@ const FRAG = /* glsl */`
     // past the source colour; clamp the low end so it can't go negative.
     float luma = dot(color.rgb, vec3(0.299, 0.587, 0.114));
     color.rgb = max(mix(vec3(luma), color.rgb, uSaturation), 0.0);
+
+    // Forest split-tone: shadows toward a cool moss-green, highlights toward warm
+    // sunlight — the dappled light-through-canopy read that sells "deep forest".
+    // Subtle; scaled by uSplitTone.
+    {
+      float lz = dot(color.rgb, vec3(0.299, 0.587, 0.114));
+      vec3 shadowTint = vec3(0.92, 1.05, 0.96);   // green-cool
+      vec3 highTint   = vec3(1.07, 1.02, 0.89);   // warm gold
+      vec3 tinted = color.rgb * mix(shadowTint, highTint, smoothstep(0.16, 0.74, lz));
+      color.rgb = mix(color.rgb, tinted, uSplitTone);
+    }
 
     // ---- Fog of war (T-157) ---------------------------------------------
     // Reconstruct world position from depth + inverse camera matrices.
@@ -228,11 +353,48 @@ const FRAG = /* glsl */`
       color.rgb *= fogBrightness(fogVal);
     }
 
+    // ---- Ground mist (T-311 P5a, GroundMistLayer / plan G7) -------------
+    // Reuses the SAME depth-reconstruction trick as fog-of-war above, but in
+    // its OWN unconditional block: fog-of-war's reconstruction is gated on
+    // uTileSize > 0.0 (no tile loaded yet), which would incorrectly also
+    // skip mist. Params (band, color, phase weight) all come from the
+    // current AtmosphereDef. Depth-based, so it composites BEFORE the
+    // vignette/grim-grade block (mist is atmospheric - it should get graded
+    // like everything else) and right next to fog-of-war (the other
+    // depth-based atmospheric effect).
+    if (depth < 0.9999 && uMistWeight > 0.0) {
+      vec4 ndc     = vec4(vUv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
+      vec4 viewPos = uProjInv * ndc;
+      viewPos     /= viewPos.w;
+      vec4 world   = uViewInv * viewPos;
+
+      // 1 at/below uMistHeightMin, 0 at/above uMistHeightMax, smooth between.
+      float mistFactor = (1.0 - smoothstep(uMistHeightMin, uMistHeightMax, world.y)) * uMistWeight;
+      color.rgb = mix(color.rgb, uMistColor, clamp(mistFactor, 0.0, 1.0));
+    }
+
     // ---- Vignette (presentation) ----------------------------------------
     // A gentle corner falloff focuses the eye on the player and keeps the
     // lifted scene feeling close and grim. Subtle — never a hard black frame.
     float vigD = distance(vUv, vec2(0.5));
     color.rgb *= 1.0 - uVignetteStrength * smoothstep(uVignetteStart, 0.75, vigD);
+
+    // ---- Dirt / grind / grim filmic finish -------------------------------
+    // A weathered cinematic cast: lift/gamma/gain grade, a grim desaturation
+    // that SPARES warm/ember pixels (fire keeps its colour), and animated
+    // luminance-weighted film grain. The "lived-in, not clean" reference look.
+    color.rgb = color.rgb * uGrimGain;                          // highlight tint
+    color.rgb = pow(max(color.rgb, vec3(0.0)), uGrimGamma);     // midtone shape
+    color.rgb += uGrimLift * (1.0 - color.rgb);                 // raised cool blacks (grime)
+    {
+      float gl2  = dot(color.rgb, vec3(0.299, 0.587, 0.114));
+      float warm = clamp((color.r - color.b) * uWarmGain, 0.0, 1.0);  // ember detector
+      color.rgb  = mix(color.rgb, vec3(gl2), uGrimDesat * (1.0 - warm));
+      color.rgb *= mix(uGrimCast, vec3(1.0), warm);             // cool weathered cast
+      // Film grain — more in shadow/mid, animated by uTime.
+      float gn = fract(sin(dot(vUv * 1024.0 + uTime, vec2(12.9898, 78.233))) * 43758.5453) - 0.5;
+      color.rgb += gn * uGrainStrength * mix(uGrainShadowFloor, 1.0, gl2);
+    }
 
     // Linear → sRGB for canvas output.
     color.rgb = pow(max(color.rgb, vec3(0.0)), vec3(1.0 / 2.2));
@@ -253,6 +415,11 @@ export class EdgePass {
     width: number,
     height: number,
   ) {
+    // 1×1 black placeholder so the shader compiles before the BloomPass texture
+    // is wired in; the renderer swaps in the live half-res bloom texture at boot.
+    const blackTex = new THREE.DataTexture(new Uint8Array([0, 0, 0, 0]), 1, 1, THREE.RGBAFormat);
+    blackTex.needsUpdate = true;
+
     this.material = new THREE.ShaderMaterial({
       uniforms: {
         tColor:        { value: colorTex },
@@ -260,10 +427,22 @@ export class EdgePass {
         tHoverMask:    { value: hoverMaskTex },
         tDepth:        { value: depthTex },
         tFog:          { value: fogTex },
+        tBloom:        { value: blackTex },
+        uBloomStrength: { value: PRE_BOOTSTRAP_GRADE.bloomStrength },
+        tGodRay:        { value: blackTex },
+        uGodRayStrength: { value: 0.3 },
+        uGodRayColor:    { value: new THREE.Color(1.0, 0.93, 0.74) },  // warm shaft
+        // Mist defaults to OFF (uMistWeight 0) until setMist() applies the
+        // current AtmosphereDef — matches data/atmospheres/default.json's
+        // shape, no visible seam before the bootstrap arrives.
+        uMistColor:     { value: new THREE.Color(0xb07a5e) },
+        uMistHeightMin: { value: 0.0 },
+        uMistHeightMax: { value: 2.5 },
+        uMistWeight:    { value: 0.0 },
         uProjInv:      { value: new THREE.Matrix4() },
         uViewInv:      { value: new THREE.Matrix4() },
         uTileSize:     { value: 0.0 },           // 0 disables fog (no tile yet)
-        uFogUnseen:    { value: 0.06 },
+        uFogUnseen:    { value: 0.12 },
         uFogSeen:      { value: 0.66 },
         uFogVisible:   { value: 1.0 },
         texelSize:     { value: new THREE.Vector2(1 / width, 1 / height) },
@@ -282,12 +461,36 @@ export class EdgePass {
         // Tone + mood. Exposure lifts the grim-dark scene into a readable
         // midtone; ACES (in-shader) rolls off the highlights; the vignette pulls
         // the corners back for focus. Tuned by eye against the ash-grey world.
-        uExposure:         { value: 1.5 },
-        // Chroma gain — lifts the intentionally-desaturated earth palette into
-        // readable color ("deutlich bunter"). 1.0 = neutral; tuned by eye.
-        uSaturation:       { value: 1.4 },
-        uVignetteStart:    { value: 0.45 },
-        uVignetteStrength: { value: 0.12 },
+        // Lifted a touch (was 1.5) now that HDR headroom + bloom carry the bright
+        // end — pulls the grim midtones up so the world reads less muddy-dark.
+        // Chiaroscuro (concept-art reference pivot): a LOWER exposure lets the
+        // shadows fall deep so the few warm torch/fire pools + the bloom carry
+        // the light — grim, high-contrast, NOT flat-bright.
+        uExposure:         { value: PRE_BOOTSTRAP_GRADE.exposure },
+        // Rich colour held in the lit areas against the dark.
+        uSaturation:       { value: PRE_BOOTSTRAP_GRADE.saturation },
+        // Deeper, earlier vignette — cinematic frame, pulls the dark in.
+        uVignetteStart:    { value: PRE_BOOTSTRAP_GRADE.vignetteStart },
+        uVignetteStrength: { value: PRE_BOOTSTRAP_GRADE.vignetteStrength },
+        // Stronger SSAO so the dense overgrown stone reads packed with contact
+        // shadow, the way the references pool darkness in every crevice.
+        uAoRadius:         { value: 0.30 },
+        uAoStrength:       { value: 1.5 },
+        // Stronger split-tone — cool misty shadow vs warm firelight, the
+        // reference's core temperature story. Tuning knob.
+        uSplitTone:        { value: PRE_BOOTSTRAP_GRADE.splitTone },
+        // Dirt/grind/grim filmic finish. lift/gamma/gain = weathered grade;
+        // grim desat pulls colour out EXCEPT warm/ember pixels (fire stays);
+        // grain adds film texture. All tuning knobs.
+        uGrimGain:          { value: new THREE.Vector3(...PRE_BOOTSTRAP_GRADE.grimGain) },
+        uGrimGamma:         { value: new THREE.Vector3(...PRE_BOOTSTRAP_GRADE.grimGamma) },
+        uGrimLift:          { value: new THREE.Vector3(...PRE_BOOTSTRAP_GRADE.grimLift) },
+        uGrimDesat:         { value: PRE_BOOTSTRAP_GRADE.grimDesat },
+        uWarmGain:          { value: PRE_BOOTSTRAP_GRADE.warmGain },
+        uGrimCast:          { value: new THREE.Vector3(...PRE_BOOTSTRAP_GRADE.grimCast) },
+        uGrainStrength:     { value: PRE_BOOTSTRAP_GRADE.grainStrength },
+        uGrainShadowFloor:  { value: PRE_BOOTSTRAP_GRADE.grainShadowFloor },
+        uTime:              { value: 0 },
       },
       vertexShader:   VERT,
       fragmentShader: FRAG,
@@ -342,6 +545,77 @@ export class EdgePass {
   /** Post-tonemap chroma gain (1.0 = neutral, >1 = more saturated). Tuning knob. */
   setSaturation(value: number): void {
     this.material.uniforms.uSaturation.value = value;
+  }
+
+  /**
+   * Apply a content `GradeDef` (T-311 Phase 2, grammar G7) — lifts the colour
+   * grade out of the hardcoded constructor constants into authored content; the
+   * constructor values now serve only as the pre-bootstrap fallback (the same
+   * pattern as the palette / edge-ink). Sets the 13 grade uniforms + bloomStrength
+   * 1:1. (bloomThreshold, bloomKnee, heightShadeBelow, heightShadeAbove, and
+   * emissiveHdrScale are NOT EdgePass uniforms — the caller applies those
+   * separately; see Renderer.setContentCache.)
+   */
+  setGrade(g: GradeDef): void {
+    const u = this.material.uniforms;
+    u.uExposure.value         = g.exposure;
+    u.uSaturation.value       = g.saturation;
+    u.uVignetteStart.value    = g.vignetteStart;
+    u.uVignetteStrength.value = g.vignetteStrength;
+    u.uSplitTone.value        = g.splitTone;
+    (u.uGrimGain.value  as THREE.Vector3).set(g.grimGain[0],  g.grimGain[1],  g.grimGain[2]);
+    (u.uGrimGamma.value as THREE.Vector3).set(g.grimGamma[0], g.grimGamma[1], g.grimGamma[2]);
+    (u.uGrimLift.value  as THREE.Vector3).set(g.grimLift[0],  g.grimLift[1],  g.grimLift[2]);
+    u.uGrimDesat.value        = g.grimDesat;
+    u.uWarmGain.value         = g.warmGain;
+    (u.uGrimCast.value  as THREE.Vector3).set(g.grimCast[0],  g.grimCast[1],  g.grimCast[2]);
+    u.uGrainStrength.value    = g.grainStrength;
+    u.uGrainShadowFloor.value = g.grainShadowFloor;
+    u.uBloomStrength.value    = g.bloomStrength;
+  }
+
+  /** Bind the live bloom texture (replaces the black constructor placeholder). */
+  setBloomTexture(tex: THREE.Texture): void {
+    this.material.uniforms.tBloom.value = tex;
+  }
+
+  /** Glow amount added back before tone-mapping (0 = off). Tuning knob. */
+  setBloomStrength(value: number): void {
+    this.material.uniforms.uBloomStrength.value = value;
+  }
+
+  /** Bind the live god-ray (light-shaft) texture. */
+  setGodRayTexture(tex: THREE.Texture): void {
+    this.material.uniforms.tGodRay.value = tex;
+  }
+
+  /** Composite strength/tint for the god-ray buffer, from the current
+   *  AtmosphereDef.godRay (T-311 P5a) — `GodRayPass.setParams` covers the
+   *  march itself (uDensity/uDecay/uWeight); this covers how EdgePass adds
+   *  the result into the HDR scene. Called once per atmosphere change. */
+  setGodRayParams(strength: number, color: string): void {
+    this.material.uniforms.uGodRayStrength.value = strength;
+    (this.material.uniforms.uGodRayColor.value as THREE.Color).set(color);
+  }
+
+  /**
+   * Apply the current AtmosphereDef's ground-mist params (T-311 P5a,
+   * GroundMistLayer) + this frame's phase density weight (already resolved
+   * by the caller from `mist.densityByPhase` the same way lightCur lerps —
+   * a plain per-phase lookup, not a second FieldExpr-shaped mechanism for a
+   * 4-point curve). Called once per tile transition (params) / per frame
+   * (phaseWeight) from the renderer's per-frame update, alongside setGrade.
+   */
+  setMist(mist: { heightMin: number; heightMax: number; color: string }, phaseWeight: number): void {
+    (this.material.uniforms.uMistColor.value as THREE.Color).set(mist.color);
+    this.material.uniforms.uMistHeightMin.value = mist.heightMin;
+    this.material.uniforms.uMistHeightMax.value = mist.heightMax;
+    this.material.uniforms.uMistWeight.value = phaseWeight;
+  }
+
+  /** Advance the animated film grain (seconds). */
+  setTime(seconds: number): void {
+    this.material.uniforms.uTime.value = seconds;
   }
 
   /** Set the tile size in world units (== fog texture side).  0 disables fog. */

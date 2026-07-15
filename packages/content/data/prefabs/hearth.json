@@ -16,7 +16,7 @@
       "color": 16746496,
       "intensity": 1.1,
       "radius": 12,
-      "flicker": 0.3
+      "lightDefId": "hearth"
     }
   }
 }

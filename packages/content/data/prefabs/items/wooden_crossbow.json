@@ -4,7 +4,10 @@
   "modelScale": 0.13,
   "components": {
     "equippable": {
-      "slots": ["weapon", "offHand"]
+      "slots": [
+        "weapon",
+        "offHand"
+      ]
     },
     "swingable": {
       "chain": [
@@ -13,7 +16,9 @@
           "heavy": "crossbow_shot"
         }
       ],
-      "heavyChargeMs": 350
+      "heavyChargeMs": 350,
+      "swingActionId": "crossbow_draw",
+      "damage": 26
     },
     "weight": {
       "baseWeight": 3

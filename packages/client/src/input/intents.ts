@@ -9,7 +9,8 @@
 
 import type { UIAction } from "../ui/ui_actions.ts";
 
-/** Where the cursor is hovering when an intent is emitted. */
+/** The nearest in-range interactable when an intent is emitted (T-320:
+ *  proximity-selected, not cursor-hovered). */
 export type HoverTarget =
   | { kind: "entity";  entityId: string }
   | { kind: "terrain"; worldX: number; worldY: number; cellX: number; cellY: number }

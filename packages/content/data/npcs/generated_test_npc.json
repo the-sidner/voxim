@@ -1,0 +1,11 @@
+{
+  "id": "generated_test_npc",
+  "displayName": "Generated Test NPC",
+  "maxHealth": 80,
+  "fleeHealthRatio": 0.3,
+  "behaviorTreeId": "passive",
+  "wanderRadius": 20,
+  "wanderTicks": 80,
+  "idleTicks": 60,
+  "skillLoadout": [null, null, null, null]
+}

@@ -11,8 +11,10 @@
  */
 import { connectViaGateway } from "./connection/gateway_client.ts";
 import { TileConnection } from "./connection/tile_connection.ts";
+import { wireConnectionHandlers } from "./connection/wire_handlers.ts";
 import type { CharacterCreation } from "./connection/tile_connection.ts";
 import { InputCapture } from "./input/input_capture.ts";
+import { PointerLockController } from "./input/pointer_lock.ts";
 import { IntentRouter } from "./input/intent_router.ts";
 import { IntentTranslator } from "./input/intent_translator.ts";
 import type { Intent } from "./input/intents.ts";
@@ -21,6 +23,7 @@ import { brushCells, type Cell } from "./input/build_line.ts";
 import { BuildOccupancy } from "./state/build_occupancy.ts";
 import { snapHeight } from "@voxim/world";
 import { ClientWorld } from "./state/client_world.ts";
+import type { ClientChunk } from "./state/client_world.ts";
 import { ContentCache } from "./state/content_cache.ts";
 import { FogOfWar } from "./state/fog_of_war.ts";
 import { VoximRenderer } from "./render/renderer.ts";
@@ -30,30 +33,41 @@ import { HoverOutlineRenderer } from "./render/hover_outline.ts";
 import { ScatterRenderer } from "./render/scatter_renderer.ts";
 import { seedFromTileId } from "@voxim/world";
 import { WaterRenderer } from "./render/water_renderer.ts";
+import { RoofRenderer } from "./render/roof_renderer.ts";
+import { DecalRenderer } from "./render/decal_renderer.ts";
+import { crossCheckDecals } from "./render/decal_sources.ts";
+import { crossCheckParticles } from "./render/particle_sources.ts";
+import { crossCheckDeathStyles, registerDeathStyle } from "./render/death_style_registry.ts";
+import { CrumbleController } from "./render/crumble_controller.ts";
+import { AimIndicatorRenderer } from "./render/aim_indicator.ts";
 import { canopyFade } from "./render/canopy_fade.ts";
 import { InteractionSystem } from "./interaction/interaction_system.ts";
-import { makeWorkstationHandler, makeContainerHandler, makeTraderHandler, makeJobBoardHandler, resourceNodeHandler, makeGroundItemHandler } from "./interaction/interactable_handlers.ts";
+import { makeWorkstationHandler, makeContainerHandler, makeTraderHandler, makeJobBoardHandler, resourceNodeHandler, makeGroundItemHandler, makePoiInteractableHandler } from "./interaction/interactable_handlers.ts";
 import { WorldOverlay } from "./ui/world_overlay.ts";
 import { mountUI } from "./ui/mount_ui.tsx";
-import { uiState, patchUI, openPanel, closePanel, pushToast } from "./ui/ui_store.ts";
+import { uiState, patchUI, openPanel, closePanel, pushToast, hotbarItems } from "./ui/ui_store.ts";
 import { setClientWorld, setLocalPlayerId } from "./ui/client_world_ref.ts";
-import { currentZoneName, currentZoneRole, currentZoneTraversal } from "./ui/zone_ref.ts";
 import { setContentService } from "./ui/content_ref.ts";
 import { setFogRef } from "./ui/fog_ref.ts";
 import type { UIAction } from "./ui/ui_actions.ts";
-import { humanizeItemType } from "./ui/item_names.ts";
-import { recordInput, recordState, recordSnapshot } from "./ui/network_capture.ts";
-import { setDebugLayer, setDebugItemList } from "./ui/debug_store.ts";
+import { dispatchUIAction } from "./ui/ui_action_dispatch.ts";
+import { openWorkstation, openTrader, openJobBoard, openContainer } from "./ui/panel_bridge.ts";
+import { recordInput } from "./ui/network_capture.ts";
+import { setDebugItemList } from "./ui/debug_store.ts";
 import { loadLoginName } from "./ui/login.ts";
-import { ACTION_USE_SKILL, ACTION_JUMP, ACTION_CROUCH, hasAction, CommandType, EquipSlotIndex, EQUIP_SLOT_NAMES } from "@voxim/protocol";
+import { ACTION_USE_SKILL, ACTION_JUMP, ACTION_CROUCH, hasAction, CommandType } from "@voxim/protocol";
 import type { CommandPayload } from "@voxim/protocol";
-import type { EquipmentData, InventoryData, LoreLoadoutData, ResourceData, ActiveActionsData } from "@voxim/codecs";
-import type { EquipmentState, InventoryState, ItemStack, SkillLoadoutState } from "./ui/ui_store.ts";
+import type { HeirRitualStep } from "./ui/ui_store.ts";
+import { mapEquipmentToUI, worldClockPhase, vitalsPatch, mapLoreLoadoutToUI, deriveCastState, mapInventoryToUI } from "./state/state_mappers.ts";
 import { DEFAULT_PHYSICS } from "@voxim/engine";
 import { Predictor } from "./prediction/predictor.ts";
 import { BootstrapSource } from "@voxim/content";
 import { crossCheckProcModels } from "./render/procmodel/mod.ts";
-import type { ContentService, Prefab, ToolData } from "@voxim/content";
+import { crossCheckDesignLanguage } from "./render/procmodel/design_language_check.ts";
+import { crossCheckTextureStyles } from "./render/material_textures.ts";
+import { crossCheckFlickerCurves } from "./render/flicker_curves.ts";
+import { crossCheckCliffVoxelisers } from "./render/cliff_voxeliser.ts";
+import type { ContentService, Prefab, SwingableData } from "@voxim/content";
 import gameConfigData from "../../content/data/game_config.json" with { type: "json" };
 
 export interface GameConfig {
@@ -84,17 +98,10 @@ export interface GameConfig {
   creation?: CharacterCreation;
 }
 
-/**
- * Range (world units) for the E-key "grab nearest item" fallback.  Slightly
- * larger than the server's pickupRadius so the client request always reaches
- * the server when the player perceives the item as close — the server makes
- * the final call and rejects out-of-range requests silently.
- */
-const E_PICKUP_FALLBACK_RANGE = 3.0;
 
 export class VoximGame {
   private connection: TileConnection = new TileConnection();
-  private world = new ClientWorld();
+  world = new ClientWorld();
   /**
    * Fog-of-war state (T-157).  Lives on Game (not the renderer) because
    * server fog messages can arrive during `connect()` before the renderer
@@ -102,7 +109,7 @@ export class VoximGame {
    * renderer is given a reference once it's built so its EdgePass shader
    * can sample the texture.
    */
-  private fog = new FogOfWar();
+  fog = new FogOfWar();
   private content: ContentCache | null = null;
   /**
    * ContentService hydrated from the WT-handshake bootstrap blob (T-177).
@@ -110,17 +117,18 @@ export class VoximGame {
    * consumers (UI panels, debug item list, weapon-action lookup). Held
    * here so tile transitions can swap it for the new tile's blob.
    */
-  private contentService: ContentService | null = null;
-  private renderer: VoximRenderer | null = null;
-  private overlay: WorldOverlay | null = null;
-  private input: IntentTranslator | null = null;
+  contentService: ContentService | null = null;
+  renderer: VoximRenderer | null = null;
+  overlay: WorldOverlay | null = null;
+  input: IntentTranslator | null = null;
   private inputCapture: InputCapture | null = null;
-  private intentRouter: IntentRouter | null = null;
+  private pointerLock: PointerLockController | null = null;
+  intentRouter: IntentRouter | null = null;
   private animFrameId = 0;
-  private playerId: string | null = null;
+  playerId: string | null = null;
   private inputSeq = 0;
   private commandSeq = 0;
-  private serverTick = 0;
+  serverTick = 0;
 
   /**
    * Test/automation hooks (T-272 harness), reached via `window._voxim_game`.
@@ -135,6 +143,34 @@ export class VoximGame {
   readonly testInput = {
     down: (code: string): void => this.input?.pressKey(code),
     up: (code: string): void => this.input?.releaseKey(code),
+  };
+
+  /**
+   * Camera + facing scene-probe hook (T-320, rewired for T-328), reached via
+   * `_voxim_game.cameraProbe`. Pointer-lock free-look CANNOT be driven
+   * headless — the browser only delivers movementX/Y while a real cursor is
+   * locked, which Playwright's synthetic mouse can't produce. This injects
+   * look deltas straight into the same two seams pointer lock feeds (dx →
+   * IntentTranslator.applyLookDelta, which now owns facing; dy →
+   * cameraRig.applyLookDelta, pitch-only) so the harness can confirm facing
+   * rotates continuously and the camera tracks it. `rotate()` also re-syncs
+   * cameraRig's yaw from the fresh facing immediately (mirroring what the
+   * next render() frame would do) so `yaw()`/`facing()` read the post-rotate
+   * state synchronously instead of waiting a frame. Mirrors the sibling
+   * testInput/buildProbe/interactProbe injection pattern.
+   */
+  readonly cameraProbe = {
+    rotate: (dxPixels: number, dyPixels: number): void => {
+      this.input?.applyLookDelta(dxPixels);
+      this.renderer?.cameraRig.applyLookDelta(dyPixels);
+      if (this.input) this.renderer?.cameraRig.setYaw(this.input.facing);
+    },
+    yaw: (): number => this.renderer?.cameraRig.getYaw() ?? 0,
+    pitch: (): number => this.renderer?.cameraRig.getPitch() ?? 0,
+    /** The player's facing (T-328) — should equal `yaw()` exactly at all
+     *  times (rigid coupling); reading both is the headless check that the
+     *  derivation never drifts. */
+    facing: (): number => this.input?.facing ?? 0,
   };
 
   /**
@@ -163,6 +199,19 @@ export class VoximGame {
       if (m.kind === "build") modeState.value = { ...m, brush: { ...m.brush, spacing } };
     },
     exit: (): void => { modeState.value = { kind: "normal" }; },
+  };
+
+  /**
+   * Interact test hook (T-212 v2): sends `CommandType.UseEntity` directly,
+   * bypassing hover/click. Needed because `testInput`'s `pressKey` deliberately
+   * skips the E/Escape UI dispatches (see `intent_translator.ts`'s doc
+   * comment) — there is no key-driven path to a world-prop interact for the
+   * harness to exercise, same as `buildProbe` bypasses the build-mode UI.
+   */
+  readonly interactProbe = {
+    use: (entityId: string): void => {
+      this._sendCommand({ cmd: CommandType.UseEntity, entityId });
+    },
   };
 
   /**
@@ -199,20 +248,24 @@ export class VoximGame {
     };
   }
   private running = false;
-  private predictor: Predictor | null = null;
+  predictor: Predictor | null = null;
   private lastFrameTime = 0;
   private interactionSystem: InteractionSystem | null = null;
   private buildGhost: BuildGhostRenderer | null = null;
   /** Per-column stack counter feeding the build cursor's vertical stacking (T-284). */
-  private readonly buildOccupancy = new BuildOccupancy();
+  readonly buildOccupancy = new BuildOccupancy();
   private hoverOutline: HoverOutlineRenderer | null = null;
   private scatter: ScatterRenderer | null = null;
   /** Per-tile id for the scatter VariantPool's deterministic seed. Defaults to
    *  the single-tile world; the gateway path overrides it. */
   private tileId = "0_0";
   private waterRenderer: WaterRenderer | null = null;
+  roofRenderer: RoofRenderer | null = null;
+  decals: DecalRenderer | null = null;
+  /** Hold-to-aim arc + landing marker (T-337) — "you cannot aim what you cannot see". */
+  private aimIndicator: AimIndicatorRenderer | null = null;
   /** Throttle key for the "missing materials" toast — avoids spam on every swing. */
-  private _lastMissingToastKey: string | null = null;
+  _lastMissingToastKey: string | null = null;
 
   /** Rolling FPS sampler — counts frames between publish ticks. */
   private fpsFrames = 0;
@@ -221,7 +274,7 @@ export class VoximGame {
   /** Per-section CPU time accumulators (ms), averaged over the FPS window. */
   private timingAccum = { frame: 0, sk: 0, trail: 0, gl: 0, post: 0 };
   /** Last `onlineCount` shipped via state message; pushed to UIState as it changes. */
-  private lastOnlineCount = -1;
+  lastOnlineCount = -1;
   /**
    * Recently-sent input timestamps keyed by seq.  When a state message
    * arrives with `ackInputSeq`, we look up the original send timestamp
@@ -241,17 +294,28 @@ export class VoximGame {
 
   private terrainChunksReceived = 0;
   /** True once all terrain AND all entity models are preloaded. */
-  private loadingComplete = false;
+  loadingComplete = false;
   /** Session token kept around so tile transitions can re-join without re-auth. */
   private tileToken: string | null = null;
   /** True while a tile transition is in flight; suppresses onClose→stop(). */
-  private transitioning = false;
+  transitioning = false;
+
+  // ── Heir ritual guidance (T-072) ──────────────────────────────────────────
+  /** Last `Heritage.generation` observed for the local player. Null until the
+   *  first heritage snapshot arrives — that first sighting is the baseline,
+   *  never a trigger, so joining as an existing heir doesn't fire the ritual. */
+  private lastHeritageGeneration: number | null = null;
+  /** True once a genuine generation bump has been observed THIS session (a
+   *  real death → heir respawn happened while connected). */
+  ritualActive = false;
+  /** Player closed the guidance banner; stays true until the next generation bump. */
+  ritualDismissed = false;
 
   async start(config: GameConfig): Promise<void> {
     // Step 1: wire message handlers BEFORE connecting — eliminates the race where
     // the server's full snapshot arrives during connect() while handlers are still null.
     // All renderer/hud references use optional chaining — safe before they are created.
-    this._wireConnectionHandlers(this.connection);
+    wireConnectionHandlers(this, this.connection);
 
     // Step 2: resolve tile address (via gateway, or direct for demo/dev)
     const { canvas } = config;
@@ -295,12 +359,21 @@ export class VoximGame {
 
     // Step 4: renderer, content cache, HUD, input — push any world state that
     // arrived during connect() into the renderer now that it exists.
-    this.content = new ContentCache(this.connection);
+    this.content = new ContentCache();
     // Decode the bootstrap blob into a full ContentService (T-177). Receiving
     // this from the same tile-server we just connected to guarantees the
     // client and server agree on content version — no drift, no mismatched
     // ids. Subsequent reconnects pick up server-side content edits for free.
     const blob = this.connection.bootstrapBlob();
+    // T-339/T-357: the "crumble" death-style handler is stateful
+    // (CrumbleController), so construct it and register the REAL handler
+    // here — before crossCheckDeathStyles runs below — then inject the
+    // controller into VoximRenderer. No placeholder/overwrite dance.
+    const crumbleController = new CrumbleController();
+    registerDeathStyle(
+      "crumble",
+      (entityId, mesh, def, durationTicks, ctx) => crumbleController.onDeath(entityId, mesh, def, durationTicks, ctx),
+    );
     if (blob) {
       this.contentService = await BootstrapSource.load(blob);
       setContentService(this.contentService);
@@ -309,14 +382,45 @@ export class VoximGame {
       // to a registered generator and every ScatterDef.procModel resolves — the
       // client twin of server.ts's content cross-checks (generators live here).
       crossCheckProcModels(this.contentService);
+      // T-301: every ProcModel/Scatter material resolves, no signal hue lands
+      // on structural mass, character-class generators emit at the ground
+      // plane — the boot-enforced twin of DESIGN_LANGUAGE.md.
+      crossCheckDesignLanguage(this.contentService);
+      // T-311 Phase 0a: every MaterialDef.render.textureStyle resolves to a
+      // registered TextureStyle (the client twin of the procmodel cross-check).
+      crossCheckTextureStyles(this.contentService);
+      // T-311 Phase 2: every LightDef.flickerCurveId resolves to a registered curve.
+      crossCheckFlickerCurves(this.contentService);
+      crossCheckDecals(this.contentService);
+      // T-340: every ParticleEmitterDef.source resolves to a registered
+      // particle source, and every def.material resolves to a known material.
+      crossCheckParticles(this.contentService);
+      // T-339: every DeathStyleDef.style resolves to a registered client
+      // death-style handler.
+      crossCheckDeathStyles(this.contentService);
+      // T-311 P6: every CliffProfileDef.id resolves to a registered cliffVoxeliser.
+      crossCheckCliffVoxelisers(this.contentService);
+      // T-315 D5: LOS gameplay tuning moved from protocol/fog.ts to
+      // GameConfig.fogOfWar — keep the client's predicted LOS byte-parity
+      // with the server's FogOfWarSystem, which reads the same values.
+      this.fog.applyLosConfig(this.contentService.getGameConfig().fogOfWar);
       console.log(`[Game] content service hydrated: ${this.contentService.prefabs.size} prefabs, ${this.contentService.materials.size} materials, ${this.contentService.skeletons.size} skeletons, ${this.contentService.animationLibraries.size} animation libraries`);
     } else {
       console.warn("[Game] no bootstrap blob received — falling back to static-bundled content");
     }
-    this.renderer = new VoximRenderer(canvas);
+    // Content hydrated above → the SSAA band (game_config render.supersample,
+    // T-356) threads straight into construction; the renderer sizes every
+    // post-FX target from it exactly once.
+    this.renderer = new VoximRenderer(canvas, crumbleController, this.contentService?.getGameConfig().render.supersample);
     this.renderer.setLocalPlayer(this.playerId!);
     setLocalPlayerId(this.playerId!);
+    this.renderer.setClientWorld(this.world);
     this.renderer.setContentCache(this.content);
+    // T-331: rebuild any chunk the renderer deferred because it baked before
+    // content was ready. A no-op here (the renderer was just constructed, so
+    // nothing could have baked yet) — matters on the tile-transition path
+    // below, where the renderer survives the reconnect.
+    this.renderer.onContentHydrated();
     // Renderer-facing weapon actions + item prefabs sourced from the
     // bootstrap-delivered ContentService (T-177 phase 3).  Items are
     // filtered to those that look like inventory items (have an
@@ -324,6 +428,10 @@ export class VoximGame {
     // mirrors what the static `item_prefabs` aggregation contained.
     if (this.contentService) {
       this.renderer.setWeaponActions([...this.contentService.weaponActions.values()]);
+      // T-340: particle emitters + the engine-owned gravity constant they
+      // integrate against (never a hardcoded TS constant).
+      this.renderer.setParticleDefs([...this.contentService.particles.values()]);
+      this.renderer.setParticlePhysics(this.contentService.getGameConfig().physics.gravity);
       const itemPrefabs: Prefab[] = [];
       for (const p of this.contentService.prefabs.values()) {
         const c = p.components;
@@ -362,25 +470,32 @@ export class VoximGame {
         if (state.actionCooldowns) patchUI({ skillCooldowns: state.actionCooldowns });
         if (state.activeActions)   patchUI({ castState: deriveCastState(state.activeActions, this.contentService) });
         if (state.equipment)   patchUI({ equipment:    mapEquipmentToUI(state.equipment) });
-        if (state.inventory)   patchUI({ inventory:    mapInventoryToUI(state.inventory, this.world) });
+        if (state.inventory) {
+          patchUI({ inventory: mapInventoryToUI(state.inventory, this.world) });
+          this._syncHotbarAttachments();   // an assigned slot's item may have arrived/changed (T-309)
+        }
         if (state.loreLoadout) patchUI({ skillLoadout: mapLoreLoadoutToUI(state.loreLoadout) });
       }
     }
     patchUI({ loadingProgress: Math.min(1, this.terrainChunksReceived / VoximGame.TOTAL_CHUNKS) });
     console.log(`[Game] startup complete; terrain chunks pre-received during connect: ${this.terrainChunksReceived}/${VoximGame.TOTAL_CHUNKS}`);
-    if (!this.loadingComplete && this.terrainChunksReceived >= VoximGame.TOTAL_CHUNKS) {
-      this._finishLoading();
-    }
+    this._finishLoadingIfReady();
     // Input system — Capture (DOM listeners) → Translator (state + intents)
     // → Router (handlers). Replaces the old InputController callback surface.
     this.intentRouter = new IntentRouter();
-    this.input = new IntentTranslator(
-      this.intentRouter,
-      () => this.renderer!.getPlayerScreenPos(),
-      (cx, cy) => this.renderer!.getCursorFacing(cx, cy),
-      () => this.renderer!.cameraRig.getYaw(),
-    );
-    this.inputCapture = new InputCapture(canvas, this.input.handle, (e) => {
+    this.input = new IntentTranslator(this.intentRouter);
+    // Mouse-sensitivity knob (T-328) — the same game_config.camera value
+    // CameraRig.configure() installs for pitch, so facing and pitch turn at
+    // the identical rate — plus the keyboard bindings (T-335), which are content
+    // now. Pre-bootstrap defaults hold if content is absent.
+    const gameCfg = this.content.getGameConfig();
+    if (gameCfg?.camera) {
+      // T-337: combat.aim (pitchMinDeg/pitchMaxDeg) rides the same configure()
+      // call — the SAME band the server clamps InputState.pitch into.
+      this.input.configure({ ...gameCfg.camera, bindings: gameCfg.input?.bindings, aim: gameCfg.combat?.aim });
+    }
+    const translator = this.input;
+    this.inputCapture = new InputCapture(canvas, translator.handle, (e) => {
       // Take full control of the game keybindings: swallow the browser's own
       // default for our keys (Space/arrows scroll the page, Tab steals focus,
       // '/' opens quick-find, Digit/letter keys can trigger find-as-you-type).
@@ -390,7 +505,7 @@ export class VoximGame {
       if (e.ctrlKey || e.metaKey || e.altKey) return false;
       const t = e.target;
       if (t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement) return false;
-      return IntentTranslator.GAME_KEYS.has(e.code);
+      return translator.gameKeys().has(e.code);
     });
     // Make the canvas focusable + focused so a headless driver's real
     // page.keyboard events have a stable, non-input activeElement to bubble
@@ -399,17 +514,63 @@ export class VoximGame {
     canvas.tabIndex = 0;
     canvas.focus();
 
-    // Interaction system — entity hover highlight + click dispatch.
-    this.interactionSystem = new InteractionSystem(this.renderer, this.world);
-    this.interactionSystem.register(makeWorkstationHandler((entityId) => this._openWorkstation(entityId)));
-    this.interactionSystem.register(makeContainerHandler((entityId) => this._openContainer(entityId)));
-    this.interactionSystem.register(makeTraderHandler((entityId) => this._openTrader(entityId)));
-    this.interactionSystem.register(makeJobBoardHandler((entityId) => this._openJobBoard(entityId)));
+    // Free-look pointer lock (T-320): a canvas click engages lock; opening a
+    // panel or entering build mode auto-releases so the cursor returns for
+    // UI / voxel placement. Mouse deltas now split (T-328): dx drives the
+    // player's FACING (IntentTranslator.applyLookDelta), dy drives the
+    // camera's pitch only (cameraRig.applyLookDelta) — the camera's yaw
+    // derives from facing every frame (renderer.render() → cameraRig.setYaw).
+    //
+    // T-337 CAPTURE decision: while `isAiming` (a hold-to-aim weapon's
+    // trigger is held), dy is redirected to IntentTranslator.aimPitch
+    // instead of the camera — the camera FREEZES at whatever pitch it had
+    // when the hold began; mouse-Y instead drives aim distance. Facing (dx)
+    // is NEVER captured — direction always updates.
+    //
+    // Justification (the ticket calls this a live "try both, pick one"
+    // decision): CameraRig's pitch band is a deliberately narrow 17deg
+    // (45-62deg, T-310) framing knob that keeps the horizon out of frame —
+    // it was never meant as a gameplay control surface. Reusing it directly
+    // as the distance axis would (a) give the whole aim range only 17deg of
+    // mouse travel — imprecise — and (b) re-frame the ENTIRE screen every
+    // time the player adjusts range, which fights the arc/landing-marker
+    // readability T-337 explicitly requires ("you cannot aim what you
+    // cannot see" — a marker whose screen position keeps jumping because
+    // the CAMERA is rotating, not just because the aim point moved, reads
+    // as broken) and risks reopening the exact horizon-flood/fog problem
+    // T-310 closed if a player parks at the top of the band for many
+    // consecutive shots. Capturing keeps the frame stable during every
+    // hold, gives the aim axis its own independent band
+    // (`combat.aim.pitchMinDeg/pitchMaxDeg`, tuned for gameplay range
+    // rather than camera framing), and needs zero change to camera_rig.ts's
+    // own pitchMinDeg/pitchMaxDeg.
+    this.pointerLock = new PointerLockController(
+      canvas,
+      (dx, dy) => {
+        this.input?.applyLookDelta(dx);
+        if (this.input?.isAiming) {
+          this.input.applyAimPitchDelta(dy);
+        } else {
+          this.renderer?.cameraRig.applyLookDelta(dy);
+        }
+      },
+    );
+
+    // Interaction system — nearest-interactable proximity selection + Use key
+    // (T-320). Selects the closest matching entity each frame and drives the
+    // hover outline off proximity; the Use (E) key activates the selection.
+    this.interactionSystem = new InteractionSystem(this.world);
+    this.interactionSystem.register(makeWorkstationHandler((entityId) => openWorkstation(this.world, this.playerId, entityId)));
+    this.interactionSystem.register(makeContainerHandler((entityId) => openContainer(this.world, this.playerId, entityId)));
+    this.interactionSystem.register(makeTraderHandler((entityId) => openTrader(this.world, this.playerId, this.contentService, entityId)));
+    this.interactionSystem.register(makeJobBoardHandler((entityId) => openJobBoard(this.world, this.playerId, entityId)));
     this.interactionSystem.register(resourceNodeHandler);
     this.interactionSystem.register(makeGroundItemHandler((entityId) =>
       this._sendCommand({ cmd: CommandType.PickUp, entityId }),
     ));
-    this.renderer.setInteractionSystem(this.interactionSystem);
+    this.interactionSystem.register(makePoiInteractableHandler((entityId) =>
+      this._sendCommand({ cmd: CommandType.UseEntity, entityId }),
+    ));
 
     this._registerIntentHandlers();
 
@@ -417,8 +578,8 @@ export class VoximGame {
     this.buildGhost = new BuildGhostRenderer(
       this.renderer.scene,
       (x, y) => this.world.getTerrainHeight(x, y),
-      (cx, cy) => this.buildOccupancy.stackHeight(cx, cy),
-      (cx, cy) => this._isCellReachable(cx, cy),
+      (cellX, cellY) => this.buildOccupancy.stackHeight(cellX, cellY),
+      (cellX, cellY) => this._isCellReachable(cellX, cellY),
     );
 
     // Hover outline — subscribes to hoverState; decides outline tint per
@@ -439,10 +600,32 @@ export class VoximGame {
       );
     }
 
-    // Water surface (T-159) — translucent overlay over WATER cells, animated
-    // via a uTime-driven shader.  Same KindGrid hook the forest renderer
-    // uses; no server-side water entities.
-    this.waterRenderer = new WaterRenderer(this.renderer.scene, this.world);
+    // Ephemeral combat decals (T-311 P4, designer Q8: in-memory + decay).
+    // Wire GameEvents run through the decal-source registry; splats are thin
+    // voxel slabs in the shared instanced pool — never saved, never networked.
+    if (this.contentService) {
+      this.decals = new DecalRenderer(this.renderer.instancePool, this.contentService, this.world);
+    }
+
+    // Hold-to-aim arc + landing marker (T-337) — updated per frame below.
+    this.aimIndicator = new AimIndicatorRenderer(this.renderer.scene);
+
+    // Water surface (T-159, rebuilt T-311 P5b) — translucent overlay over
+    // WaterGrid.surfaceLevel cells, styled by the WaterStyleDef selected via
+    // WorldClock.biomeTag. Same onChunkReady hook the scatter renderer uses;
+    // no server-side water entities.
+    this.waterRenderer = new WaterRenderer(this.renderer.scene, this.world, this.contentService);
+
+    // Roof rendering over enclosed interiors (T-066). EnclosureSystem (server,
+    // T-065) publishes the full enclosed-cell set on change; this renderer
+    // groups it into per-building meshes and hides whichever one currently
+    // contains the player (see the EnclosureChanged event handler + the
+    // per-frame updateVisibility call below).
+    this.roofRenderer = new RoofRenderer(
+      this.renderer.scene,
+      this.world,
+      this.contentService?.getGameConfig().building.roofHeightAboveFloor ?? 2.0,
+    );
 
     // Step 5: predictor + render loop
     this.predictor = new Predictor(DEFAULT_PHYSICS, {
@@ -457,324 +640,6 @@ export class VoximGame {
   }
 
   /**
-   * Wire the per-message callbacks on a TileConnection. Called once during
-   * `start()` and again per tile transition (T-141), since each transition
-   * builds a fresh connection.
-   */
-  private _wireConnectionHandlers(conn: TileConnection): void {
-    conn.onSnapshot = (snap) => {
-      this.serverTick = snap.serverTick;
-      this.world.applySnapshot(snap);
-      recordSnapshot(snap);
-      for (const e of snap.entities) {
-        const state = this.world.get(e.entityId);
-        if (state?.position) this.renderer?.updateEntity(e.entityId, state);
-      }
-    };
-
-    conn.onStateMessage = (msg) => {
-      this.serverTick = msg.serverTick;
-      recordState(msg);
-
-      if (msg.onlineCount !== this.lastOnlineCount) {
-        this.lastOnlineCount = msg.onlineCount;
-        patchUI({ hudStats: { ...uiState.value.hudStats, onlineCount: msg.onlineCount } });
-      }
-
-      // RTT — find the wall-clock timestamp we stamped when sending the
-      // input that this state message acknowledges.  Drop it and any
-      // older entries from the buffer (their seqs are now eclipsed).
-      const sentAt = this.inputSentAt.get(msg.ackInputSeq);
-      if (sentAt !== undefined) {
-        const rtt = Date.now() - sentAt;
-        // EMA with α=0.2 — smooth enough to read but reactive to spikes.
-        this.smoothedPingMs = this.smoothedPingMs === 0
-          ? rtt
-          : this.smoothedPingMs * 0.8 + rtt * 0.2;
-      }
-      this.lastAckedSeq = msg.ackInputSeq;
-      // Prune everything ≤ acked seq. Keys are integers; iterate once.
-      for (const seq of this.inputSentAt.keys()) {
-        if (seq <= msg.ackInputSeq) this.inputSentAt.delete(seq);
-      }
-
-      // Fog of war (T-157) — server is authoritative for `seenEver`.
-      // Snapshots arrive on the first state message after join (and on resync);
-      // reveal lists ride every tick that uncovered new cells.  Applied to
-      // the Game-owned FogOfWar so messages received during connect() (before
-      // the renderer is built) aren't dropped.
-      if (msg.fogSnapshot) {
-        this.fog.applySnapshot(msg.fogSnapshot);
-      }
-      if (msg.fogReveals.length > 0) {
-        this.fog.applyReveals(msg.fogReveals);
-      }
-
-      const updated = new Set<string>();
-      for (const spawn of msg.spawns) {
-        this.world.applySpawn(spawn);
-        updated.add(spawn.entityId);
-        // Mirror placed voxels (blueprint entities) into the build occupancy so
-        // the cursor stacks on top of them (T-284). Single source = ClientWorld.
-        const e = this.world.get(spawn.entityId);
-        if (e?.blueprint && e.position) {
-          this.buildOccupancy.add(spawn.entityId, e.position.x, e.position.y);
-        }
-      }
-      for (const delta of msg.deltas) {
-        this.world.applyDelta(delta);
-        updated.add(delta.entityId);
-      }
-      for (const rm of msg.removals) {
-        this.world.applyRemoval(rm.entityId, rm.componentType);
-        updated.add(rm.entityId);
-      }
-      for (const entityId of msg.destroys) {
-        this.buildOccupancy.remove(entityId);
-        this.world.applyDestroy(entityId);
-        this.renderer?.removeEntity(entityId);
-        this.renderer?.removeGateMarker(entityId);
-        this.overlay?.removeEntityBar(entityId);
-        this.overlay?.removeGateLabel(entityId);
-      }
-
-      for (const entityId of updated) {
-        const state = this.world.get(entityId);
-        if (!state) continue;
-        if (state.heightmap && state.materialGrid) {
-          this.terrainChunksReceived++;
-          patchUI({ loadingProgress: Math.min(1, this.terrainChunksReceived / VoximGame.TOTAL_CHUNKS) });
-          if (this.terrainChunksReceived % 20 === 0 || this.terrainChunksReceived === VoximGame.TOTAL_CHUNKS) {
-            console.log(`[Game] terrain chunks received: ${this.terrainChunksReceived}/${VoximGame.TOTAL_CHUNKS}`);
-          }
-          // During loading: don't push to renderer yet — keeps JS thread free so
-          // QUIC flow control isn't starved.  _finishLoading() flushes everything.
-          if (this.loadingComplete) this.renderer?.updateTerrain(state.heightmap, state.materialGrid);
-        } else if (state.gateLink && state.position) {
-          // Gate entities are rendered as standalone navigational markers,
-          // not via the regular entity mesh path (no modelRef, no skeleton).
-          // Pin the pillar to local terrain height so it stands on the ground.
-          if (this.loadingComplete) {
-            const groundZ = this.world.getTerrainHeight(state.position.x, state.position.y);
-            this.renderer?.updateGateMarker(
-              entityId, state.position.x, state.position.y, groundZ, state.gateLink.edge,
-            );
-          }
-        } else if (state.position) {
-          if (this.loadingComplete) this.renderer?.updateEntity(entityId, state);
-        }
-        if (state.worldClock) {
-          this.renderer?.setDayPhase(worldClockPhase(state.worldClock.ticksElapsed, state.worldClock.dayLengthTicks));
-        }
-        if (entityId === this.playerId) {
-          if (state.health)    patchUI({ health:    { current: state.health.current, max: state.health.max } });
-          if (state.resource)  patchUI(vitalsPatch(state.resource));
-          if (state.actionCooldowns) patchUI({ skillCooldowns: state.actionCooldowns });
-          if (state.activeActions)   patchUI({ castState: deriveCastState(state.activeActions, this.contentService) });
-          if (state.equipment) {
-            patchUI({ equipment: mapEquipmentToUI(state.equipment) });
-            if (this.input) {
-              const toolType = getToolType(state.equipment.weapon?.prefabId, this.contentService);
-              const newBuildMode = toolType === "hammer";
-              if (newBuildMode !== this.input.buildMode) {
-                console.log(`[Build] buildMode=${newBuildMode} weapon=${state.equipment.weapon?.prefabId ?? "none"} toolType=${toolType ?? "none"}`);
-                this.input.buildMode = newBuildMode;
-                // Hammer unequipped while in build mode → cancel any staged
-                // blueprint selection. Routed through the intent so handlers
-                // stay the single source of mode-clear logic.
-                if (!newBuildMode && modeState.value.kind === "build") {
-                  this.intentRouter?.dispatch({ kind: "build-cancel" });
-                }
-              }
-            }
-          }
-          if (state.inventory) patchUI({ inventory: mapInventoryToUI(state.inventory, this.world) });
-          if (state.loreLoadout) patchUI({ skillLoadout: mapLoreLoadoutToUI(state.loreLoadout) });
-        }
-        // Mirror buffer/tag updates on the open workstation entity into uiState
-        // so the panel reflects loads/takes/recipe progress without polling.
-        if (uiState.value.workstation?.entityId === entityId) {
-          this._mirrorWorkstationToUi(entityId);
-        }
-        // Family chest: refresh when the open chest's slots change (a deposit or
-        // withdraw) so the panel reflects the move without polling.
-        if (uiState.value.container?.entityId === entityId) {
-          this._mirrorContainerToUi(entityId);
-        }
-        // Trade panel: refresh when the open trader's stock OR the player's
-        // inventory (coins/goods) changes, so prices and the sell list stay live.
-        const traderId = uiState.value.trader?.npcId;
-        if (traderId && (entityId === traderId || entityId === this.playerId)) {
-          this._mirrorTraderToUi(traderId);
-        }
-        // Job-board panel: refresh when the open board's pending jobs change
-        // (a job claimed/completed by an assigned NPC) so the list stays live.
-        if (uiState.value.jobBoard?.entityId === entityId) {
-          this._mirrorJobBoardToUi(entityId);
-        }
-      }
-
-      // Workstation panel cleanup: if the entity left AoI / was destroyed,
-      // the world drop happened above and the mirror would no-op — but the
-      // panel still has stale state. Close it so the next click can reopen.
-      const wsId = uiState.value.workstation?.entityId;
-      if (wsId && msg.destroys.includes(wsId)) {
-        closePanel("workstation");
-      }
-      const chId = uiState.value.container?.entityId;
-      if (chId && msg.destroys.includes(chId)) {
-        closePanel("container");
-      }
-      const trId = uiState.value.trader?.npcId;
-      if (trId && msg.destroys.includes(trId)) {
-        closePanel("trader");
-      }
-      const jbId = uiState.value.jobBoard?.entityId;
-      if (jbId && msg.destroys.includes(jbId)) {
-        closePanel("job_board");
-      }
-
-      if (!this.loadingComplete && this.terrainChunksReceived >= VoximGame.TOTAL_CHUNKS) {
-        this._finishLoading();
-      }
-
-      // Client-side prediction reconciliation
-      if (this.predictor && this.playerId) {
-        const playerState = this.world.get(this.playerId);
-        const pos = playerState?.position;
-        const vel = playerState?.velocity;
-        if (pos) {
-          const terrainFn = (x: number, y: number) => this.world.getTerrainHeight(x, y);
-          const isOpenFn  = (x: number, y: number) => this.world.isOpen(x, y);
-          const serverVel = vel ?? { x: 0, y: 0, z: 0 };
-          if (!this.predictor.isInitialised) {
-            this.predictor.seed(pos, serverVel);
-          } else {
-            this.predictor.reconcile(msg.ackInputSeq, pos, serverVel, terrainFn, isOpenFn);
-          }
-        }
-      }
-
-      for (const ev of msg.events) {
-        switch (ev.type) {
-          case "DamageDealt": {
-            const blocked = ev.blocked ? " (blocked)" : "";
-            console.log(`[Event] DamageDealt target=${ev.targetId.slice(-6)} source=${ev.sourceId.slice(-6)} amount=${ev.amount.toFixed(1)}${blocked}`);
-            const screenPos = this.renderer?.getEntityScreenPos(ev.targetId);
-            if (screenPos) this.overlay?.showDamage(screenPos.x, screenPos.y, Math.round(ev.amount), ev.blocked);
-            break;
-          }
-          case "HitSpark":
-            this.renderer?.spawnHitSpark(ev.x, ev.y, ev.z);
-            break;
-          case "Healed": {
-            const screenPos = this.renderer?.getEntityScreenPos(ev.entityId);
-            if (screenPos) this.overlay?.showHeal(screenPos.x, screenPos.y, Math.round(ev.amount));
-            break;
-          }
-          case "EntityDied":
-            console.log(`[Event] EntityDied entity=${ev.entityId.slice(-6)}${ev.killerId ? ` killer=${ev.killerId.slice(-6)}` : ""}`);
-            if (ev.entityId === this.playerId) {
-              openPanel("death", true);
-              pushToast("You died", "danger");
-            }
-            break;
-          case "HungerCritical":
-            console.log(`[Event] HungerCritical entity=${ev.entityId.slice(-6)}`);
-            if (ev.entityId === this.playerId) pushToast("Starving!", "warn");
-            break;
-          case "DayPhaseChanged": {
-            console.log(`[Event] DayPhaseChanged phase=${ev.phase} time=${ev.timeOfDay.toFixed(2)}`);
-            const labels: Record<string, string> = { dawn: "Dawn", noon: "Noon", dusk: "Dusk", midnight: "Midnight" };
-            pushToast(labels[ev.phase] ?? ev.phase, "info");
-            this.renderer?.setDayPhase(ev.phase);
-            break;
-          }
-          case "CraftingCompleted":
-            console.log(`[Event] CraftingCompleted crafter=${ev.crafterId.slice(-6)} recipe=${ev.recipeId}`);
-            if (ev.crafterId === this.playerId) pushToast(`Crafted: ${ev.recipeId}`, "success");
-            break;
-          case "BuildingCompleted":
-            console.log(`[Event] BuildingCompleted builder=${ev.builderId.slice(-6)} type=${ev.structureType}`);
-            if (ev.builderId === this.playerId) {
-              pushToast(`Built: ${humanizeItemType(ev.structureType)}`, "success");
-              this._lastMissingToastKey = null;
-            }
-            break;
-          case "BuildingMaterialsConsumed":
-            console.log(`[Event] BuildingMaterialsConsumed builder=${ev.builderId.slice(-6)} type=${ev.structureType}`);
-            if (ev.builderId === this.playerId) {
-              const lines = ev.consumed.map((c) => `${c.quantity}× ${humanizeItemType(c.itemType)}`).join(", ");
-              pushToast(`Materials used: ${lines}`, "info");
-            }
-            break;
-          case "BuildingMissingMaterials": {
-            console.log(`[Event] BuildingMissingMaterials builder=${ev.builderId.slice(-6)} type=${ev.structureType}`);
-            if (ev.builderId === this.playerId) {
-              // Throttle: only toast once per unique (structureType, missing list) combination
-              const key = ev.structureType + ":" + ev.missing.map((m) => `${m.itemType}×${m.quantity}`).join(",");
-              if (key !== this._lastMissingToastKey) {
-                this._lastMissingToastKey = key;
-                const lines = ev.missing.map((m) => `${m.quantity}× ${humanizeItemType(m.itemType)}`).join(", ");
-                pushToast(`Missing: ${lines}`, "warn");
-              }
-            }
-            break;
-          }
-          case "NodeDepleted":
-            console.log(`[Event] NodeDepleted node=${ev.nodeId.slice(-6)} type=${ev.nodeTypeId} harvester=${ev.harvesterId.slice(-6)}`);
-            if (ev.harvesterId === this.playerId) pushToast(`${ev.nodeTypeId} depleted`, "info");
-            break;
-          case "GateApproached":
-            console.log(`[Event] GateApproached entity=${ev.entityId.slice(-6)} gate=${ev.gateId} dest=${ev.destinationTileId}`);
-            if (ev.entityId === this.playerId) pushToast(`Entering ${ev.destinationTileId}`, "info");
-            break;
-          case "GateCrossing":
-            console.log(`[Event] GateCrossing entity=${ev.entityId.slice(-6)} → ${ev.destinationTileAddress}`);
-            if (ev.entityId === this.playerId) {
-              this._transitionToTile(ev.destinationTileAddress, ev.destinationTileCertHashHex);
-            }
-            break;
-          case "TradeCompleted":
-            console.log(`[Event] TradeCompleted buyer=${ev.buyerId.slice(-6)} item=${ev.itemType} qty=${ev.quantity} coins=${ev.coinDelta}`);
-            if (ev.buyerId === this.playerId) {
-              const coins = ev.coinDelta > 0 ? `-${ev.coinDelta}` : `+${-ev.coinDelta}`;
-              pushToast(`${ev.quantity}x ${ev.itemType} (${coins} coins)`, "success");
-            }
-            break;
-          case "LoreExternalised":
-            console.log(`[Event] LoreExternalised entity=${ev.entityId.slice(-6)} fragment=${ev.fragmentId}`);
-            if (ev.entityId === this.playerId) pushToast(`Fragment written: ${ev.fragmentId}`, "info");
-            break;
-          case "LoreInternalised":
-            console.log(`[Event] LoreInternalised entity=${ev.entityId.slice(-6)} fragment=${ev.fragmentId}`);
-            if (ev.entityId === this.playerId) pushToast(`Lore absorbed: ${ev.fragmentId}`, "success");
-            break;
-          case "ZoneEntered":
-            if (ev.playerId === this.playerId) {
-              // Empty name = sub-threshold zone or no-zone band; clear
-              // the HUD caption rather than show "You are in: ".
-              currentZoneName.value = ev.zoneName;
-              currentZoneRole.value = ev.topologyRole;
-              currentZoneTraversal.value = ev.traversal;
-              if (ev.zoneName) pushToast(`Entering: ${ev.zoneName}`, "info");
-            }
-            break;
-        }
-      }
-    };
-
-    conn.onClose = () => {
-      // During tile transitions we deliberately close the source connection;
-      // the new connection is what runs after _transitionToTile() returns.
-      // Don't tear the game down in that case.
-      if (this.transitioning) return;
-      console.log("[Game] disconnected");
-      this.stop();
-    };
-  }
-
-  /**
    * Tile transition (T-141). The source tile sends a final GateCrossing event
    * carrying the destination's WT address + cert fingerprint, then tombstones
    * the player. We close the old connection, wipe per-tile world state, open
@@ -783,7 +648,7 @@ export class VoximGame {
    * and predictor are all preserved across the swap — only the connection +
    * world entities + terrain churn.
    */
-  private async _transitionToTile(address: string, certHashHex: string): Promise<void> {
+  async _transitionToTile(address: string, certHashHex: string): Promise<void> {
     if (this.transitioning) return;
     if (!this.playerId || !this.tileToken) {
       console.error("[Game] tile transition without playerId/token — aborting");
@@ -800,7 +665,9 @@ export class VoximGame {
     // Wipe per-tile state. The renderer instance is kept; only its scene
     // contents go.
     this.scatter?.reset();
+    this.decals?.reset();
     this.waterRenderer?.clear();
+    this.roofRenderer?.clear();
     this.world.clear();
     this.buildOccupancy.clear();
     this.renderer?.clearWorld();
@@ -810,9 +677,8 @@ export class VoximGame {
 
     // Fresh connection — handlers reference `this` so they keep working.
     const conn = new TileConnection();
-    this._wireConnectionHandlers(conn);
+    wireConnectionHandlers(this, conn);
     this.connection = conn;
-    if (this.content) this.content.attachConnection(conn);
 
     try {
       const assignedId = await conn.connect(
@@ -831,8 +697,15 @@ export class VoximGame {
         this.contentService = await BootstrapSource.load(blob);
         setContentService(this.contentService);
         this.content?.setBootstrapService(this.contentService);
+        this.fog.applyLosConfig(this.contentService.getGameConfig().fogOfWar);
         console.log(`[Game] content service re-hydrated for new tile`);
       }
+      // T-331: the renderer survives the reconnect, so if any chunk of the
+      // new tile arrived and baked before content re-hydrated (the same
+      // ordering hazard the initial join closes structurally, but here the
+      // renderer is never null so the deferral gate is what saves it),
+      // rebuild it now.
+      this.renderer?.onContentHydrated();
       console.log(`[Game] transition complete; reconnected as ${this.playerId.slice(0, 8)}`);
     } catch (err) {
       console.error("[Game] tile transition failed:", err);
@@ -906,14 +779,13 @@ export class VoximGame {
       // acked.  The Map is pruned on lookup so it stays small even if
       // some inputs are dropped on the unreliable datagram channel.
       this.inputSentAt.set(datagram.seq, datagram.timestamp);
-      // Combo-chain swing prediction (T-188): pick the weapon action the
-      // server is about to fire by combining the networked SwingChain.index
-      // with the equipped weapon's swingable.chain and the local press-hold
-      // timer (heavy variant if held past swingable.heavyChargeMs). Feeds
-      // forceLocalAnimation so the trail / blade-attach catches up at press
-      // time instead of waiting RTT/2 for the next AnimationState delta.
-      // The predictor runs every frame, not just on press, so the heavy
-      // promotion crosses correctly when held past the threshold.
+      // Swing prediction (T-351): forecast the equipped weapon's opening
+      // move (chain[0]) from local press/hold timing (heavy past
+      // heavyChargeMs) so forceLocalAnimation doesn't wait RTT/2 for the
+      // AnimationState delta. Mid-combo continuation is server-authoritative
+      // (SwingChain, unnetworked) and arrives via AnimationState instead.
+      // Runs every frame, not just on press, so the heavy promotion crosses
+      // correctly when held past the threshold.
       {
         const pressed = hasAction(datagram.actions, ACTION_USE_SKILL);
         const player = this.playerId ? this.world.get(this.playerId) : undefined;
@@ -921,14 +793,8 @@ export class VoximGame {
         const prefab = weaponPrefabId
           ? this.contentService?.prefabs.get(weaponPrefabId)
           : undefined;
-        const swingable = prefab?.components?.["swingable"] as
-          | { chain: { light: string; heavy: string }[]; heavyChargeMs: number }
-          | undefined;
-        // Swing chains were folded into the action runtime (T-227) — there's no
-        // client-side chain tracking anymore. Predict a basic swing on press
-        // for responsiveness; chain-step variation arrives via the networked
-        // AnimationState (derived from ActiveActions).
-        const predicted = this.swingPredictor.predict(pressed, swingable ?? null, 0, performance.now());
+        const swingable = prefab?.components?.["swingable"] as SwingableData | undefined;
+        const predicted = this.swingPredictor.predict(pressed, swingable ?? null, performance.now());
         if (predicted) this.renderer?.forceLocalAnimation(predicted);
       }
 
@@ -943,9 +809,14 @@ export class VoximGame {
         predictedPos = this.predictor.step(datagram.seq, physicsInput, dt, terrainFn, isOpenFn);
       }
     }
-    // Update hover highlight — must happen after input so mouse coords are current
-    if (this.input && this.interactionSystem) {
-      this.interactionSystem.update(this.input.mouseX, this.input.mouseY);
+    // Re-select the nearest interactable off the player's position (T-320) —
+    // proximity, not cursor. Prefer the predicted position so selection tracks
+    // smooth client motion; fall back to the networked snapshot.
+    if (this.interactionSystem && this.playerId) {
+      const me = this.world.get(this.playerId)?.position;
+      const px = predictedPos?.x ?? me?.x;
+      const py = predictedPos?.y ?? me?.y;
+      if (px !== undefined && py !== undefined) this.interactionSystem.update(px, py);
     }
     // Publish the cursor's resolved voxel target so build-mode subscribers
     // (ghost renderer) read it reactively. Done every frame so the ghost tracks
@@ -979,18 +850,52 @@ export class VoximGame {
       // `currentlyVisible` arc is computed here; `seenEver` is server-driven
       // and arrives via BinaryStateMessage's fogSnapshot / fogReveals.
       if (px !== undefined && py !== undefined) {
-        // Local cursor facing (T-287) so the vision cone tracks the cursor
-        // immediately, not a server round-trip late; fall back to networked.
+        // Local mouse-driven facing (T-328, was movement-derived under T-320)
+        // so the vision cone tracks the character's heading immediately, not
+        // a server round-trip late; fall back to networked. The cone follows
+        // wherever the mouse has turned the character to face.
         const facing = this.input?.facing ?? this.world.get(this.playerId)?.facing?.angle ?? 0;
         this.fog.updateLocalLOS(px, py, facing, (x, y) => this.world.isOpen(x, y));
+      }
+      // Roof hide-when-inside (T-066): same predicted-position source as the
+      // canopy fade / fog LOS above.
+      if (px !== undefined && py !== undefined) {
+        this.roofRenderer?.updateVisibility(px, py);
+      }
+      // Hold-to-aim arc + landing marker (T-337) — same predicted-position
+      // source, local facing, and the captured aim-pitch axis.
+      if (px !== undefined && py !== undefined && pz !== undefined && this.contentService) {
+        const facing = this.input?.facing ?? this.world.get(this.playerId)?.facing?.angle ?? 0;
+        const pitch = this.input?.aimPitch ?? 0;
+        const weaponPrefabId = this.world.get(this.playerId)?.equipment?.weapon?.prefabId;
+        this.aimIndicator?.update(
+          !!this.input?.isAiming,
+          { origin: { x: px, y: py, z: pz }, facing, pitch, weaponPrefabId },
+          this.contentService,
+          (x, y) => this.world.getTerrainHeight(x, y),
+        );
       }
     }
 
     // Water animation: bump the shared shader's uTime + flush any chunks
     // whose kindGrid arrived before their heightmap.
     this.waterRenderer?.tick(now);
+    this.decals?.update(now);
 
     this.renderer?.render(this.serverTick, predictedPos, this.input?.facing ?? null, localMovement, localCrouch);
+
+    // T-311 P5a/P5b: thread this frame's live sun direction + sky colour
+    // (EnvironmentLighting is the single owner of both) into the water
+    // shader's shared uniforms — after render() so envLighting has already
+    // recomputed them this frame.
+    if (this.renderer) {
+      this.waterRenderer?.setSunDirection(this.renderer.getSunDirection());
+      this.waterRenderer?.setSkyColor(this.renderer.getSkyColor());
+    }
+
+    // Push the now-settled camera yaw to the fog state so the north-up minimap
+    // can draw a heading cone that rotates with the camera (T-317).
+    if (this.renderer) this.fog.cameraYaw = this.renderer.cameraRig.getYaw();
 
     const tPostStart = performance.now();
     // Update world-space entity health bars + gate labels (frame-driven, not reactive)
@@ -1026,229 +931,99 @@ export class VoximGame {
    * Send a CommandDatagram to the server.
    * Uses a separate monotonically increasing sequence space from movement datagrams.
    */
-  private _sendCommand(command: CommandPayload): void {
+  _sendCommand(command: CommandPayload): void {
     this.connection.sendCommand({ seq: ++this.commandSeq, command });
   }
 
   /**
-   * Open the workstation panel for an entity. Refuses when the player is
-   * outside the configured interact range — mirrors the server-side reach
-   * check so the panel can never claim to interact with something the
-   * server would refuse.
+   * Record a state message's `ackInputSeq`: derive RTT from the matching send
+   * timestamp (EMA, α = 0.2 — smooth enough to read but reactive to spikes)
+   * and prune every eclipsed entry from the send buffer. Called by the
+   * connection handlers (connection/wire_handlers.ts) once per state message;
+   * pairs with the `inputSentAt.set()` in frame().
    */
+  _recordAckedSeq(ackInputSeq: number): void {
+    const sentAt = this.inputSentAt.get(ackInputSeq);
+    if (sentAt !== undefined) {
+      const rtt = Date.now() - sentAt;
+      this.smoothedPingMs = this.smoothedPingMs === 0
+        ? rtt
+        : this.smoothedPingMs * 0.8 + rtt * 0.2;
+    }
+    this.lastAckedSeq = ackInputSeq;
+    // Prune everything ≤ acked seq. Keys are integers; iterate once.
+    for (const seq of this.inputSentAt.keys()) {
+      if (seq <= ackInputSeq) this.inputSentAt.delete(seq);
+    }
+  }
+
   /**
-   * Find the closest ground-item entity to the local player within `range`.
-   * Used as the E-key fallback when the cursor isn't on a specific entity —
-   * scanning the loaded world is cheap (a few hundred entities at most) and
-   * keeps pickup forgiving without requiring precise cursor aim.
+   * Observe the local player's `Heritage.generation`. A real bump this
+   * session (not the first sighting — that's just the baseline) means a death
+   * just advanced the dynasty and this spawn is the heir (T-079/T-270):
+   * activate the ritual guidance and recompute the banner.
    */
-  private _nearestGroundItem(range: number): string | null {
-    const me = this.playerId ? this.world.get(this.playerId) : null;
-    if (!me?.position) return null;
-    const px = me.position.x, py = me.position.y;
-    const r2 = range * range;
-    let bestId: string | null = null;
-    let bestDist = Infinity;
+  _observeHeritageGeneration(generation: number): void {
+    if (this.lastHeritageGeneration !== null && generation > this.lastHeritageGeneration) {
+      this.ritualActive = true;
+      this.ritualDismissed = false;
+    }
+    this.lastHeritageGeneration = generation;
+    this._recomputeRitualGuide();
+  }
+
+  /**
+   * Heir ritual guidance (T-072). Rescans every entity currently known to
+   * the client for a `container` belonging to the player's own dynasty
+   * (matched via the player's own `Heritage.dynastyId`) and still holding
+   * something. Deliberately NOT scripted to a fixed sequence: it just
+   * reports what's really out there — the library step only exists while a
+   * matching library chest has occupied slots, same for the treasury, and
+   * the banner disappears on its own once both are empty (or the player
+   * dismisses it). Reading/equipping still goes through the ordinary
+   * container + inventory UI; there is no "do it for me" button here.
+   */
+  _recomputeRitualGuide(): void {
+    if (!this.ritualActive || this.ritualDismissed || !this.playerId) {
+      if (uiState.value.heirRitual) patchUI({ heirRitual: null });
+      return;
+    }
+    const me = this.world.get(this.playerId);
+    const dynastyId = me?.heritage?.dynastyId;
+    if (!dynastyId) {
+      if (uiState.value.heirRitual) patchUI({ heirRitual: null });
+      return;
+    }
+
+    type Best = { entityId: string; pending: number; dist: number };
+    let bestTome: Best | null = null;
+    let bestGear: Best | null = null;
+
     for (const [entityId, state] of this.world.entries()) {
-      if (!state.itemData || !state.position) continue;
-      const dx = state.position.x - px;
-      const dy = state.position.y - py;
-      const d2 = dx * dx + dy * dy;
-      if (d2 > r2 || d2 >= bestDist) continue;
-      bestDist = d2;
-      bestId = entityId;
-    }
-    return bestId;
-  }
-
-  private _openWorkstation(entityId: string): void {
-    const ws = this.world.get(entityId);
-    if (!ws?.workstationBuffer || !ws.workstationTag || !ws.position) return;
-    const me = this.playerId ? this.world.get(this.playerId) : null;
-    if (!me?.position) return;
-    const dx = me.position.x - ws.position.x;
-    const dy = me.position.y - ws.position.y;
-    if (dx * dx + dy * dy > 3 * 3) {
-      pushToast("Too far away", "warn");
-      return;
-    }
-    this._mirrorWorkstationToUi(entityId);
-    openPanel("workstation");
-  }
-
-  /**
-   * Open the trade panel for a nearby trader NPC (T-075). Builds buy/sell offers
-   * from the trader's networked `traderInventory.listings`: buy lists every
-   * listing (with live stock), sell lists only the listings the player currently
-   * holds. Both buttons dispatch the listing-slot index — the TraderSystem keys
-   * buy and sell by the same slot.
-   */
-  private _openTrader(entityId: string): void {
-    const tr = this.world.get(entityId);
-    if (!tr?.traderInventory || !tr.position) return;
-    const me = this.playerId ? this.world.get(this.playerId) : null;
-    if (!me?.position) return;
-    const dx = me.position.x - tr.position.x;
-    const dy = me.position.y - tr.position.y;
-    if (dx * dx + dy * dy > 3 * 3) {
-      pushToast("Too far away", "warn");
-      return;
-    }
-    this._mirrorTraderToUi(entityId);
-    openPanel("trader");
-  }
-
-  /**
-   * Snapshot a trader's catalogue + the player's coins/holdings into uiState.
-   * Called on open and on every state-message touching the open trader or the
-   * player entity, so the panel reflects stock + coin changes without polling.
-   */
-  private _mirrorTraderToUi(entityId: string): void {
-    const tr = this.world.get(entityId);
-    if (!tr?.traderInventory) return;
-    const me = this.playerId ? this.world.get(this.playerId) : null;
-
-    const currency = this.contentService?.getGameConfig().trade.currencyItemType ?? "coins";
-    const nameOf = humanizeItemType;
-
-    // Tally stackable holdings by prefabId (coins + sellable goods are stacks).
-    const held = new Map<string, number>();
-    for (const s of me?.inventory?.slots ?? []) {
-      if (s.kind === "stack") held.set(s.prefabId, (held.get(s.prefabId) ?? 0) + s.quantity);
+      const c = state.container;
+      if (!c || c.dynastyId !== dynastyId || c.slots.length === 0) continue;
+      const dist = (me?.position && state.position)
+        ? Math.hypot(state.position.x - me.position.x, state.position.y - me.position.y)
+        : Infinity;
+      const candidate: Best = { entityId, pending: c.slots.length, dist };
+      if (c.kind === "tome" && (!bestTome || dist < bestTome.dist)) bestTome = candidate;
+      if (c.kind === "equipment" && (!bestGear || dist < bestGear.dist)) bestGear = candidate;
     }
 
-    const listings = tr.traderInventory.listings;
-    patchUI({
-      trader: {
-        npcId: entityId,
-        npcName: tr.name?.value ?? "Trader",
-        playerCoins: held.get(currency) ?? 0,
-        buyOffers: listings.map((l, slot) => ({
-          slot, itemType: l.itemType, displayName: nameOf(l.itemType),
-          priceCoin: l.buyPrice, stock: l.stock < 0 ? null : l.stock,
-        })),
-        sellOffers: listings.flatMap((l, slot) => {
-          const have = held.get(l.itemType) ?? 0;
-          return have < 1 ? [] : [{
-            slot, itemType: l.itemType, displayName: nameOf(l.itemType),
-            priceCoin: l.sellPrice, stock: have,
-          }];
-        }),
-      },
-    });
-  }
-
-  /**
-   * Open the job-board panel for a nearby hiring workbench (T-076). The board
-   * is a workbench-type prefab carrying the networked `jobBoard` component;
-   * range-gated like the trader/workstation handlers.
-   */
-  private _openJobBoard(entityId: string): void {
-    const jb = this.world.get(entityId);
-    if (!jb?.jobBoard || !jb.position) return;
-    const me = this.playerId ? this.world.get(this.playerId) : null;
-    if (!me?.position) return;
-    const dx = me.position.x - jb.position.x;
-    const dy = me.position.y - jb.position.y;
-    if (dx * dx + dy * dy > 3 * 3) {
-      pushToast("Too far away", "warn");
-      return;
+    const steps: HeirRitualStep[] = [];
+    if (bestTome) {
+      steps.push({
+        kind: "tome", containerId: bestTome.entityId, pending: bestTome.pending,
+        distance: Number.isFinite(bestTome.dist) ? bestTome.dist : null,
+      });
     }
-    this._mirrorJobBoardToUi(entityId);
-    openPanel("job_board");
-  }
-
-  /**
-   * Snapshot the board's networked `jobBoard.pending` into uiState so the panel
-   * stays purely reactive on the signal. Called on open and on every
-   * state-message touching the open board (a job claimed/completed by an
-   * assigned NPC). Read-only for v1 — no post/cancel commands yet.
-   */
-  private _mirrorJobBoardToUi(entityId: string): void {
-    const jb = this.world.get(entityId);
-    if (!jb?.jobBoard) return;
-    patchUI({
-      jobBoard: {
-        entityId,
-        stationName: jb.name?.value ?? "Job Board",
-        jobs: jb.jobBoard.pending.map((j) => ({
-          id: j.id,
-          goal: j.goal,
-          itemType: j.itemType,
-          itemName: humanizeItemType(j.itemType),
-          priority: j.priority,
-          claimedBy: j.claimedBy,
-        })),
-      },
-    });
-  }
-
-  /**
-   * Snapshot the open workstation's networked state into uiState so the panel
-   * stays purely reactive on the signal. Called both on initial open and on
-   * every state-message that touches the open station.
-   */
-  private _mirrorWorkstationToUi(entityId: string): void {
-    const state = this.world.get(entityId);
-    if (!state?.workstationBuffer || !state.workstationTag) return;
-    patchUI({
-      workstation: {
-        entityId,
-        stationType:    state.workstationTag.stationType,
-        capacity:       state.workstationBuffer.capacity,
-        slots:          state.workstationBuffer.slots.map((s) => {
-          if (!s) return null;
-          return s.kind === "stack"
-            ? { kind: "stack" as const, itemType: s.itemType, quantity: s.quantity }
-            : { kind: "unique" as const, entityId: s.entityId, prefabId: s.prefabId };
-        }),
-        activeRecipeId: state.workstationBuffer.activeRecipeId,
-      },
-    });
-  }
-
-  /**
-   * Open the deposit/withdraw panel for a nearby family chest (library/treasury,
-   * T-077/T-078). Range-gated like the workstation/trader handlers; the server
-   * re-checks reach (and dynasty/kind/capacity) on every deposit/withdraw, so
-   * the panel can never claim an interaction the server would refuse.
-   */
-  private _openContainer(entityId: string): void {
-    const ch = this.world.get(entityId);
-    if (!ch?.container || !ch.position) return;
-    const me = this.playerId ? this.world.get(this.playerId) : null;
-    if (!me?.position) return;
-    const dx = me.position.x - ch.position.x;
-    const dy = me.position.y - ch.position.y;
-    if (dx * dx + dy * dy > 3 * 3) {
-      pushToast("Too far away", "warn");
-      return;
+    if (bestGear) {
+      steps.push({
+        kind: "equipment", containerId: bestGear.entityId, pending: bestGear.pending,
+        distance: Number.isFinite(bestGear.dist) ? bestGear.dist : null,
+      });
     }
-    this._mirrorContainerToUi(entityId);
-    openPanel("container");
-  }
-
-  /**
-   * Snapshot the open chest's networked `container` slots into uiState so the
-   * panel stays purely reactive. Each slot is an entity ref to a banked unique
-   * item; its prefab id comes from the item entity's ItemData (streamed to the
-   * owning dynasty's client via AoI). Called on open and on every state-message
-   * touching the open chest, so deposits/withdrawals reflect without polling.
-   */
-  private _mirrorContainerToUi(entityId: string): void {
-    const ch = this.world.get(entityId);
-    if (!ch?.container) return;
-    patchUI({
-      container: {
-        entityId,
-        kind:     ch.container.kind,
-        capacity: ch.container.capacity,
-        slots:    ch.container.slots.map((s) => ({
-          entityId: s.entityId,
-          prefabId: this.world.get(s.entityId)?.itemData?.prefabId ?? "",
-        })),
-      },
-    });
+    patchUI({ heirRitual: steps.length > 0 ? { steps } : null });
   }
 
   /**
@@ -1260,61 +1035,36 @@ export class VoximGame {
   private _registerIntentHandlers(): void {
     const router = this.intentRouter!;
 
-    // World hover-aware interact (E key).  Cursor-driven first:
-    //   ground item under cursor → PickUp
-    //   workstation under cursor → open panel
-    // When nothing's under the cursor, fall back to the nearest ground item
-    // within E_PICKUP_FALLBACK_RANGE — drops landing two cells from the
-    // depleted node should be grabbable without aiming the cursor at them.
-    // The server validates range again via game_config.items.pickupRadius.
+    // Use key (E) — activate the nearest interactable (T-320). Selection is
+    // proximity-based every frame (InteractionSystem), so this just fires the
+    // matching handler for the current selection: workstation/container/
+    // job_board/trader open a panel, POI props → UseEntity, ground item →
+    // PickUp. Resource nodes fall through (you swing at them). Unifies the old
+    // cursor-first + nearest-ground-item fallback into one proximity path.
     router.register({
       id: "world-interact",
       priority: 50,
       claim: (intent: Intent) => {
         if (intent.kind !== "interact") return false;
-        if (intent.hover.kind === "entity") {
-          const entity = this.world.get(intent.hover.entityId);
-          if (entity?.workstationBuffer) {
-            this._openWorkstation(intent.hover.entityId);
-            return true;
-          }
-          if (entity?.container) {
-            this._openContainer(intent.hover.entityId);
-            return true;
-          }
-          if (entity?.itemData) {
-            this._sendCommand({ cmd: CommandType.PickUp, entityId: intent.hover.entityId });
-            return true;
-          }
-        }
-        const nearest = this._nearestGroundItem(E_PICKUP_FALLBACK_RANGE);
-        if (nearest) this._sendCommand({ cmd: CommandType.PickUp, entityId: nearest });
+        const me = this.playerId ? this.world.get(this.playerId) : null;
+        const px = me?.position?.x ?? 0;
+        const py = me?.position?.y ?? 0;
+        this.interactionSystem?.activateNearest(px, py);
         return true;
       },
     });
 
-    // World main action (LMB release). Today the server picks the swing
-    // variant from chargeMs (T-129); the client just forwards the bit on
-    // the next datagram. The translator already sets ACTION_USE_SKILL +
-    // chargeMs, so this handler exists mainly to claim the intent so other
-    // handlers don't double-fire on the same release.
+    // World main action (LMB release). LMB is now PURELY the swing (T-320) —
+    // entity "click to open" is gone (no cursor); interaction is the Use key.
+    // The server picks the swing variant from chargeMs (T-129); the translator
+    // already set ACTION_USE_SKILL + chargeMs, so this handler only claims the
+    // intent so other handlers don't double-fire on the same release.
     router.register({
       id: "world-attack",
       priority: 40,
       claim: (intent: Intent) => {
         if (intent.kind !== "world-main-action") return false;
-        // Pre-route entity click to the interaction system (workstation
-        // open, etc.). LMB-pickup-anything legacy goes through here too:
-        // a click on a workstation opens its panel even via LMB, matching
-        // the previous onLmbClick behavior.
-        if (intent.hover.kind === "entity") {
-          const me = this.playerId ? this.world.get(this.playerId) : null;
-          const px = me?.position?.x ?? 0;
-          const py = me?.position?.y ?? 0;
-          this.interactionSystem?.handleClick(this.input!.mouseX, this.input!.mouseY, px, py);
-        }
-        // The actual swing is sent through the next datagram via
-        // pendingActions/chargeMs in the translator. Nothing to do here.
+        // The actual swing rides the next datagram via pendingActions/chargeMs.
         return true;
       },
     });
@@ -1426,174 +1176,21 @@ export class VoximGame {
     });
   }
 
-  /**
-   * Translate UI intents into server messages.
-   * This is the single bridge between the UI layer and game logic.
-   */
+  /** Translate UI intents into server messages — see ui/ui_action_dispatch.ts. */
   private _handleUIAction(action: UIAction): void {
-    switch (action.type) {
-      case "respawn":
-        // Re-enter the world after death (T-270). The session stayed open; the
-        // server records the death (advancing the dynasty → heir) and spawns.
-        this._sendCommand({ cmd: CommandType.Respawn });
-        closePanel("death");
-        break;
+    dispatchUIAction(this, action);
+  }
 
-      case "debug_toggle": {
-        const on = this.toggleDebug(action.layer);
-        setDebugLayer(action.layer, on);
-        break;
-      }
-
-      case "debug_scene_census":
-        this.renderer?.logSceneCensus();
-        break;
-
-      case "debug_give_item":
-        this._sendCommand({ cmd: CommandType.DebugGiveItem, itemType: action.itemType, quantity: action.quantity });
-        break;
-
-      case "debug_spawn_npc":
-        this._sendCommand({ cmd: CommandType.DebugSpawnNpc, npcTemplate: action.npcTemplate, quantity: action.quantity });
-        break;
-
-      case "debug_set_time":
-        this._sendCommand({ cmd: CommandType.DebugSetTime, hour: action.hour });
-        break;
-
-      case "debug_teleport":
-        this._sendCommand({ cmd: CommandType.DebugTeleport, worldX: action.worldX, worldY: action.worldY });
-        break;
-
-      case "debug_set_stat":
-        this._sendCommand({ cmd: CommandType.DebugSetStat, stat: action.stat, value: action.value });
-        break;
-
-      case "equip":
-        this._sendCommand({ cmd: CommandType.Equip, fromInventorySlot: action.fromSlot });
-        break;
-
-      case "unequip": {
-        const slotIndex = EQUIP_SLOT_NAMES.indexOf(action.slot as typeof EQUIP_SLOT_NAMES[number]);
-        if (slotIndex !== -1) {
-          this._sendCommand({ cmd: CommandType.Unequip, equipSlot: slotIndex as EquipSlotIndex });
-        }
-        break;
-      }
-
-      case "move_item":
-        this._sendCommand({ cmd: CommandType.MoveItem, fromSlot: action.fromSlot, toSlot: action.toSlot });
-        break;
-
-      case "drop_item":
-        this._sendCommand({ cmd: CommandType.DropItem, fromSlot: action.fromSlot });
-        break;
-
-      case "use_item":
-        this._sendCommand({ cmd: CommandType.UseItem, fromSlot: action.fromSlot });
-        break;
-
-      case "load_workstation":
-        this._sendCommand({
-          cmd: CommandType.LoadWorkstation,
-          inventorySlot: action.inventorySlot,
-          bufferSlot: action.bufferSlot,
-        });
-        break;
-
-      case "take_workstation":
-        this._sendCommand({
-          cmd: CommandType.TakeWorkstation,
-          bufferSlot: action.bufferSlot,
-        });
-        break;
-
-      case "deposit_container":
-        this._sendCommand({
-          cmd: CommandType.ContainerDeposit,
-          containerId: action.containerId,
-          fromInventorySlot: action.inventorySlot,
-        });
-        break;
-
-      case "withdraw_container":
-        this._sendCommand({
-          cmd: CommandType.ContainerWithdraw,
-          containerId: action.containerId,
-          slotIndex: action.slotIndex,
-        });
-        break;
-
-      case "select_recipe":
-        this._sendCommand({ cmd: CommandType.SelectRecipe, recipeId: action.recipeId });
-        break;
-
-      case "deploy_item":
-        // Server uses forward-facing placement for kit items, so worldX/worldY
-        // are ignored — we send 0/0 to satisfy the codec without a cursor pick.
-        console.log(`[Deploy] sending Place from inventory slot=${action.fromSlot}`);
-        this._sendCommand({
-          cmd: CommandType.Place,
-          source: "inventory",
-          fromInventorySlot: action.fromSlot,
-          worldX: 0,
-          worldY: 0,
-        });
-        break;
-
-      case "place_blueprint":
-        console.log(`[Build] sending Place prefab=${action.structureType} world=(${action.worldX.toFixed(1)},${action.worldY.toFixed(1)})`);
-        this._sendCommand({
-          cmd: CommandType.Place,
-          source: "prefab",
-          prefabId: action.structureType,
-          worldX: action.worldX,
-          worldY: action.worldY,
-        });
-        break;
-
-      case "open_build_menu":
-        console.log(`[Build] opening radial menu at canvas=(${action.canvasX.toFixed(0)},${action.canvasY.toFixed(0)})`);
-        patchUI({ radialMenu: { x: action.canvasX, y: action.canvasY } });
-        break;
-
-      case "select_blueprint": {
-        console.log(`[Build] selected blueprint type=${action.structureType}`);
-        patchUI({ selectedBlueprint: action.structureType, radialMenu: null });
-        const prefab = this.contentService?.prefabs.get(action.structureType);
-        const placeable = prefab?.components.placeable as { tool?: "single" | "line" } | undefined;
-        const tool = placeable?.tool ?? "single";
-        const bld = this.contentService?.getGameConfig().building;
-        modeState.value = {
-          kind: "build",
-          blueprintId: action.structureType,
-          brush: {
-            tool,
-            voxelSize: bld?.defaultVoxelSize ?? 1.0,
-            spacing: bld?.defaultSpacing ?? 0,
-          },
-        };
-        break;
-      }
-
-      case "trade_buy":
-        this._sendCommand({ cmd: CommandType.TradeBuy, listingSlot: action.slot });
-        break;
-
-      case "trade_sell":
-        this._sendCommand({ cmd: CommandType.TradeSell, inventorySlot: action.slot });
-        break;
-
-      // Not yet implemented — log for discoverability during development.
-      case "split_stack":
-      case "hotbar_assign":
-      case "hotbar_use":
-      case "dialogue_choice":
-      case "dialogue_close":
-      case "rebind_key":
-        console.debug("[UIAction unhandled]", action);
-        break;
-    }
+  /**
+   * Push the local player's current hotbar occupancy to the renderer so
+   * non-active slung items render on body anchors (T-309). Reads the SAME
+   * derivation Hotbar.tsx uses (hotbarItems) so the HUD icons and the 3D
+   * anchors never disagree.
+   */
+  _syncHotbarAttachments(): void {
+    const hb = uiState.value.hotbar;
+    if (!hb || !this.renderer) return;
+    this.renderer.setHotbar(hotbarItems.value.map((it) => it?.itemType ?? null), hb.activeIndex);
   }
 
   /** Toggle the debug panel visibility. */
@@ -1619,6 +1216,22 @@ export class VoximGame {
     }
   }
 
+  /** Count one received terrain chunk toward the loading gate + progress UI. */
+  _noteTerrainChunkReceived(): void {
+    this.terrainChunksReceived++;
+    patchUI({ loadingProgress: Math.min(1, this.terrainChunksReceived / VoximGame.TOTAL_CHUNKS) });
+    if (this.terrainChunksReceived % 20 === 0 || this.terrainChunksReceived === VoximGame.TOTAL_CHUNKS) {
+      console.log(`[Game] terrain chunks received: ${this.terrainChunksReceived}/${VoximGame.TOTAL_CHUNKS}`);
+    }
+  }
+
+  /** Run _finishLoading() once every expected terrain chunk has arrived. */
+  _finishLoadingIfReady(): void {
+    if (!this.loadingComplete && this.terrainChunksReceived >= VoximGame.TOTAL_CHUNKS) {
+      this._finishLoading();
+    }
+  }
+
   /**
    * Phase 2 of loading: called once all 256 terrain chunks are in this.world.
    *
@@ -1633,6 +1246,18 @@ export class VoximGame {
    */
   private _finishLoading(): void {
     if (this.loadingComplete) return;
+    // T-331: the terrain-chunk counter can cross TOTAL_CHUNKS while this
+    // message is still being processed DURING the bootstrap blob's async
+    // decode (a real await — gunzip — that lets the state-stream's read loop,
+    // wired before connect() even resolves, race ahead of Step 4's renderer
+    // construction). Bailing WITHOUT latching loadingComplete lets this retry
+    // — either the next incoming message re-checks the same threshold, or
+    // Step 4's own post-hydration check (line ~453) calls again once the
+    // renderer exists. Latching here with a null renderer would silently
+    // orphan every chunk currently in this.world (every updateTerrain call
+    // below no-ops via `renderer?.`) with no further retry, ever — proven
+    // live by forcing the race: the whole world rendered as empty ground.
+    if (!this.renderer) return;
     this.loadingComplete = true;  // renderer calls active from this point
 
     console.log(`[Game] all terrain received — flushing world to renderer`);
@@ -1640,7 +1265,9 @@ export class VoximGame {
     let terrainCount = 0, entityCount = 0, gateCount = 0;
     for (const [entityId, state] of this.world.entries()) {
       if (state.heightmap && state.materialGrid) {
-        this.renderer?.updateTerrain(state.heightmap, state.materialGrid); terrainCount++;
+        const chunk = this.world.getChunk(state.heightmap.chunkX, state.heightmap.chunkY);
+        if (chunk?.heightmap && chunk.materialGrid) this.renderer?.updateTerrain(chunk as ClientChunk);
+        terrainCount++;
       } else if (state.gateLink && state.position) {
         const groundZ = this.world.getTerrainHeight(state.position.x, state.position.y);
         this.renderer?.updateGateMarker(
@@ -1691,8 +1318,16 @@ export class VoximGame {
     this.scatter = null;
     this.waterRenderer?.clear();
     this.waterRenderer = null;
+    this.roofRenderer?.dispose();
+    this.roofRenderer = null;
+    this.decals?.reset();
+    this.decals = null;
+    this.aimIndicator?.dispose();
+    this.aimIndicator = null;
     this.inputCapture?.dispose();
     this.inputCapture = null;
+    this.pointerLock?.dispose();
+    this.pointerLock = null;
     this.input = null;
     this.intentRouter = null;
     this.connection.close();
@@ -1702,130 +1337,3 @@ export class VoximGame {
   }
 }
 
-// ---- helpers ----
-
-/**
- * Convert an itemType id (e.g. "wooden_sword") to a display label ("Wooden Sword").
- * Used wherever a human-readable item name is needed client-side.
- */
-/**
- * Map a server EquipmentData into the EquipmentState shape the UI expects.
- */
-function mapEquipmentToUI(eq: EquipmentData): EquipmentState {
-  function toStack(slot: EquipmentData["weapon"]): ItemStack | null {
-    if (!slot) return null;
-    return {
-      itemType: slot.prefabId,
-      quantity: 1,
-      displayName: humanizeItemType(slot.prefabId),
-      modelTemplateId: null,
-    };
-  }
-  return {
-    weapon:  toStack(eq.weapon),
-    offHand: toStack(eq.offHand),
-    head:    toStack(eq.head),
-    chest:   toStack(eq.chest),
-    legs:    toStack(eq.legs),
-    feet:    toStack(eq.feet),
-    back:    toStack(eq.back),
-  };
-}
-
-/**
- * Derive a day-phase name from raw WorldClock fields.
- * Boundaries: midnight 0–0.25, dawn 0.25–0.5, noon 0.5–0.75, dusk 0.75–1.
- */
-function worldClockPhase(ticksElapsed: number, dayLengthTicks: number): string {
-  const t = (ticksElapsed % dayLengthTicks) / dayLengthTicks;
-  if (t < 0.25) return "midnight";
-  if (t < 0.5)  return "dawn";
-  if (t < 0.75) return "noon";
-  return "dusk";
-}
-
-/**
- * Map the local player's Resource component to the HUD vital bars (T-262).
- * Stamina/hunger come from the keyed scalars; `exhausted` is derived (the
- * server-side exhausted flag was retired with the Resource primitive).
- */
-function vitalsPatch(resource: ResourceData): Parameters<typeof patchUI>[0] {
-  const patch: Parameters<typeof patchUI>[0] = {};
-  const s = resource.values.stamina;
-  if (s) patch.stamina = { current: s.value, max: s.max, exhausted: s.value <= 0 };
-  const h = resource.values.hunger;
-  if (h) patch.hunger = { value: h.value };
-  return patch;
-}
-
-/**
- * Map a server LoreLoadoutData into the SkillLoadoutState shape the UI expects.
- * A slot is the id of a skill ActionDef (or null); cooldowns come from the
- * networked ActionCooldowns component (T-265), keyed by action id.
- */
-function mapLoreLoadoutToUI(loadout: LoreLoadoutData): SkillLoadoutState {
-  return { slots: loadout.skills.map((actionId, index) => ({ index, actionId: actionId ?? null })) };
-}
-
-/**
- * Derive the cast-bar state from the action runtime (T-266): the local player
- * is "casting" while its primary slot runs an active-kind action in its windup
- * phase. Instant actions (≤1 windup tick) show no bar. Null when not casting.
- */
-function deriveCastState(
-  actions: ActiveActionsData,
-  content: ContentService | null,
-): { label: string; frac: number } | null {
-  const slot = actions.states["primary"];
-  if (!slot) return null;
-  const def = content?.actions.get(slot.actionId);
-  if (!def || def.kind !== "active" || slot.phase !== "windup") return null;
-  const total = def.phases?.windup?.ticks ?? 0;
-  if (total <= 1) return null;
-  const label = slot.actionId
-    .replace(/^skill_/, "")
-    .split("_")
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(" ");
-  return { label, frac: Math.min(1, slot.ticksInPhase / total) };
-}
-
-function getToolType(prefabId: string | undefined, content: ContentService | null): string | undefined {
-  if (!prefabId || !content) return undefined;
-  const prefab = content.prefabs.get(prefabId);
-  const tool = prefab?.components.tool as ToolData | undefined;
-  return tool?.toolType;
-}
-
-/**
- * Map a server InventoryData into the InventoryState shape the UI expects.
- * The slots array is padded to capacity with nulls so the grid always renders
- * the correct number of cells regardless of how many items are present.
- */
-function mapInventoryToUI(inv: InventoryData, world: ClientWorld): InventoryState {
-  const slots: (ItemStack | null)[] = inv.slots.map((s) => {
-    if (s.kind === "stack") {
-      return {
-        itemType: s.prefabId,
-        quantity: s.quantity,
-        displayName: humanizeItemType(s.prefabId),
-        modelTemplateId: null,
-      };
-    } else {
-      // Unique item entity — pull its prefab id from the entity's ItemData
-      // component so the UI shows a proper name and the tooltip can locate
-      // the entity for stat/provenance lookup.
-      const entity = world.get(s.entityId);
-      const prefabId = entity?.itemData?.prefabId ?? "";
-      return {
-        itemType: prefabId,
-        quantity: 1,
-        displayName: prefabId ? humanizeItemType(prefabId) : "(item)",
-        modelTemplateId: null,
-        entityId: s.entityId,
-      };
-    }
-  });
-  while (slots.length < inv.capacity) slots.push(null);
-  return { slots, maxSlots: inv.capacity };
-}

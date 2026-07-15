@@ -81,7 +81,7 @@ Deno.test("placeStairs: spawns the found prefab and writes unlocked Stair", asyn
     anchorPixel: { x: 7, y: 8 },
   });
 
-  const placed = placeStairs(world, content, level, makeHeightBuffer(), TILE_SIZE);
+  const placed = placeStairs(world, content, level, makeHeightBuffer(), TILE_SIZE, 2);
   assertEquals(placed, 1);
 
   let foundStair = false;
@@ -92,6 +92,9 @@ Deno.test("placeStairs: spawns the found prefab and writes unlocked Stair", asyn
     assertEquals(stair.fromZoneId, 1);
     assertEquals(stair.trinketId, "");
     assertEquals(stair.unlocked, true);
+    assertEquals(stair.wallHeight, 2);
+    assertEquals(stair.rampDepth, 4);      // makeLevel's stair edge: rampDepth 4
+    assertEquals(stair.rampHalfWidth, 2);  // rampHalfWidth 2
     assertEquals(position.x, 7);
     assertEquals(position.y, 8);
     assertEquals(position.z, 0.5);
@@ -111,7 +114,7 @@ Deno.test("placeStairs: spawns the locked prefab and writes locked Stair", async
     anchorPixel: { x: 7, y: 4 },
   });
 
-  const placed = placeStairs(world, content, level, makeHeightBuffer(), TILE_SIZE);
+  const placed = placeStairs(world, content, level, makeHeightBuffer(), TILE_SIZE, 2);
   assertEquals(placed, 1);
 
   for (const { stair, modelRef } of world.query(Stair, ModelRef)) {
@@ -132,7 +135,7 @@ Deno.test("placeStairs: skips stairs whose climb direction is degenerate", async
     climbDir: { dx: 0, dy: 0 },
   });
 
-  const placed = placeStairs(world, content, level, makeHeightBuffer(), TILE_SIZE);
+  const placed = placeStairs(world, content, level, makeHeightBuffer(), TILE_SIZE, 2);
   assertEquals(placed, 0);
   assertEquals([...world.query(Stair)].length, 0);
 });

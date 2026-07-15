@@ -7,6 +7,17 @@
  * Replan: target drifted far from `lastKnownTarget{X,Y}`.
  * Tick: if target gone, clear the job; if in range, stop + swing + face; else
  *   follow the plan.
+ *
+ * T-338: a continuously-held ACTION_USE_SKILL is harmless for melee (each
+ * `kind:"active"` swing self-terminates and PrimaryIntentResolver
+ * immediately restarts the next one) but WRONG for a hold-to-aim weapon
+ * (bow_draw etc.) — its perpetual hold phase never ends on its own, so an
+ * NPC holding the bit forever would draw and never fire. `releasePulse`
+ * below detects exactly that shape (the running action names a
+ * releaseActionId AND its current phase is perpetual) generically, off the
+ * RUNNING action's own data — never branching on "is this a bow" — and
+ * emits one release tick (actions: 0) once it's been held
+ * `npcAiDefaults.rangedHoldTicks`.
  */
 import type { GameConfig } from "@voxim/content";
 import { ACTION_USE_SKILL } from "@voxim/protocol";
@@ -18,7 +29,25 @@ import type {
 } from "../job_handler.ts";
 import type { Job, NpcPlanData } from "../../components/npcs.ts";
 import { Position } from "../../components/game.ts";
+import { ActiveActions } from "../../components/action.ts";
 import { moveSteps } from "../plan_helpers.ts";
+
+/**
+ * True when `ctx.entityId`'s primary slot is holding a hold-to-aim charge
+ * (a releaseActionId-bearing action, currently in its perpetual phase) for
+ * at least `ctx.defaults.rangedHoldTicks` ticks — the release-pulse
+ * condition. Weapon-agnostic by construction: reads only the shape the
+ * dispatcher already exposes.
+ */
+function shouldReleaseHold(ctx: JobContext): boolean {
+  const state = ctx.world.get(ctx.entityId, ActiveActions)?.states["primary"];
+  if (!state) return false;
+  const def = ctx.content.actions.get(state.actionId);
+  if (!def?.releaseActionId) return false;
+  const phase = def.phases[state.phase];
+  if (phase?.ticks !== -1) return false;
+  return state.ticksInPhase >= ctx.defaults.rangedHoldTicks;
+}
 
 export const attackTargetJob: JobHandler = {
   id: "attackTarget",
@@ -81,7 +110,7 @@ export const attackTargetJob: JobHandler = {
     if (inRange) {
       return {
         movementX: 0, movementY: 0,
-        actions: ACTION_USE_SKILL,
+        actions: shouldReleaseHold(ctx) ? 0 : ACTION_USE_SKILL,
         facing: faceTarget,
       };
     }

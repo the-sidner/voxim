@@ -12,10 +12,10 @@
  *                         chambers[]
  *   5. portalPlacement  — bezier-carve gate→nearest-junction → portals[],
  *                         appends to corridors[], re-labels rooms/roomOf
- *   6. boundaryKinds    — per-pixel kind tagging
+ *   6. boundaryKinds    — per-cell kind tagging
  *   7. rivers           — overlay water onto openMask + kindOf
  *   8. terrain          — heightmap from openMask + kindOf
- *   9. materials        — per-pixel material id
+ *   9. materials        — per-cell material id
  *
  * Each stage is a `Transformer<TIn, TOut, TParams>` (@voxim/levelgen).
  * `pipe()` composes them with type-aware narrowing: reordering or
@@ -37,26 +37,22 @@ import { rivers } from "./pipeline/rivers.ts";
 import { terrain } from "./pipeline/terrain.ts";
 import { materials } from "./pipeline/materials.ts";
 import { zoneGraph } from "./pipeline/zone_graph.ts";
+import { cliffStage } from "./pipeline/cliff.ts";
 import { poiNetwork } from "./pipeline/poi_network.ts";
+import { fieldsStage } from "./pipeline/fields.ts";
 import { deriveGateSummary } from "./summary.ts";
 import { emptyLevel } from "./level/types.ts";
 import { rasterize } from "./level/rasterize.ts";
-import type { TileInit, TileInitWire } from "./types.ts";
+import { DEFAULT_TILE_SIZE, DEFAULT_GRID_SIZE, type TileInit, type TileInitWire } from "./types.ts";
 import type { WorldCellRecord } from "../worldmap/types.ts";
 import { DEFAULT_GEN_PARAMS, type GenParams } from "../genparams.ts";
-import type { PipelineBase, PoiNetworkState } from "./pipeline/state.ts";
+import type { PipelineBase, FieldsState } from "./pipeline/state.ts";
 import type { ContentService } from "@voxim/content";
-
-const DEFAULT_TILE_SIZE = 512;
-// One pixel = one world unit = one runtime voxel. Atlas runs the pipeline
-// at the same resolution tile-server samples so the inspector view matches
-// what the player walks on (no upsample seam).
-const DEFAULT_GRID_SIZE = 512;
 
 export interface GenerateTileOptions {
   /** Side length of the playable tile in world units. Default 512. */
   tileSize?: number;
-  /** Sample-grid resolution. Default 128 → 4 world units per pixel. */
+  /** Sample-grid resolution. Default 128 → 4 world units per cell. */
   gridSize?: number;
   /** Worldgen tuning. Defaults from DEFAULT_GEN_PARAMS. */
   params?: GenParams;
@@ -105,7 +101,7 @@ export function generateTile(
     }),
   };
 
-  const pipeline: Stage<PipelineBase, PoiNetworkState> = pipe(
+  const pipeline: Stage<PipelineBase, FieldsState> = pipe(
     bind(noiseField,      params.noise,      tileSeed),
     bind(junctions,       params.room,       tileSeed),
     bind(network,         params.network,    tileSeed),
@@ -116,22 +112,36 @@ export function generateTile(
     bind(terrain,         params.terrain,    tileSeed),
     bind(materials,       params.materials,  tileSeed),
     bind(zoneGraph,       params.zoneGraph,  tileSeed),
+    bind(cliffStage,      params.cliff,      tileSeed),
     bind(poiNetwork,      params.poiNetwork, tileSeed),
+    bind(fieldsStage,     params.fields,     tileSeed),
   );
 
   const s = pipeline(initial);
 
-  // T-214: rasterize the LevelDef into the per-pixel buffers tile-
-  // server consumes. Today the function is a passthrough that returns
-  // the buffers the pipeline stages produced + runs the invariant
-  // verifier; future commits move buffer production into it.
+  return assembleTileInit(s);
+}
+
+/**
+ * Assemble the wire-facing `TileInit` from a pipeline's final `FieldsState`.
+ * This is the ONE place that turns pipeline scratch state into the shape
+ * tile-server consumes — both the production bake path (`generateTile`
+ * above) and the atlas inspector's "final" tile view must run through it,
+ * so the inspector never shows bytes production wouldn't ship.
+ *
+ * T-214: rasterize() turns the LevelDef into the per-cell buffers
+ * tile-server consumes AND runs the pipeline's invariant verifier —
+ * skipping this call (as the inspector's hand-rebuilt path used to)
+ * silently skips that check.
+ */
+export function assembleTileInit(s: FieldsState): TileInit {
   const buffers = rasterize(s);
 
   return {
-    cellX:    worldCell.cellX,
-    cellY:    worldCell.cellY,
-    tileSize,
-    gridSize,
+    cellX:    s.worldCell.cellX,
+    cellY:    s.worldCell.cellY,
+    tileSize: s.tileSize,
+    gridSize: s.gridSize,
     openMask:   buffers.openMask,
     roomOf:     s.roomOf,
     rooms:      s.rooms,
@@ -149,8 +159,8 @@ export function generateTile(
     // sets; the derived `zoneOf` index can be recovered via
     // `levelToZoneOf(level)` on the consumer side.
     level:      s.level,
-    boundaries: [],
-    features:   [],
+    fields:     s.fields,
+    cliff:      s.cliff,
   };
 }
 
@@ -175,9 +185,62 @@ export function tileInitToWire(t: TileInit): TileInitWire {
     portals:  t.portals,
     gateSummary: t.gateSummary,
     level:     t.level,
-    boundaries: t.boundaries,
-    features:   t.features,
+    fieldsB64: encodeFieldsB64(t.fields),
+    cliffB64:  encodeCliffB64(t.cliff),
   };
+}
+
+/** Encode the render-field planes to a name→base64 map (T-311 P3). */
+function encodeFieldsB64(f: TileInit["fields"]): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(f)) {
+    out[k] = bytesToBase64(new Uint8Array((v as ArrayBufferView).buffer, (v as ArrayBufferView).byteOffset, (v as ArrayBufferView).byteLength));
+  }
+  return out;
+}
+
+/** Decode the name→base64 field map back into typed planes (u8, f32 surfaceLevel).
+ *  Absent map (a world baked before T-311 P3) → neutral zero/NaN planes of
+ *  gridSize² so an old DB payload loads without crashing; a re-bake fills them. */
+function decodeFieldsB64(m: Record<string, string> | undefined, cells: number): TileInit["fields"] {
+  if (!m) {
+    const z = () => new Uint8Array(cells);
+    return {
+      canopyLight: z(), corruption: z(), fertility: z(),
+      wetness: z(), overgrowth: z(), wear: z(),
+      variantIndex: z(), ruinAge: z(), traffic: z(),
+      surfaceLevel: new Float32Array(cells).fill(NaN),
+    };
+  }
+  const u8 = (k: string) => base64ToBytes(m[k]);
+  const f32 = (k: string) => { const b = base64ToBytes(m[k]); return new Float32Array(b.buffer, b.byteOffset, b.byteLength / 4); };
+  return {
+    canopyLight: u8("canopyLight"), corruption: u8("corruption"), fertility: u8("fertility"),
+    wetness: u8("wetness"), overgrowth: u8("overgrowth"), wear: u8("wear"),
+    variantIndex: u8("variantIndex"), ruinAge: u8("ruinAge"), traffic: u8("traffic"),
+    surfaceLevel: f32("surfaceLevel"),
+  };
+}
+
+/** Encode the cliff planes to a name→base64 map (T-311 P6). u8-only — simpler than fields'. */
+function encodeCliffB64(c: TileInit["cliff"]): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(c)) {
+    out[k] = bytesToBase64(new Uint8Array((v as ArrayBufferView).buffer, (v as ArrayBufferView).byteOffset, (v as ArrayBufferView).byteLength));
+  }
+  return out;
+}
+
+/** Decode the name→base64 cliff map back into typed planes. Absent map (a
+ *  world baked before T-311 P6) → all-zero planes of gridSize² so an old DB
+ *  payload loads without crashing; a re-bake fills them. */
+function decodeCliffB64(m: Record<string, string> | undefined, cells: number): TileInit["cliff"] {
+  if (!m) {
+    const z = () => new Uint8Array(cells);
+    return { profileId: z(), erosion: z(), tier: z(), edge: z() };
+  }
+  const u8 = (k: string) => base64ToBytes(m[k]);
+  return { profileId: u8("profileId"), erosion: u8("erosion"), tier: u8("tier"), edge: u8("edge") };
 }
 
 export function tileInitFromWire(w: TileInitWire): TileInit {
@@ -201,6 +264,7 @@ export function tileInitFromWire(w: TileInitWire): TileInit {
     heightBytes.byteLength / 4,
   );
   const matBytes = base64ToBytes(w.materialsB64);
+  // (fields decoded below in the return via decodeFieldsB64)
   const materials = new Uint16Array(
     matBytes.buffer,
     matBytes.byteOffset,
@@ -229,12 +293,12 @@ export function tileInitFromWire(w: TileInitWire): TileInit {
     portals:  w.portals,
     gateSummary: w.gateSummary,
     level:     w.level,
-    boundaries: w.boundaries,
-    features:   w.features,
+    fields:    decodeFieldsB64(w.fieldsB64, w.gridSize * w.gridSize),
+    cliff:     decodeCliffB64(w.cliffB64, w.gridSize * w.gridSize),
   };
 }
 
-function bytesToBase64(bytes: Uint8Array): string {
+export function bytesToBase64(bytes: Uint8Array): string {
   // Chunked to avoid blowing the call stack on String.fromCharCode.apply.
   let s = "";
   const chunk = 0x8000;
@@ -244,7 +308,7 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(s);
 }
 
-function base64ToBytes(b64: string): Uint8Array {
+export function base64ToBytes(b64: string): Uint8Array {
   if (typeof b64 !== "string") {
     throw new Error(
       `tile-init wire decode: expected base64 string, got ${b64 === undefined ? "undefined" : typeof b64}; ` +

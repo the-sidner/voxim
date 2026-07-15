@@ -9,11 +9,15 @@
  *     "look up a component by name" consumer.
  *
  * To add a new component:
- *   1. Define its codec in @voxim/codecs (or inline for server-only defs).
+ *   1. Define its codec in @voxim/codecs and register the wireId→codec pair
+ *      in @voxim/protocol's CODEC_BY_WIREID (or inline the codec for
+ *      server-only defs).
  *   2. Define the ComponentDef in the appropriate component file. Networked
- *      defs need a wireId from @voxim/protocol's ComponentType enum.
+ *      defs take a wireId from ComponentType and pull the codec back out of
+ *      the shared table via `networkedCodec<FooData>(ComponentType.foo)`.
  *   3. Register it below — NETWORKED_DEFS if it's networked, ALL_DEFS
- *      otherwise.
+ *      otherwise. The cross-check at the bottom of this file fails the boot
+ *      for any networked def the client can't decode.
  *
  * IDs are wire format — never reassign or reuse one.
  */
@@ -21,7 +25,8 @@
 // deno-lint-ignore-file no-explicit-any
 import type { ComponentDef, NetworkedComponentDef } from "@voxim/engine";
 import { Parent } from "@voxim/engine";
-import { Heightmap, KindGrid, MaterialGrid, OpenMask } from "@voxim/world";
+import { CODEC_BY_WIREID, PRESENCE_ONLY_WIRE_IDS } from "@voxim/protocol";
+import { Heightmap, KindGrid, MaterialGrid, OpenMask, VegFieldGrid, SurfaceStateGrid, WaterGrid, CliffGrid } from "@voxim/world";
 import {
   AnimationState,
   Facing,
@@ -42,7 +47,6 @@ import { BuffSpec } from "./components/buff.ts";
 import { Equipment } from "./components/equipment.ts";
 import { Heritage } from "./components/heritage.ts";
 import {
-  CraftingQueue,
   Inventory,
   ItemData,
 } from "./components/items.ts";
@@ -68,13 +72,17 @@ import { BuiltBy, WorkbenchOwner } from "./components/workbench.ts";
 import { WorldClock } from "./components/world.ts";
 import { TraderInventory } from "./components/trader.ts";
 import { LoreLoadout } from "./components/lore_loadout.ts";
-import { DarknessModifier, LightEmitter } from "./components/light.ts";
+import { LightEmitter } from "./components/light.ts";
 import { Hitbox } from "./components/hitbox.ts";
+import { Bone } from "./components/bone.ts";
 import { GateLink } from "./components/gate.ts";
 import { Hearth } from "./components/hearth.ts";
 import { AssignedJobBoard, JobBoard } from "./components/job_board.ts";
-import { PoiTrigger } from "./components/poi.ts";
+import { PoiTrigger, PoiInteractable } from "./components/poi.ts";
 import { Stair } from "./components/stair.ts";
+import { WaveMember, WaveState } from "./components/wave.ts";
+import { BossArenaLink } from "./components/boss_arena.ts";
+import { PuzzleState, Lever } from "./components/puzzle.ts";
 import { NpcJobQueue, NpcTag } from "./components/npcs.ts";
 import { Caravan } from "./components/caravan.ts";
 import { ProjectileData } from "./components/projectile.ts";
@@ -105,6 +113,13 @@ export const NETWORKED_DEFS: ReadonlyArray<NetworkedComponentDef<any>> = [
   // Lets the client decorate the closed pixels (forest tiles → trees,
   // stone tiles → rocks) without server entities.
   KindGrid,
+  // T-311 P3 render-field grids — per-cell render descriptors (never collision).
+  VegFieldGrid,
+  SurfaceStateGrid,
+  WaterGrid,
+  // T-311 P6 — per-cell terraced-cliff descriptor (profileId/erosion/tier/edge).
+  // Never collision; drives the client cliffVoxeliser registry.
+  CliffGrid,
   Position,
   Velocity,
   Facing,
@@ -129,7 +144,8 @@ export const NETWORKED_DEFS: ReadonlyArray<NetworkedComponentDef<any>> = [
   Heritage,
   ItemData,
   Inventory,
-  CraftingQueue,
+  // 19 (craftingQueue) retired — written once at player spawn, read by nobody;
+  //    crafting is entirely WorkstationBuffer-based (T-350)
   // 20 (interactCooldown) retired — server-only, never needed on client
   Blueprint,
   ResourceNode,
@@ -144,12 +160,13 @@ export const NETWORKED_DEFS: ReadonlyArray<NetworkedComponentDef<any>> = [
   WorkstationBuffer,
   WorkstationTag,
   LightEmitter,
-  DarknessModifier,
+  // 32 (darknessModifier) retired — zero writers ever spawned one; the
+  //    darkness-subtraction loop in getLightAt was dead code (T-350)
   // ── Instance-lifetime components — held unique items stream to the
-  //    holder's session via AoI inclusion in aoi.ts.
+  //    holder's session via AoI inclusion in aoi.ts. Only Durability/Stats/
+  //    Provenance remain here — Inscribed/QualityStamped went server-only
+  //    (T-349, see ALL_DEFS below).
   Durability,
-  Inscribed,
-  QualityStamped,
   Stats,
   Provenance,
   // 37 (counterReady) retired from the wire (T-250) — combat presence-flags
@@ -158,10 +175,9 @@ export const NETWORKED_DEFS: ReadonlyArray<NetworkedComponentDef<any>> = [
   //    (Staggered went server-only at T-232 for the same reason.)
   GateLink,
   Name,
-  // Action runtime (T-226): networked so the client's mirrored World runs
-  // the same slot dispatch for prediction. ActorSlots is spawn-immutable;
-  // ActiveActions changes only when a slot's phase/action changes.
-  ActorSlots,
+  // Action runtime (T-226): ActiveActions is networked — the client renders
+  // the cast bar off slot/phase; it only changes when a slot's phase/action
+  // changes. ActorSlots went server-only (T-349, see ALL_DEFS below).
   ActiveActions,
   // Resource (T-262) — vitals on the wire so the client HUD shows
   // stamina/hunger/thirst/poise. Server-only until now (T-238); the delta is
@@ -180,9 +196,17 @@ export const NETWORKED_DEFS: ReadonlyArray<NetworkedComponentDef<any>> = [
   Container,
   // Scene graph (T-215): the Parent hierarchy link. Networked so subtrees
   // (POIs, bones, equipment, buffs) replicate for free. Engine owns the
-  // def + codec; wire id 49 is reserved in @voxim/protocol. Inert until
-  // a consumer calls the World hierarchy APIs.
+  // def + codec; wire id 49 is reserved in @voxim/protocol. First real
+  // consumer is T-219 (bone entities + scene-graph-parented equipment).
   Parent,
+  // PoiInteractable (T-212 v2) — action/puzzle POI world-prop marker.
+  // Networked so the client's hover/click interaction system can detect
+  // it in entityState, same as workstationBuffer/container/traderInventory.
+  PoiInteractable,
+  // Bone (T-219) — one entity per skeleton bone, boneId only. Structure
+  // (this + Parent) replicates once at spawn; motion is derived
+  // client-side from AnimationState, never wired.
+  Bone,
 ];
 
 /** Look up a ComponentDef by wire type ID — used by save/load and client decode. */
@@ -190,6 +214,25 @@ export const DEF_BY_TYPE_ID: ReadonlyMap<number, NetworkedComponentDef<any>> =
   new Map(
     NETWORKED_DEFS.map((d) => [d.wireId, d]),
   );
+
+// Fail-fast cross-check (T-349): every networked def must either have a client
+// decoder in CODEC_BY_WIREID or be an explicit presence-only opt-out
+// (PRESENCE_ONLY_WIRE_IDS). This is exactly the shape the heritage(16) and
+// parent(49) silent-decode bugs had — present on one side, absent from the
+// other, discovered only when a feature needed the field. Runs at module load
+// (like the DEF_BY_NAME duplicate check below), so every server entry point
+// and test that touches the registry trips it immediately.
+for (const def of NETWORKED_DEFS) {
+  if (!CODEC_BY_WIREID.has(def.wireId) && !PRESENCE_ONLY_WIRE_IDS.has(def.wireId)) {
+    throw new Error(
+      `[component_registry] networked component "${def.name}" (wire id ${def.wireId}) ` +
+        `has no client decoder in CODEC_BY_WIREID and is not listed in ` +
+        `PRESENCE_ONLY_WIRE_IDS — it would ship bytes nobody reads. Register the ` +
+        `pair in packages/protocol/src/codec_registry.ts, opt out as ` +
+        `presence-only, or make the def networked: false.`,
+    );
+  }
+}
 
 /**
  * Every ComponentDef, networked and server-only. The prefab loader resolves
@@ -205,6 +248,10 @@ export const ALL_DEFS: ReadonlyArray<ComponentDef<any>> = [
   // CounterReady (T-250) — parry bonus-damage flag; server-only, bounded by
   // the counter_window Resource. Read by health_hit_handler.
   CounterReady,
+  // ActorSlots (T-349) — server-only now: the dispatcher's own slot-gate
+  // input, spawn-immutable; the "client predicts slot dispatch"
+  // justification never materialized (the predictor is position-only).
+  ActorSlots,
   // SpawnedFrom (T-251) — prefab id stamped by spawnPrefab; the re-completion
   // key for save/load and tile handoff. Server-only.
   SpawnedFrom,
@@ -232,6 +279,18 @@ export const ALL_DEFS: ReadonlyArray<ComponentDef<any>> = [
   // Stair runtime marker (T-213). Server-only — placed at every narrative
   // stair anchor; carries lock state for the future unlock pipeline.
   Stair,
+  // Wave-POI runtime state (T-212 v2). WaveMember tags spawned NPCs for the
+  // per-tick survivor count; WaveState lives on the PoiTrigger entity.
+  WaveMember,
+  WaveState,
+  // Bossfight-POI runtime tag (T-212 v2). Written on the spawned boss NPC;
+  // read by the boss_arena_link TriggerSource (phase adds) and the
+  // boss_arena_unlock DeathHook (arena clear, pre-destruction).
+  BossArenaLink,
+  // Puzzle-POI runtime state (T-212 v2, lever_sequence). PuzzleState lives
+  // on the PoiTrigger entity; Lever tags each spawned lever prop.
+  PuzzleState,
+  Lever,
   NpcTag,
   NpcJobQueue,
   // Caravan (T-048) — a caravan lead NPC's manifest: destination tile +
@@ -245,6 +304,11 @@ export const ALL_DEFS: ReadonlyArray<ComponentDef<any>> = [
   // ── Instance-lifetime components (server-only) ──────────────────────────
   History,
   Owned,
+  // Inscribed/QualityStamped (T-349) — server-only now; no client consumer
+  // (tome-fragment UI, quality badge) ever materialized. Read purely
+  // server-side: deriveItemStats, the scribe workstation, dynasty.ts.
+  Inscribed,
+  QualityStamped,
   // ItemEffects (T-240): a unique item's per-instance generated effects.
   // Registered so SaveManager round-trips it for items banked in a treasury
   // (T-078); without this it silently drops on overlay.

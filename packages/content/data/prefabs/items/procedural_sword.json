@@ -1,0 +1,46 @@
+{
+  "_comment": "T-306: a sword whose blade is generated per-instance (swingable.bladeGrammar -> blade_iron_straight). Every crafted/spawned copy gets its own item EntityId -> its own seed -> a seed-unique blade shape (length/radius vary within blade_iron_straight's ranges), and the server weapon_trace resolver re-derives the SAME length/radius from that seed so the swing hitbox follows the generated blade. Composed slots let deriveItemStats' _parts path feed off the emitted materials (T-303). Reuses the shared slash/heavy weapon actions -- only the geometry is per-weapon now.",
+  "id": "procedural_sword",
+  "modelId": "generated_blade",
+  "modelScale": 1.0,
+  "components": {
+    "equippable": {
+      "slots": ["weapon", "offHand"]
+    },
+    "swingable": {
+      "chain": [
+        { "light": "slash_inward", "heavy": "heavy_overhead" },
+        { "light": "slash_outward", "heavy": "heavy_overhead" },
+        { "light": "thrust", "heavy": "heavy_360" },
+        { "light": "slash_backhand", "heavy": "heavy_360" }
+      ],
+      "heavyChargeMs": 250,
+      "damage": 20,
+      "bladeGrammar": "blade_iron_straight"
+    },
+    "weight": {
+      "baseWeight": 1.3
+    },
+    "composed": {
+      "slots": [
+        {
+          "id": "blade",
+          "materialCategories": ["metal"],
+          "statContributions": [
+            { "stat": "damage", "property": "hardness", "multiplier": 20 },
+            { "stat": "weight", "property": "density", "multiplier": 0.8 }
+          ],
+          "modelSlotId": "blade"
+        },
+        {
+          "id": "grip",
+          "materialCategories": ["wood", "leather"],
+          "statContributions": [
+            { "stat": "weight", "property": "density", "multiplier": 0.3 }
+          ],
+          "modelSlotId": "grip"
+        }
+      ]
+    }
+  }
+}

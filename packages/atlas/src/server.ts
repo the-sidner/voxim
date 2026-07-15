@@ -13,7 +13,8 @@
  *   GET  /world/cell/:x/:y                one cell from the active world
  *   GET  /world/summaries                 per-tile gateSummary u16 list
  *   POST /world/bake                      ?seed=&width=&height=&name=  → new world row
- *   POST /world/restart                   POST /admin/restart to RESTART_TARGETS
+ *                                         (tile-server + coordinator poll the worlds
+ *                                         repo and self-restart onto a newer bake)
  *
  *   GET  /tile/:cellX/:cellY              full tile_init payload (active world)
  *   POST /tile/:cellX/:cellY/regen        re-derive one tile (active world)
@@ -26,7 +27,7 @@
 
 import { serveDir } from "@std/http/file-server";
 import type { AtlasTileInitRepo, AtlasWorldRepo, WorldRow, WorldsRepo } from "@voxim/db";
-import { generateTile, tileInitToWire } from "./tilemap/generate.ts";
+import { assembleTileInit, generateTile, tileInitToWire } from "./tilemap/generate.ts";
 import {
   decodeState,
   encodeState,
@@ -35,8 +36,6 @@ import {
   type StageTrace,
 } from "./tilemap/instrumented_runner.ts";
 import { ORDERED_STAGES, type StageId } from "./tilemap/pipeline/stages.ts";
-import { deriveGateSummary } from "./tilemap/summary.ts";
-import type { TileInit } from "./tilemap/types.ts";
 import { bakeWorld, tileSeedFor } from "./bake.ts";
 import type { WorldCellRecord } from "./worldmap/types.ts";
 import { DEFAULT_GEN_PARAMS, PRESETS, mergeGenParams, type DeepPartialGenParams, type GenParams } from "./genparams.ts";
@@ -49,17 +48,11 @@ export interface AtlasServerConfig {
   cellsRepo: AtlasWorldRepo;
   tilesRepo: AtlasTileInitRepo;
   /**
-   * Shared secret gating the mutating control-plane endpoints
-   * (/world/bake, /world/restart) — T-258. Read endpoints + the inspector
-   * UI stay public. Empty string → those endpoints fail closed.
+   * Shared secret gating the mutating control-plane endpoint
+   * (/world/bake) — T-258. Read endpoints + the inspector UI stay
+   * public. Empty string → the endpoint fails closed.
    */
   serviceSecret: string;
-  /**
-   * Comma-separated host:port targets for /world/restart to POST
-   * /admin/restart to. Default: tile-1:14433,coordinator:8083 (compose).
-   * Empty list = restart endpoint is a no-op.
-   */
-  restartTargets?: string[];
   /**
    * Optional content store — when provided, the inspector pipeline
    * endpoint runs the POI-network matcher (T-209) and the response
@@ -169,24 +162,6 @@ async function handleRequest(req: Request, cfg: AtlasServerConfig): Promise<Resp
         id: s.id, label: s.label, paramsKey: s.paramsKey,
       })),
     });
-  }
-
-  if (req.method === "POST" && url.pathname === "/world/restart") {
-    // Control plane (T-258): mutating endpoint — requires the shared secret.
-    if (!verifyServiceSecret(req, cfg.serviceSecret)) {
-      return new Response("unauthorized", { status: 401, headers: { "access-control-allow-origin": "*" } });
-    }
-    const targets = cfg.restartTargets ?? [];
-    const results: Array<{ target: string; ok: boolean; error?: string }> = [];
-    for (const t of targets) {
-      try {
-        const r = await fetch(`http://${t}/admin/restart`, { method: "POST" });
-        results.push({ target: t, ok: r.ok });
-      } catch (e) {
-        results.push({ target: t, ok: false, error: (e as Error).message });
-      }
-    }
-    return jsonOk({ targets: results });
   }
 
   if (req.method === "GET" && url.pathname === "/world/summaries") {
@@ -399,18 +374,19 @@ async function runTilePipeline(
     stageOrder: body.stageOrder,
   });
 
-  // Encode the final tile (re-uses tileInitToWire by constructing a
-  // TileInit shape from the materials-stage final state) and every
-  // intermediate state into wire form. Trace passes through as-is.
+  // Encode the final tile and every intermediate state into wire form.
+  // Trace passes through as-is.
   const intermediates = body.intermediates === false
     ? {}
     : Object.fromEntries(
         Object.entries(result.intermediates).map(([k, v]) => [k, encodeState(v)]),
       );
 
-  // For the "final" view, the inspector can reuse the existing tile
-  // render path that consumes TileInitWire — so we emit that too.
-  const tile = generateTileInitFromFinal(result.final, cellX, cellY, tileSeed);
+  // For the "final" view, the inspector runs the SAME assembleTileInit()
+  // the production bake path uses — rasterize() + invariant check
+  // included — so the inspector never shows bytes production wouldn't
+  // ship.
+  const tile = assembleTileInit(result.final);
 
   return jsonOk({
     tileId: tileIdFor(cellX, cellY),
@@ -423,33 +399,6 @@ async function runTilePipeline(
     intermediates,
     cacheSize: cache.size,
   });
-}
-
-function generateTileInitFromFinal(
-  final: ReturnType<typeof runInstrumented>["final"],
-  cellX: number,
-  cellY: number,
-  _tileSeed: number,
-): TileInit {
-  return {
-    cellX, cellY,
-    tileSize:  final.tileSize,
-    gridSize:  final.gridSize,
-    openMask:  final.openMask,
-    roomOf:    final.roomOf,
-    rooms:     final.rooms,
-    chamberOf: final.chamberOf,
-    chambers:  final.chambers,
-    corridors: final.corridors,
-    portals:   final.portals,
-    gateSummary: deriveGateSummary(final.portals),
-    heightMap: final.heightMap,
-    materials: final.materials,
-    kindOf:    final.kindOf,
-    level:     final.level,
-    boundaries: [],
-    features:   [],
-  };
 }
 
 async function getOrGenerateTile(

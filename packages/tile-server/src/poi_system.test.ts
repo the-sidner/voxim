@@ -178,33 +178,34 @@ Deno.test("PoiActivityRegistry: every POI type in content resolves (the boot inv
   }
 });
 
-Deno.test("PoiSystem: an unimplemented activity type fires without crashing", async () => {
-  const world = makeWorld();
+Deno.test("PoiSystem: every activity type (bossfight/wave/action/puzzle) fires without crashing", async () => {
   const content = await JsonSource.load();
   const events = new EventBus();
 
-  // Pick a real POI whose type is one of the unimplemented stubs.
-  const stub = [...content.pois.values()].find(
-    (p) => p.type !== "encounter" && p.type !== "exploration",
-  );
-  assert(stub, "expected at least one bossfight/wave/action/puzzle POI in content");
+  // All four types landed in T-212 v2 — verify each real POI of each type
+  // activates cleanly (spawn/tag/state side effects are covered per-type
+  // in poi/activities/*.test.ts; this is the cross-type smoke test).
+  for (const type of ["bossfight", "wave", "action", "puzzle"] as const) {
+    const poi = [...content.pois.values()].find((p) => p.type === type);
+    assert(poi, `expected at least one ${type} POI in content`);
 
-  const pid = newEntityId();
-  world.create(pid);
-  world.write(pid, Position, { x: 100, y: 100, z: 0 });
-  const tid = newEntityId();
-  world.create(tid);
-  world.write(tid, Position, { x: 100, y: 100, z: 0 });
-  world.write(tid, PoiTrigger, {
-    poiInstanceId: `${stub!.id}_z1`,
-    poiDefId:      stub!.id,
-    triggerRadius: 5,
-    fired:         false,
-  });
+    const world = makeWorld();
+    const pid = newEntityId();
+    world.create(pid);
+    world.write(pid, Position, { x: 100, y: 100, z: 0 });
+    const tid = newEntityId();
+    world.create(tid);
+    world.write(tid, Position, { x: 100, y: 100, z: 0 });
+    world.write(tid, PoiTrigger, {
+      poiInstanceId: `${poi!.id}_z1`,
+      poiDefId:      poi!.id,
+      triggerRadius: 5,
+      fired:         false,
+    });
 
-  const sys = new PoiSystem(content, activities, () => [pid].values());
-  sys.run(world, events, 0.05);
-  world.applyChangeset();
-  // Stub no-ops, but the trigger still fires (one-shot) — no throw.
-  assertEquals(world.get(tid, PoiTrigger)?.fired, true);
+    const sys = new PoiSystem(content, activities, () => [pid].values());
+    sys.run(world, events, 0.05);
+    world.applyChangeset();
+    assertEquals(world.get(tid, PoiTrigger)?.fired, true, `${type} POI should fire`);
+  }
 });

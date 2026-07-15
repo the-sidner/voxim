@@ -16,6 +16,11 @@
     "blockArcHalfRadians": 1.5707963267948966,
     "knockbackImpulseXY": 5,
     "knockbackImpulseZ": 1.5,
+    "knockback": {
+      "referenceDamage": 15,
+      "minMult": 0.7,
+      "maxMult": 1.6
+    },
     "unarmedWeaponAction": "unarmed",
     "unarmedDamage": 8,
     "unarmedBladeLength": 0.4,
@@ -27,13 +32,20 @@
       "attackArcHalf": 1.0471975511965976,
       "staminaCostPerSwing": 5
     },
+    "aimAssist": {
+      "rangeUnits": 4.0,
+      "halfAngleDeg": 60
+    },
     "projectileDefaults": {
       "spawnOffset": {
         "fwd": 0.6,
         "right": 0.0,
         "up": 1.4
-      },
-      "arcFactor": 0.08
+      }
+    },
+    "aim": {
+      "pitchMinDeg": 0,
+      "pitchMaxDeg": 45
     },
     "poise": {
       "max": 50,
@@ -52,7 +64,8 @@
         "torso_upper": 1.0,
         "torso_mid": 1.0,
         "torso_lower": 1.0
-      }
+      },
+      "rearMultiplier": 1.4
     }
   },
   "dodge": {
@@ -83,8 +96,8 @@
   },
   "physics": {
     "gravity": 20,
-    "maxGroundSpeed": 9,
-    "groundAccel": 65,
+    "maxGroundSpeed": 11,
+    "groundAccel": 95,
     "airControlMult": 0.3,
     "dragRetainPerSec": 0.05,
     "jumpImpulse": 6,
@@ -106,6 +119,7 @@
     "digStep": 0.25,
     "minDigHeight": 1.0,
     "digReach": 3.5,
+    "digTargetDistance": 1.0,
     "materialDrops": {
       "1": "dirt",
       "2": "stone",
@@ -133,7 +147,8 @@
     "defaultSpacing": 0,
     "capture": {
       "radiusWorldUnits": 12.0
-    }
+    },
+    "roofHeightAboveFloor": 2.0
   },
   "items": {
     "pickupRadius": 2.5
@@ -157,19 +172,78 @@
     "displacedHealthFraction": 0.5
   },
   "injuries": {
-    "broken_leg": { "modifiers": [{ "stat": "moveSpeed", "op": "mul", "value": 0.7 }] },
-    "deep_gash":  { "modifiers": [{ "stat": "armorReduction", "op": "add", "value": -0.08 }] },
-    "displaced":  { "combatEligible": false, "modifiers": [{ "stat": "moveSpeed", "op": "mul", "value": 0.7 }] }
+    "broken_leg": {
+      "modifiers": [
+        {
+          "stat": "moveSpeed",
+          "op": "mul",
+          "value": 0.7
+        }
+      ]
+    },
+    "deep_gash": {
+      "modifiers": [
+        {
+          "stat": "armorReduction",
+          "op": "add",
+          "value": -0.08
+        }
+      ]
+    },
+    "displaced": {
+      "combatEligible": false,
+      "modifiers": [
+        {
+          "stat": "moveSpeed",
+          "op": "mul",
+          "value": 0.7
+        }
+      ]
+    }
   },
   "species": {
-    "human": { "modifiers": [] },
-    "dwarf": { "modifiers": [
-      { "stat": "armorReduction", "op": "add", "value": 0.1 },
-      { "stat": "moveSpeed", "op": "mul", "value": 0.92 }
-    ] },
-    "elf": { "modifiers": [
-      { "stat": "moveSpeed", "op": "mul", "value": 1.1 }
-    ] }
+    "human": {
+      "modifiers": []
+    },
+    "dwarf": {
+      "modifiers": [
+        {
+          "stat": "armorReduction",
+          "op": "add",
+          "value": 0.1
+        },
+        {
+          "stat": "moveSpeed",
+          "op": "mul",
+          "value": 0.92
+        }
+      ],
+      "morphValues": {
+        "legLength": 0.75,
+        "torsoHeight": 0.88,
+        "headSize": 1.15,
+        "shoulderWidth": 1.3,
+        "hipWidth": 1.2,
+        "armLength": 0.9
+      }
+    },
+    "elf": {
+      "modifiers": [
+        {
+          "stat": "moveSpeed",
+          "op": "mul",
+          "value": 1.1
+        }
+      ],
+      "morphValues": {
+        "legLength": 1.2,
+        "torsoHeight": 1.08,
+        "headSize": 0.88,
+        "shoulderWidth": 0.85,
+        "hipWidth": 0.85,
+        "armLength": 1.15
+      }
+    }
   },
   "persistence": {
     "saveIntervalTicks": 6000
@@ -186,7 +260,8 @@
   },
   "prediction": {
     "correctionHalfLifeMs": 38,
-    "hardSnapThresholdUnits": 3.0
+    "hardSnapThresholdUnits": 3.0,
+    "remoteInterpDelayMs": 100
   },
   "npcAiDefaults": {
     "wanderRadius": 20,
@@ -222,6 +297,113 @@
     "socialScanRadius": 12,
     "maxStamina": 80,
     "perceptionRadius": 24,
-    "loudNoiseThreshold": 0.7
+    "loudNoiseThreshold": 0.7,
+    "rangedHoldTicks": 32
+  },
+  "render": {
+    "canopyWind": {
+      "dirX": 0.92,
+      "dirY": 0.39,
+      "strength": 0.06
+    },
+    "canopyFade": {
+      "minHeight": 2.0,
+      "maxHeight": 5.0,
+      "innerRadius": 9.0,
+      "outerRadius": 11.0,
+      "cutoff": 0.5
+    },
+    "wallFade": {
+      "minHeight": 0.3,
+      "maxHeight": 1.2,
+      "innerRadius": 1.5,
+      "outerRadius": 3.0
+    },
+    "textureStyle": {
+      "organicAmount": 0.25,
+      "dirtAmount": 0.2,
+      "sandAmount": 0.12
+    },
+    "supersample": {
+      "min": 1.2,
+      "max": 1.35
+    },
+    "pose": {
+      "crouchDropAmount": 0.9,
+      "crouchEaseOmega": 18,
+      "lookAtGain": 0.6,
+      "springOmega": 32
+    }
+  },
+  "input": {
+    "bindings": {
+      "moveForward": [
+        "KeyW",
+        "ArrowUp"
+      ],
+      "moveBack": [
+        "KeyS",
+        "ArrowDown"
+      ],
+      "moveLeft": [
+        "KeyA",
+        "ArrowLeft"
+      ],
+      "moveRight": [
+        "KeyD",
+        "ArrowRight"
+      ],
+      "jump": [
+        "Space"
+      ],
+      "dodge": [
+        "ShiftLeft",
+        "ShiftRight"
+      ],
+      "crouch": [
+        "KeyC"
+      ],
+      "block": [
+        "KeyF"
+      ],
+      "interact": [
+        "KeyE"
+      ],
+      "consume": [
+        "KeyQ"
+      ],
+      "useSkill": [
+        "KeyZ"
+      ],
+      "skill1": [
+        "Digit1"
+      ],
+      "skill2": [
+        "Digit2"
+      ],
+      "skill3": [
+        "Digit3"
+      ],
+      "skill4": [
+        "Digit4"
+      ]
+    }
+  },
+  "camera": {
+    "backDistance": 23.6,
+    "heightAbove": 35.4,
+    "lookAtBias": 1.0,
+    "fovDeg": 34,
+    "mouseSensitivity": 0.011,
+    "invertY": false,
+    "pitchRestDeg": 55,
+    "pitchMinDeg": 45,
+    "pitchMaxDeg": 62
+  },
+  "fogOfWar": {
+    "losHalfAngleRad": 0.9599310885968813,
+    "losRadius": 40,
+    "losRayCount": 110,
+    "losStep": 0.5
   }
 }

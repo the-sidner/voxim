@@ -1,38 +1,23 @@
 /**
- * SwingPredictor — client-side prediction of which WeaponActionDef the
- * server will fire for the next swing, given the equipped weapon's combo
- * chain (`swingable.chain`) and the local press-hold timer.
+ * SwingPredictor — press/hold-only prediction of the weapon action the
+ * server will fire for the next swing.
  *
- * Used by game.ts each frame the player is holding ACTION_USE_SKILL to
- * resolve a `weaponActionId` for `forceLocalAnimation` — that drives the
- * weapon trail / blade-attach without waiting RTT/2 for the server's
- * AnimationState delta.
+ * Predicts only the chain's opening move (`swingable.chain[0]`): the
+ * server's actual combo step (`SwingChain`) is server-only state and
+ * never reaches the client (T-349 de-networked ActorSlots too), so
+ * mid-combo continuation is not predictable client-side — it arrives
+ * at RTT/2 via the server-authoritative AnimationState delta instead.
+ * The predicted id only drives cosmetic catch-up render
+ * (`forceLocalAnimation`), so a mispredicted continuation self-corrects
+ * within one tick.
  *
- * Inputs (per call):
- *   - networked SwingChain.index for the local player (server-authoritative;
- *     index = 0 when no chain is active OR when csm.right_hand is idle).
- *   - csm.right_hand.node for chain-end detection (idle ⇒ predict step 0).
- *   - equipped weapon's swingable.chain + heavyChargeMs (from prefab via
- *     the bootstrap-loaded ContentService).
- *   - local press start timestamp tracked across frames.
- *
- * Output: the WeaponActionDef id for the predicted attack, or null when
- * the predictor can't make a confident call (no swingable, empty chain,
- * not pressed).
- *
- * Note on staleness: SwingChain isn't sent via "component removed" deltas
- * (the wire format has no such message — see state_binary.ts). When the
- * server-side chain ends, the client's cached index would persist forever.
- * The predictor compensates by ignoring the cached index whenever
- * csm.right_hand is in `idle` — chain only exists during a swing, so
- * the only chain-step-0 outcome from idle is the start of a new chain.
+ * Light vs. heavy is the local press-hold timer against
+ * `swingable.heavyChargeMs` — the same decision the server makes at
+ * windup end, so once the threshold is crossed the predicted id is what
+ * will actually fire.
  */
 
-interface SwingChainEntryLike { light: string; heavy: string }
-interface SwingableLike {
-  chain: SwingChainEntryLike[];
-  heavyChargeMs: number;
-}
+import type { SwingableData } from "@voxim/content";
 
 export class SwingPredictor {
   /** Wall-clock ms when the current press began. Null when not pressed. */
@@ -47,17 +32,13 @@ export class SwingPredictor {
    * @param pressed      Current frame's ACTION_USE_SKILL bit.
    * @param swingable    Equipped weapon's swingable.* fields, or null when
    *                     unarmed (caller substitutes a fallback id).
-   * @param chainIndex   Server-authoritative chain index from the networked
-   *                     SwingChain component. Pass 0 when not in a chain or
-   *                     when csm.right_hand is idle (caller decides).
    * @param now          Wall-clock ms (Date.now() or performance.now()).
    * @returns The predicted WeaponActionDef id, or null when the predictor
    *          declines to call it (no swingable, empty chain, not pressed).
    */
   predict(
     pressed: boolean,
-    swingable: SwingableLike | null,
-    chainIndex: number,
+    swingable: SwingableData | null,
     now: number,
   ): string | null {
     // Edge: press began this frame — record start time.
@@ -71,9 +52,9 @@ export class SwingPredictor {
     this.wasPressed = pressed;
 
     if (!pressed) return null;
-    if (!swingable || swingable.chain.length === 0) return null;
+    if (!swingable) return null;
 
-    const entry = swingable.chain[chainIndex % swingable.chain.length];
+    const entry = swingable.chain[0];
     if (!entry) return null;
 
     // Held past heavyChargeMs → predict heavy variant. The server makes

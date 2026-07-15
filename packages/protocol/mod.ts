@@ -15,17 +15,6 @@ export {
   resolveServiceSecret,
 } from "./src/service_auth.ts";
 
-export {
-  WORLD_MAP_VERSION,
-  encodeWorldMap,
-  decodeWorldMap,
-} from "./src/world_map.ts";
-export type {
-  WorldMapCell,
-  WorldMapPayload,
-  GatePosition,
-} from "./src/world_map.ts";
-
 export type {
   MovementDatagram,
   CommandDatagram,
@@ -42,6 +31,8 @@ export type {
   TradeCompletedEvent,
   LoreExternalisedEvent,
   LoreInternalisedEvent,
+  EnclosureChangedEvent,
+  EnclosedCell,
 } from "./src/messages.ts";
 
 export {
@@ -68,7 +59,6 @@ export type {
   CraftingCompletedPayload,
   BuildingCompletedPayload,
   HungerCriticalPayload,
-  ThirstCriticalPayload,
   GateApproachedPayload,
   NodeDepletedPayload,
   DayPhaseChangedPayload,
@@ -78,6 +68,7 @@ export type {
   TradeCompletedPayload,
   LoreExternalisedPayload,
   LoreInternalisedPayload,
+  EnclosureChangedPayload,
 } from "./src/tile_events.ts";
 
 export {
@@ -95,18 +86,11 @@ export type {
 } from "./src/world_snapshot.ts";
 export { worldSnapshotCodec } from "./src/world_snapshot.ts";
 
-export type {
-  ModelDefinition,
-  MaterialDef,
-  SkeletonDef,
-  ContentRequest,
-  ContentResponse,
-} from "./src/content.ts";
-export { contentRequestCodec, contentResponseCodec } from "./src/content.ts";
-
 export { ComponentType, COMPONENT_TYPE_TO_NAME } from "./src/component_types.ts";
-export { CODEC_BY_WIREID, type WireDecoder } from "./src/codec_registry.ts";
+export { BoundaryKind } from "./src/boundary_kind.ts";
+export { CODEC_BY_WIREID, networkedCodec, PRESENCE_ONLY_WIRE_IDS } from "./src/codec_registry.ts";
 export { EventType } from "./src/event_types.ts";
+export { isEventRelevant, subscribeAllEvents } from "./src/event_registry.ts";
 export { binaryStateMessageCodec } from "./src/state_binary.ts";
 export type {
   BinaryComponentEntry,
@@ -123,10 +107,6 @@ export {
   FOG_CELL_SIZE,
   FOG_CELL_COUNT,
   FOG_GRID_BYTES,
-  LOS_HALF_ANGLE_RAD,
-  LOS_RADIUS,
-  LOS_RAY_COUNT,
-  LOS_STEP,
   fogCellIndex,
   packFogCell,
   unpackFogCell,

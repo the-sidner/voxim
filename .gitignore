@@ -9,9 +9,6 @@ package-lock.json
 dist/
 *.js.map
 
-# Generated terrain data
-terrain_tile_*.bin
-
 # TLS certificates (generated locally)
 certs/
 

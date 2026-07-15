@@ -45,6 +45,13 @@ function ItemSlotCell({ item, index, onAction }: {
       { label: "Use",   onSelect: () => onAction({ type: "use_item",  fromSlot: index }) },
       { label: "Equip", onSelect: () => onAction({ type: "equip", itemType: item.itemType, fromSlot: index }) },
     ];
+    // Tomes carry a Lore fragment (T-018) — "Read" internalises it (T-020
+    // server substrate; first client wiring, T-072 heir ritual). Withdraw a
+    // tome out of the family library first (drag out of the ContainerPanel),
+    // then it's here in the burden to read.
+    if (item.itemType === contentService.value?.getGameConfig().lore.tomeItemType) {
+      actions.push({ label: "Read", onSelect: () => onAction({ type: "read_tome", fromSlot: index }) });
+    }
     if (deployablePrefabs.value.has(item.itemType)) {
       actions.push({ label: "Place", onSelect: () => onAction({ type: "deploy_item", fromSlot: index }) });
     }

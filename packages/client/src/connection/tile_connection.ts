@@ -6,17 +6,17 @@
  *   1. Client opens a bidirectional stream and sends TileJoinRequest (length-prefixed JSON).
  *   2. Server responds with TileJoinAck containing the canonical playerId.
  *   3. Server opens a unidirectional stream (server → client) for state messages.
- *   4. Client opens a content bidi stream and a command bidi stream.
+ *   4. Client opens a command bidi stream.
  *   5. Client sends movement as unreliable datagrams; discrete commands go on
  *      the reliable command stream (T-273 — datagrams dropped commands under load).
  */
 import type {
   MovementDatagram, CommandDatagram, BinaryStateMessage, BootstrapHeader, TileJoinRequest, TileJoinAck,
-  WorldSnapshot, ContentRequest, ContentResponse,
+  WorldSnapshot,
 } from "@voxim/protocol";
 import {
   movementDatagramCodec, commandDatagramCodec, binaryStateMessageCodec,
-  worldSnapshotCodec, contentRequestCodec, contentResponseCodec,
+  worldSnapshotCodec,
   encodeFrame, makeFrameReader,
 } from "@voxim/protocol";
 
@@ -33,9 +33,7 @@ export interface CharacterCreation {
 export class TileConnection {
   private transport: WebTransport | null = null;
   private datagramWriter: WritableStreamDefaultWriter<Uint8Array> | null = null;
-  private contentWriter: WritableStreamDefaultWriter<Uint8Array> | null = null;
   private commandWriter: WritableStreamDefaultWriter<Uint8Array> | null = null;
-  private contentResolvers: Array<(resp: ContentResponse) => void> = [];
 
   onStateMessage: ((msg: BinaryStateMessage) => void) | null = null;
   onSnapshot:     ((snap: WorldSnapshot) => void) | null = null;
@@ -170,16 +168,10 @@ export class TileConnection {
       this.onClose?.();
     });
 
-    // --- content bidi stream (client-opened, long-lived) ---
-    const contentStream = await this.transport.createBidirectionalStream();
-    this.contentWriter = contentStream.writable.getWriter();
-    this.drainContentStream(contentStream.readable).catch(() => {});
-
     // --- command bidi stream (client-opened, long-lived) ---
     // Discrete commands (equip, trade, place, debug) ride this reliable stream
     // rather than unreliable datagrams (T-273): a dropped equip/trade/place is a
-    // visible bug, and datagrams were measured dropping under load. The server
-    // accepts incoming bidi streams in open order, so this must follow content.
+    // visible bug, and datagrams were measured dropping under load.
     const commandStream = await this.transport.createBidirectionalStream();
     this.commandWriter = commandStream.writable.getWriter();
 
@@ -199,15 +191,6 @@ export class TileConnection {
     this.commandWriter.write(encodeFrame(commandDatagramCodec.encode(datagram))).catch(() => {});
   }
 
-  /** Send a content request and return the response (in-order, pipelined). */
-  async requestContent(req: ContentRequest): Promise<ContentResponse> {
-    if (!this.contentWriter) throw new Error("Content stream not open");
-    return new Promise((resolve) => {
-      this.contentResolvers.push(resolve);
-      this.contentWriter!.write(contentRequestCodec.encode(req)).catch(() => {});
-    });
-  }
-
   private async receiveSnapshots(): Promise<void> {
     if (!this.transport) return;
     const reader = (this.transport.datagrams.readable as ReadableStream<Uint8Array>).getReader();
@@ -219,25 +202,6 @@ export class TileConnection {
           this.onSnapshot?.(worldSnapshotCodec.decode(value));
         } catch {
           // Malformed datagram — discard
-        }
-      }
-    } finally {
-      reader.releaseLock();
-    }
-  }
-
-  private async drainContentStream(stream: ReadableStream<Uint8Array>): Promise<void> {
-    const reader = stream.getReader();
-    const { readFrame } = makeFrameReader(reader);
-    try {
-      while (true) {
-        const frame = await readFrame();
-        if (!frame) break;
-        try {
-          const resp = contentResponseCodec.decode(frame);
-          this.contentResolvers.shift()?.(resp);
-        } catch {
-          // Malformed — skip
         }
       }
     } finally {
@@ -290,13 +254,10 @@ export class TileConnection {
 
   close(): void {
     this.datagramWriter?.close().catch(() => {});
-    this.contentWriter?.close().catch(() => {});
     this.commandWriter?.close().catch(() => {});
     this.transport?.close();
     this.transport = null;
     this.datagramWriter = null;
-    this.contentWriter = null;
     this.commandWriter = null;
-    this.contentResolvers = [];
   }
 }

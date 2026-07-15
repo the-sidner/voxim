@@ -16,14 +16,16 @@
  */
 import * as THREE from "three";
 import type { EntityState } from "../state/client_world.ts";
-import type { ModelDefinition, MaterialDef, SkeletonDef, AnimationStateData, ResolvedSubObject } from "@voxim/content";
+import type { ModelDefinition, MaterialDef, SkeletonDef, AnimationStateData, ResolvedSubObject, DissolveProfileDef } from "@voxim/content";
+import type { ActiveActionsData } from "@voxim/codecs";
 import { buildVoxelMaterial } from "./voxel_material.ts";
 import { paletteToken } from "./palette.ts";
 import { modelToThree } from "./coords.ts";
-import { bakeVoxels } from "./voxel_bake.ts";
+import { bakeVoxels, resolveFrayCoreness, driftDirFor } from "./voxel_bake.ts";
 import { geometryFromBaked } from "./voxel_geo.ts";
 import type { VoxelAtom } from "@voxim/content";
 import { makeNameSprite, setNameSpriteText, disposeNameSprite } from "./name_label.ts";
+import { registerDissolveDrift, type DissolveUniforms } from "./dissolve_shader.ts";
 
 // Shared placeholder geometries — never disposed individually
 const GEO_BODY  = new THREE.BoxGeometry(0.8, 1.8, 0.8);
@@ -56,7 +58,9 @@ export interface PosRecord {
  * slots, which inherit the bone's transform automatically through the scene
  * hierarchy — no per-frame positioning needed).
  *
- * slotId examples: "main_hand", "off_hand", "head", "chest", "legs_upper_l"
+ * slotId examples: "main_hand", "off_hand", "head", "chest" (single-bone
+ * equip slots, keyed by equip-slot name) or "legs:upper_leg_l" (T-223 —
+ * a multi-bone equip slot's per-bone fan-out, keyed `${equipSlot}:${boneId}`).
  */
 export interface AttachmentSlot {
   anchor: THREE.Group;
@@ -69,6 +73,17 @@ export interface AttachmentSlot {
    */
   boneParented: boolean;
   /**
+   * T-223 — the bone this ENTITY-ROOT slot rest-follows each frame (position
+   * + rotation) when it isn't mid-swing (`updateAttachmentPositions`'s
+   * non-blade branch). Resolved once, at slot-build time, from the scene
+   * graph (`resolveItemAttachment`) rather than a static slotId→bone table.
+   * Meaningless for bone-parented slots (boneParented === true) — Three.js
+   * already propagates the bone's transform for those. Null while the
+   * slot's parent hasn't resolved yet (transient) or for a slot with no
+   * rest-follow behavior at all.
+   */
+  restBoneId: string | null;
+  /**
    * Hand-bone-local attachment data when this slot holds a blade-bearing
    * item (a weapon with a swingable component). Null for shields,
    * lanterns, or any other held thing without a blade. When present, the
@@ -78,6 +93,17 @@ export interface AttachmentSlot {
    * maneuver. Set per-slot so each hand can hold a different blade.
    */
   bladeAttach: { base: [number, number, number]; tip: [number, number, number]; holdBone: string } | null;
+  /**
+   * T-306 — the ITEM entity id this slot's voxels were baked for, when the
+   * slot holds a procedurally-generated piece (blade_grammar weapon /
+   * armor_grammar plate). Generated items share one anchor `modelId` (e.g.
+   * `generated_blade`) across every instance, so the modelId-unchanged
+   * early-exit can't tell two different generated swords apart — this field
+   * is the extra equality key that forces a re-bake when the equipped item
+   * ENTITY changes even though its anchor modelId didn't. Null/absent for
+   * authored (non-generated) items.
+   */
+  builtItemId?: string | null;
 }
 
 export interface EntityMeshGroup {
@@ -88,6 +114,20 @@ export interface EntityMeshGroup {
   voxelMeshes: THREE.Mesh[] | null;
   /** Non-null when in skeleton mode. boneId → bone Group. */
   boneGroups: Map<string, THREE.Group> | null;
+  /**
+   * T-223 — boneId ↔ bone-ENTITY-id, built from the character entity's
+   * replicated bone children (`ClientWorld.descendants()`, walked once at
+   * skeleton-build time by `EntityMeshRegistry`). This is IDENTITY only —
+   * which wire entity corresponds to which content boneId — never geometry
+   * or transform; `boneGroups` above stays the one THREE.Group-per-boneId
+   * pose target, built from content `SkeletonDef` data exactly as before.
+   * `resolveItemAttachment` uses `boneIdByEntity` to turn an equipped item's
+   * scene-graph parent (a bone entity id) into the boneId `syncArmorSlot`/
+   * `syncHandSlot` need. Empty (not null) before the skeleton is built or
+   * for a non-skeletal entity — see `createEntityMesh`.
+   */
+  boneEntityByBoneId: Map<string, string>;
+  boneIdByEntity: Map<string, string>;
   /**
    * Item attachment slots — slotId → AttachmentSlot.
    * Entity-root slots are positioned per-frame by the renderer.
@@ -104,6 +144,16 @@ export interface EntityMeshGroup {
   boneSlotTransforms: Map<string, { x: number; y: number; z: number; scale: number }>;
   /** Cached animation state — used by the renderer for per-frame pose evaluation. */
   animationState: AnimationStateData | null;
+  /**
+   * Cached action runtime (T-297/T-298) — slot → {actionId, phase,
+   * ticksInPhase}, mirrored from `EntityState.activeActions` for EVERY AoI
+   * entity (not just the local player's cast bar). The renderer reads this
+   * to derive phase-driven visuals purely client-side: the telegraph lead
+   * clip (`preWindup`) and the dodge i-frame flash both key off phase name +
+   * ticksInPhase here, cross-referenced against the ActionDef via
+   * ContentCache.getAction() — no new wire field.
+   */
+  activeActions: ActiveActionsData | null;
   /** Wall-clock ms when animationState was last updated — used to extrapolate ticksIntoAction between server ticks. */
   lastAnimUpdateMs: number;
   /**
@@ -124,6 +174,20 @@ export interface EntityMeshGroup {
    */
   velocityX: number;
   velocityY: number;
+  /**
+   * Procedural gait phase accumulator (T-308) — ground DISTANCE travelled
+   * this stride, wrapped to [0, gait.strideLength), NOT elapsed time. The
+   * renderer advances it each frame by the entity's actual ground-plane
+   * position delta (via `entityGroundXY`), so the gait phase always
+   * matches ground distance covered regardless of movement speed — the
+   * whole no-footslide property depends on this being distance-driven.
+   * `gaitGroundX/Y` are the previous frame's ground position, used to
+   * compute that delta; `null` = unseeded (first sight / model swap —
+   * seeds to current position next frame instead of faking a jump).
+   */
+  gaitDistance: number;
+  gaitGroundX: number | null;
+  gaitGroundY: number | null;
   /** Facing angle in radians (same convention as Facing component). */
   facingAngle: number;
   modelId: string | null;
@@ -194,6 +258,26 @@ export interface EntityMeshGroup {
    * presentational — no wire or server involvement.
    */
   layerFades: Map<string, LayerFade>;
+  /**
+   * Death-dissolve drift uniform bundles (T-311 P5c) — one per merged
+   * sub-mesh material that carries the `aFray`/`aDriftDir` bake sidecar
+   * (i.e. this entity resolved a `DissolveProfileDef`). Empty for every
+   * entity without a profile. Pushed from `AnimationState.dissolutionPhase`
+   * once per frame by the renderer's per-entity animation loop, the same
+   * way `CanopyFade.update()` pushes `uPlayerY` — Three.js re-reads
+   * `.value` at draw time, no shader recompile needed per frame.
+   */
+  dissolveUniforms: DissolveUniforms[];
+  /**
+   * T-339 — true once a crumble death has detached this entity's bone
+   * groups out of `mesh.group`'s hierarchy into a CrumbleController-owned
+   * per-corpse container. Gates the renderer's per-entity pose-eval block
+   * (`!mesh.crumbling`) so the pose pipeline stops driving bones that no
+   * longer live under this mesh — set once, at death, never fed back into
+   * pose evaluation. `swing_pose.ts`/`ik_solver.ts`/`skeleton_solver.ts`/
+   * `skeleton_evaluator.ts` never read this field.
+   */
+  crumbling: boolean;
 }
 
 // ---- create ----
@@ -207,14 +291,20 @@ export function createEntityMesh(state: EntityState, isLocal: boolean): EntityMe
     placeholder,
     voxelMeshes: null,
     boneGroups: null,
+    boneEntityByBoneId: new Map(),
+    boneIdByEntity: new Map(),
     attachments: new Map(),
     boneSlotTransforms: new Map(),
     boneSprings: new Map(),
     crouchEased: 0,
     animationState: state.animationState ?? null,
+    activeActions: state.activeActions ?? null,
     lastAnimUpdateMs: performance.now(),
     velocityX: state.velocity?.x ?? 0,
     velocityY: state.velocity?.y ?? 0,
+    gaitDistance: 0,
+    gaitGroundX: null,
+    gaitGroundY: null,
     facingAngle: state.facing?.angle ?? 0,
     modelId: null,
     skeletonId: null,
@@ -228,6 +318,8 @@ export function createEntityMesh(state: EntityState, isLocal: boolean): EntityMe
     nameLabelText: "",
     rollLiftY: 0,
     layerFades: new Map(),
+    dissolveUniforms: [],
+    crumbling: false,
   };
   updateEntityMesh(mesh, state);
   syncNameLabel(mesh, state);
@@ -367,7 +459,24 @@ function clearMeshContent(mesh: EntityMeshGroup): void {
   }
   mesh.attachments.clear();
   mesh.boneSlotTransforms.clear();
+  // T-223: identity maps are rebuilt fresh right after upgradeToSkeletonModel
+  // returns (EntityMeshRegistry walks the bone entities again) — clear here
+  // so a model swap can't leave a stale entity→boneId mapping alive.
+  mesh.boneEntityByBoneId.clear();
+  mesh.boneIdByEntity.clear();
   mesh.boneSprings.clear(); // drop stale spring state so a model swap doesn't ease from a garbage pose
+  mesh.dissolveUniforms = []; // drop refs to about-to-be-disposed materials' uniform bundles
+  // Gait accumulator (T-308): re-seed on next frame instead of carrying a
+  // ground-position baseline from a possibly-different skeleton/scale.
+  mesh.gaitDistance = 0;
+  mesh.gaitGroundX = null;
+  mesh.gaitGroundY = null;
+  // T-339: defensive reset — unreachable in practice (a crumbling mesh is
+  // never model-swapped; CrumbleController.dispose(entityId) is the real
+  // teardown for a crumble-detached bone subtree, called separately from
+  // EntityMeshRegistry.removeEntity), but matches this function's existing
+  // reset-everything-on-clear style.
+  mesh.crumbling = false;
 
   // 2. Bone hierarchy — traverse disposes body-part voxels inside bone groups.
   if (mesh.boneGroups) {
@@ -405,30 +514,96 @@ function clearMeshContent(mesh: EntityMeshGroup): void {
 }
 
 /**
+ * Death-dissolve bake input (T-311 P5c) — resolved once per sub-object by
+ * the caller (it needs the skeleton's bone-distance-from-root, which
+ * `buildMergedSubMeshes` doesn't have access to on its own) and passed
+ * through so `bakeVoxels` gets `fray01`/`driftDir` atoms. Absent for the
+ * overwhelming majority of sub-objects (only a `dissolveProfileId`-bearing
+ * entity's bone_segment sub-objects ever carry one) — every other call
+ * site's atoms stay byte-identical (no fray01/driftDir fields at all).
+ */
+export interface DissolveBakeSpec {
+  /** This sub-object's bone's normalised distance-from-root, 0..1 (already
+   *  divided by the skeleton's overall extent) — see `boneDistanceFrac`. */
+  boneDistanceFrac: number;
+  frayBandWidth: number;
+  maxSeparationDistance: number;
+}
+
+/**
  * Build one MERGED THREE.Mesh per material for a sub-object's voxels (T-281) —
  * replaces the N-per-node `buildVoxelMesh` path through the `bakeVoxels` kitchen.
  * Geometrically identical (each voxel bakes to the same absolute model→three
  * position) but collapses a sub-object into ~1 draw per material and drops the
  * fragile bake-cursor coupling. `scale` is the sub-object's voxel size.
+ *
+ * `dissolve`, when present, seeds each atom's `fray01`/`driftDir` from the
+ * sub-object's precomputed bone-distance fraction (uniform across every
+ * voxel of this sub-object — bone-level granularity, not per-voxel; a bone
+ * segment is a handful of voxels, so this is coarse but cheap and correct
+ * enough for v1) and registers the dissolve-drift shader patch on each
+ * resulting material, collecting the per-material uniform bundle into
+ * `dissolveUniformsOut`.
  */
 function buildMergedSubMeshes(
   nodes: ReadonlyArray<{ x: number; y: number; z: number; materialId: number }>,
   scale: { x: number; y: number; z: number },
   materials: Map<number, MaterialDef>,
   onTop: boolean,
+  dissolve?: DissolveBakeSpec,
+  dissolveUniformsOut?: DissolveUniforms[],
 ): THREE.Mesh[] {
-  const atoms: VoxelAtom[] = nodes.map((n) => ({
-    cx: n.x * scale.x, cy: n.y * scale.y, cz: n.z * scale.z,
-    sx: scale.x, sy: scale.y, sz: scale.z,
-    materialId: n.materialId,
-  }));
+  const fray01 = dissolve
+    ? resolveFrayCoreness(dissolve.boneDistanceFrac, 1, dissolve.frayBandWidth)
+    : 0;
+  const atoms: VoxelAtom[] = nodes.map((n) => {
+    const cx = n.x * scale.x, cy = n.y * scale.y, cz = n.z * scale.z;
+    return {
+      cx, cy, cz,
+      sx: scale.x, sy: scale.y, sz: scale.z,
+      materialId: n.materialId,
+      ...(fray01 > 0 && { fray01, driftDir: driftDirFor(cx, cy, cz) }),
+    };
+  });
+  return buildMeshesFromAtoms(atoms, materials, onTop, dissolve, dissolveUniformsOut);
+}
+
+/**
+ * Bake merged THREE.Mesh(es) — one per material — from already-built
+ * VoxelAtom[]. Shared tail of `buildMergedSubMeshes` (authored sub-object
+ * nodes → atoms) and the T-186 Layer 2 recipe path (`evaluateBodyRecipe`'s
+ * atoms are already built) so both meshing routes bake through the identical
+ * dissolve/material/geometry pipeline.
+ */
+function buildMeshesFromAtoms(
+  atoms: ReadonlyArray<VoxelAtom>,
+  materials: Map<number, MaterialDef>,
+  onTop: boolean,
+  dissolve?: DissolveBakeSpec,
+  dissolveUniformsOut?: DissolveUniforms[],
+): THREE.Mesh[] {
+  const fray01 = dissolve
+    ? resolveFrayCoreness(dissolve.boneDistanceFrac, 1, dissolve.frayBandWidth)
+    : 0;
+  const withFray = fray01 > 0
+    ? atoms.map((a) => ({ ...a, fray01, driftDir: driftDirFor(a.cx, a.cy, a.cz) }))
+    : atoms;
   const matIds = new Set<number>();
-  for (const n of nodes) matIds.add(n.materialId);
+  for (const a of atoms) matIds.add(a.materialId);
   const meshes: THREE.Mesh[] = [];
   for (const matId of matIds) {
-    const baked = bakeVoxels(atoms, matId);
+    const matDef = materials.get(matId);
+    // T-326: read the material's warp amplitude (render.relief.dispMag) — the
+    // same knob terrain/scatter/props read — so characters, equipment, and
+    // dynamic props share one content-authored warp axis. Absent ⇒ bakeVoxels'
+    // own per-voxel default (byte-identical to before this read existed).
+    const baked = bakeVoxels(withFray, matId, matDef?.render?.relief?.dispMag, matDef?.render?.tintJitter);
     if (baked.indices.length === 0) continue;
-    const mesh = new THREE.Mesh(geometryFromBaked(baked), buildVoxelMaterial(materials.get(matId), matId, onTop));
+    const material = buildVoxelMaterial(matDef, matId, onTop);
+    if (fray01 > 0 && dissolve && dissolveUniformsOut) {
+      dissolveUniformsOut.push(registerDissolveDrift(material, dissolve.maxSeparationDistance));
+    }
+    const mesh = new THREE.Mesh(geometryFromBaked(baked), material);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     meshes.push(mesh);
@@ -437,6 +612,49 @@ function buildMergedSubMeshes(
 }
 
 // ---- upgrade to skeleton model ----
+
+/**
+ * Death-dissolve bone-distance table (T-311 P5c) — for every bone, its
+ * cumulative rest-offset length from the skeleton root (bones with no
+ * parent), and the overall extent (the farthest bone's distance). Used to
+ * fray a bone-segment sub-object based on how far out on the limb it sits
+ * (root/torso never fray, extremities do) WITHOUT touching `VoxelNode` or
+ * `bone_segment.json` — every shared biped model stays byte-identical for
+ * any entity that doesn't resolve a `DissolveProfileDef`.
+ *
+ * Bone-level granularity (not per-voxel): a bone segment is a handful of
+ * voxels sharing one rigid transform, so "how loose is this LIMB" is the
+ * natural grain here — finer per-voxel variation isn't worth the
+ * complexity for a v1 corrupted-creature look.
+ */
+export interface BoneDistanceTable {
+  /** boneId → cumulative distance from root (model-space units, unscaled). */
+  distance: Map<string, number>;
+  /** The farthest bone's distance — the normalising divisor. 0 if the
+   *  skeleton has a single bone (guarded by callers via resolveFrayCoreness's
+   *  own modelExtent<=0 check). */
+  maxDistance: number;
+}
+
+export function boneSegmentLength(b: SkeletonDef["bones"][number]): number {
+  return Math.sqrt(b.restX * b.restX + b.restY * b.restY + b.restZ * b.restZ);
+}
+
+/** Pure — unit-testable without THREE. Bones must be parent-first ordered
+ *  (the same authoring convention `upgradeToSkeletonModel` already relies on
+ *  for building the Group hierarchy in one pass). Exported for direct
+ *  testing (T-311 P5c). */
+export function computeBoneDistanceTable(skeleton: SkeletonDef): BoneDistanceTable {
+  const distance = new Map<string, number>();
+  let maxDistance = 0;
+  for (const bone of skeleton.bones) {
+    const parentDist = bone.parent !== null ? (distance.get(bone.parent) ?? 0) : 0;
+    const d = parentDist + boneSegmentLength(bone);
+    distance.set(bone.id, d);
+    if (d > maxDistance) maxDistance = d;
+  }
+  return { distance, maxDistance };
+}
 
 /** Per-bone rest-axis morph multipliers (x/y/z), derived from morph params. */
 interface BoneMorphScales {
@@ -509,6 +727,27 @@ export function upgradeToSkeletonModel(
   materials: Map<number, MaterialDef>,
   scale: { x: number; y: number; z: number },
   morphParams?: Record<string, number>,
+  /**
+   * Death-dissolve profile (T-311 P5c) — when present, every bone-attached
+   * sub-object gets fray01/driftDir atoms derived from its bone's distance
+   * from the skeleton root (see `computeBoneDistanceTable`), and the
+   * resulting materials register the dissolve-drift shader patch. The
+   * caller resolves WHICH profile applies (currently: the sole registered
+   * `DissolveProfileDef`, since the wire carries no per-entity archetype
+   * id — see `entity_mesh_registry.ts`'s call site for the exact caveat).
+   */
+  dissolveProfile?: DissolveProfileDef,
+  /**
+   * T-186 Layer 2 — recipe-driven body volumes, already voxelized by the
+   * caller (`evaluateBodyRecipe(skeleton.bodyRecipe, morphParams, ...)`) so
+   * this function stays pure Three.js meshing with no formula evaluation.
+   * Atoms are bone-local MODEL space (already morph-scaled — the recipe's
+   * formulas read the same `morphParams` passed above), keyed by boneId.
+   * Merged into the same per-bone Group `resolvedSubs` attaches to, so a
+   * partially-migrated skeleton (some bones on recipe, some still on
+   * authored sub-objects) renders both without a dual-path flag.
+   */
+  recipeAtoms?: ReadonlyMap<string, VoxelAtom[]>,
 ): void {
   clearMeshContent(mesh);
 
@@ -548,6 +787,11 @@ export function upgradeToSkeletonModel(
     boneGroups.set(bone.id, bg);
   }
 
+  // Death-dissolve (T-311 P5c): precompute the bone-distance table once for
+  // the whole skeleton so every sub-object's fray amount is a cheap lookup.
+  const boneDistances = dissolveProfile ? computeBoneDistanceTable(skeleton) : undefined;
+  const dissolveUniforms: DissolveUniforms[] = [];
+
   // Attach resolved sub-object voxels to their bone groups (or entity root)
   const voxelMeshes: THREE.Mesh[] = [];
   for (const sub of resolvedSubs) {
@@ -582,14 +826,51 @@ export function upgradeToSkeletonModel(
     // Sub-objects parented to mesh.group (sub.boneId is null) get factor
     // 1.0 — they aren't part of the morphed skeleton.
     const subScale = skeletonSubScale(sub, scale, morph);
-    for (const m of buildMergedSubMeshes(subDef.nodes, subScale, materials, false)) {
+    const dissolveSpec: DissolveBakeSpec | undefined = dissolveProfile && boneDistances && sub.boneId
+      ? {
+          boneDistanceFrac: boneDistances.maxDistance > 0
+            ? (boneDistances.distance.get(sub.boneId) ?? 0) / boneDistances.maxDistance
+            : 0,
+          frayBandWidth: dissolveProfile.frayBandWidth,
+          maxSeparationDistance: dissolveProfile.maxSeparationDistance,
+        }
+      : undefined;
+    for (const m of buildMergedSubMeshes(subDef.nodes, subScale, materials, false, dissolveSpec, dissolveUniforms)) {
       subGroup.add(m);
       voxelMeshes.push(m);
     }
   }
 
+  // T-186 Layer 2 — attach recipe-voxelized body parts to their bone group.
+  // Atoms are already fully resolved (morph-scaled, MODEL-space, bone-local)
+  // by evaluateBodyRecipe, so no further per-bone scale multiply here — that
+  // would double-apply the morph the recipe's own formulas already encode.
+  if (recipeAtoms) {
+    for (const [boneId, atoms] of recipeAtoms) {
+      const parent = boneGroups.get(boneId);
+      if (!parent || atoms.length === 0) continue;
+      const dissolveSpec: DissolveBakeSpec | undefined = dissolveProfile && boneDistances
+        ? {
+            boneDistanceFrac: boneDistances.maxDistance > 0
+              ? (boneDistances.distance.get(boneId) ?? 0) / boneDistances.maxDistance
+              : 0,
+            frayBandWidth: dissolveProfile.frayBandWidth,
+            maxSeparationDistance: dissolveProfile.maxSeparationDistance,
+          }
+        : undefined;
+      const subGroup = new THREE.Group();
+      subGroup.name = `recipe:${boneId}`;
+      parent.add(subGroup);
+      for (const m of buildMeshesFromAtoms(atoms, materials, false, dissolveSpec, dissolveUniforms)) {
+        subGroup.add(m);
+        voxelMeshes.push(m);
+      }
+    }
+  }
+
   mesh.boneGroups = boneGroups;
   mesh.voxelMeshes = voxelMeshes;
+  mesh.dissolveUniforms = dissolveUniforms;
   mesh.modelId = def.id;
   mesh.skeletonId = skeleton.id;
 
@@ -632,6 +913,18 @@ export function upgradeToSkeletonModel(
         // Bottom face = node center - half voxel height
         const voxelBottomY = boneY + subOffsetY + (node.z - 0.5) * subScaleZ;
         if (voxelBottomY < minVoxelY) minVoxelY = voxelBottomY;
+      }
+    }
+    // T-186 Layer 2: recipe atoms are already morph-resolved model units
+    // (the recipe's own formulas fold in the morph, unlike subScaleZ above)
+    // — only the entity's uniform scale.z applies on top.
+    if (recipeAtoms) {
+      for (const [boneId, atoms] of recipeAtoms) {
+        const boneY = boneWorldY.get(boneId) ?? 0;
+        for (const atom of atoms) {
+          const voxelBottomY = boneY + (atom.cz - atom.sz / 2) * scale.z;
+          if (voxelBottomY < minVoxelY) minVoxelY = voxelBottomY;
+        }
       }
     }
     mesh.groundOffsetWorld = Math.max(0, -minVoxelY);
@@ -720,7 +1013,9 @@ export function updateEntityMesh(mesh: EntityMeshGroup, state: EntityState): voi
   }
 
   // Record position snapshot for interpolation (only when position actually changed).
-  // Store the offset-adjusted y so interpolation also renders at the correct height.
+  // world(x,y,z) → three(x,height,y) swap happens here (matches the instant-set
+  // path above and renderer.ts's predicted-position path) — store the
+  // offset-adjusted y so interpolation also renders at the correct height.
   if (pos) {
     mesh.posBuffer.push({
       t: performance.now(),
@@ -733,6 +1028,9 @@ export function updateEntityMesh(mesh: EntityMeshGroup, state: EntityState): voi
   if (state.animationState !== undefined) {
     mesh.animationState = state.animationState;
     mesh.lastAnimUpdateMs = performance.now();
+  }
+  if (state.activeActions !== undefined) {
+    mesh.activeActions = state.activeActions;
   }
   if (state.velocity !== undefined) {
     mesh.velocityX = state.velocity.x;
@@ -764,7 +1062,7 @@ export function ensureAttachment(mesh: EntityMeshGroup, slotId: string): Attachm
     const anchor = new THREE.Group();
     anchor.name = `attachment:${slotId}`;
     mesh.group.add(anchor);
-    slot = { anchor, modelId: null, boneParented: false, bladeAttach: null };
+    slot = { anchor, modelId: null, boneParented: false, bladeAttach: null, restBoneId: null };
     mesh.attachments.set(slotId, slot);
   }
   return slot;
@@ -782,6 +1080,13 @@ export function ensureAttachment(mesh: EntityMeshGroup, slotId: string): Attachm
  *                   (converted to Three.js space via the entity scale).
  * @param entityScale  Entity scale (from ModelRef).
  * @param subScale   Uniform sub-object scale multiplier (e.g. 0.5 for arms/legs).
+ * @param rot        Optional model-space Euler rotation (rotX, rotY, rotZ,
+ *                   radians) applied to the anchor at creation — used by
+ *                   authored offset anchors (T-309 hotbar body anchors) that
+ *                   aren't aligned to a body-part sub-object and so need a
+ *                   tilt of their own. Same axis remap as the position swap
+ *                   below (model z=up → Three y). Absent for armor slots,
+ *                   which inherit the bone's own orientation unchanged.
  */
 export function ensureBoneAttachment(
   mesh: EntityMeshGroup,
@@ -790,6 +1095,7 @@ export function ensureBoneAttachment(
   posX: number, posY: number, posZ: number,
   entityScale: { x: number; y: number; z: number },
   subScale: number,
+  rot?: readonly [number, number, number],
 ): AttachmentSlot {
   let slot = mesh.attachments.get(slotId);
   if (!slot) {
@@ -801,11 +1107,12 @@ export function ensureBoneAttachment(
       posZ * entityScale.z,
       posY * entityScale.y,
     );
+    if (rot) anchor.quaternion.setFromEuler(new THREE.Euler(rot[0], rot[2], rot[1], "XYZ"));
     // Store subScale on the anchor's userData so syncEquipment can read it
     // when building the armor model voxels at the correct scale.
     anchor.userData.armorSubScale = subScale;
     boneGroup.add(anchor);
-    slot = { anchor, modelId: null, boneParented: true, bladeAttach: null };
+    slot = { anchor, modelId: null, boneParented: true, bladeAttach: null, restBoneId: null };
     mesh.attachments.set(slotId, slot);
   }
   return slot;
@@ -847,6 +1154,38 @@ export function attachModelToSlot(
   if (anchorOffset) modelGroup.position.set(anchorOffset.x, anchorOffset.y, anchorOffset.z);
   slot.anchor.add(modelGroup);
   slot.modelId = modelDef.id;
+}
+
+/**
+ * T-306 — attach a slot from PRE-BUILT `VoxelAtom[]` (a blade_grammar /
+ * armor_grammar generator's output) instead of an authored `ModelDefinition`.
+ * The atoms are ALREADY in the target voxel scale (the generator emits in
+ * world units — voxelSize is a param), so unlike `attachModelToSlot` there is
+ * no per-model uniform scale here; the caller applies any anchor offset. Bakes
+ * through the SAME `buildMeshesFromAtoms` tail every authored/recipe path uses,
+ * so a generated blade inherits the identical edge-ink / flat-shading / palette
+ * look. `modelId` labels the slot (the shared anchor id, e.g. `generated_blade`)
+ * so the modelId-unchanged early-exit keeps working; `syncHandSlot` also tracks
+ * `builtItemId` to force a re-bake when the specific equipped item changes.
+ */
+export function attachAtomsToSlot(
+  mesh: EntityMeshGroup,
+  slotId: string,
+  modelId: string,
+  atoms: ReadonlyArray<VoxelAtom>,
+  materials: Map<number, MaterialDef>,
+  onTop = false,
+  anchorOffset?: { x: number; y: number; z: number },
+): void {
+  const slot = ensureAttachment(mesh, slotId);
+  detachModelFromSlot(mesh, slotId);
+
+  const modelGroup = new THREE.Group();
+  modelGroup.name = `generated:${modelId}`;
+  for (const m of buildMeshesFromAtoms(atoms, materials, onTop)) modelGroup.add(m);
+  if (anchorOffset) modelGroup.position.set(anchorOffset.x, anchorOffset.y, anchorOffset.z);
+  slot.anchor.add(modelGroup);
+  slot.modelId = modelId;
 }
 
 /**

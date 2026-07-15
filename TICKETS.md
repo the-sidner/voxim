@@ -18,9 +18,244 @@ Effort: **S** < half a day · **M** half–two days · **L** multi-day or archit
 
 ## Combat
 
+### T-337 · Spell/throw targeting — hold to pre-cast and aim, release to fire
+Effort: M   Status: done   (user, 2026-07-14)   Commit: edb9f5f
+
+Landed on `lane/t337-t338-aim-ranged`: `ActionDef.releaseActionId` pairs a
+perpetual-phase (ambient) hold action with the action its release fires;
+`PrimaryIntentResolver` reuses `ACTION_USE_SKILL` as a held signal (no new
+wire bit) gated on whether the equipped weapon's swingActionId is
+hold-to-aim. Pitch added to the wire (`MovementDatagram.pitch` /
+`InputState.pitch`); `ballisticStep`/`launchVelocity` moved to
+`@voxim/engine` so the client's new `AimIndicatorRenderer` (arc + landing
+marker) integrates the IDENTICAL math the server fires the projectile
+with. CAMERA-CAPTURE decision: the aim-pitch axis is CAPTURED (its own
+independent band, `combat.aim.pitchMinDeg/pitchMaxDeg`) rather than
+reusing CameraRig's own narrow 17° framing band — justified in full in
+the `client: wire aimWeaponActive...` commit body. Proved generic (not
+bow-only) via a new `sling` + `throwing_rock` thrown-item content pair
+(`throw_mechanic.test.ts`), landed before T-338's bow. In-lane
+verification only (type-check + full suite, 987 passed); live
+testplay/docker verification deferred to post-merge per lane rules.
+
+One aiming mechanic, shared by spells AND throws:
+- **Facing** (mouse-X, T-328) aims the DIRECTION.
+- **Pitch** (mouse-Y — today it only pans the camera within its clamped band) aims the DISTANCE/arc: up =
+  farther, down = nearer. This gives the pitch axis a real gameplay job for the first time; decide whether
+  the camera still pans while aiming or whether the axis is fully "captured" during a cast (a live call —
+  try both).
+- **Hold the action key** to enter pre-cast: the action winds up and HOLDS at full charge while you aim.
+- **Release** fires.
+- **Block cancels** the cast (block is the universal out).
+Build on the action primitive (this is a windup that holds — the `ticks: -1` perpetual-phase idiom already
+exists in the dispatcher), the projectile resolver (`actions/resolvers/projectile.ts`), and T-327's tuning
+pipeline for the feel. A hold-to-aim indicator (arc/landing marker) is part of the deliverable — you cannot
+aim what you cannot see.
+Done when: holding the key charges and aims (direction from facing, distance from pitch), release fires
+along the aimed arc, block cancels cleanly, and the same mechanic drives a thrown item.
+
+### T-338 · Ranged weapons — build out the bow/crossbow path
+Effort: M   Status: done   (user, 2026-07-14)   Commit: 73b66a9
+
+`bow_shot`/`crossbow_shot` weapon_actions and a projectile resolver already exist, but the ranged path is
+thin (no swingPath, no draw/aim loop, no ammo economy worth the name). Build it out on the T-337 aiming
+mechanic (draw = hold, release = loose), with real projectile flight/drop, ammo from the inventory, and
+hit resolution through the same sweep + hit-bubbling path melee uses (T-333). Compose with T-306's
+procedural equipment (a generated bow) rather than one authored model.
+Done when: a bow is drawn, aimed and loosed with the T-337 mechanic; arrows fly with drop, consume ammo,
+and hit through the normal hit path.
+
+Landed on `lane/t337-t338-aim-ranged`: DRIFT CONFIRMED WORSE than "thin" — `wooden_bow`/
+`wooden_crossbow` had NO `swingActionId`, so equipping a bow silently fell back to the melee
+blade-sweep ActionDef against a weapon with no blade (traced nothing, dealt nothing) while
+`ranged_shot.json` sat unreferenced by any prefab. `bow_draw`/`bow_loose` +
+`crossbow_draw`/`crossbow_loose` (mirroring T-337's throw_draw/throw_release shape) replace it;
+`ranged_shot.json` deleted outright. `arrow`/`crossbow_bolt` Stackable ammo added, gated through
+T-337's generic `has_item`/`consume_item`. New boot cross-check: every `swingable.swingActionId`
+must resolve to a loaded ActionDef. Found and fixed a second real regression while landing this:
+`attackTargetJob` held `ACTION_USE_SKILL` unconditionally, which is harmless for melee but would
+have frozen every archer mid-draw forever once wooden_bow's swingActionId went live — fixed with a
+weapon-agnostic release-pulse duty cycle. Procedural bow generation (T-306 composition) explicitly
+DEFERRED to T-340 — see that ticket for why (bow doesn't map onto blade_grammar's shape; sized
+comparably to blade_grammar/armor_grammar themselves). In-lane verification only (type-check + full
+suite, 995 passed); live testplay/docker verification deferred to post-merge per lane rules.
+
+### T-339 · Death: the body comes apart — DeathStyleDef, with crumble as the first style
+Effort: L   Status: done   Commit: 0b5294f   (user, 2026-07-14; design decided 2026-07-14; landed 2026-07-15)
+
+Death today = the T-311 P5c dissolve (fray/coreness sidecar, in-shader drift, `shed_dissolve` DeathHook,
+`dissolve_timer`) — a corrupted creature frays and sheds voxels. The user wants the OTHER death: a body
+that FALLS — ragdoll, or breaking into parts.
+The design question is which, and whether they coexist (a corrupted haunt dissolves; a bandit's body
+crumples). The Overgrowth north star says ACTIVE ragdoll (physics-driven, muscles fighting to stay
+upright, blending back to animation) — and T-219 just made every bone a real scene-graph entity with a
+transform, which is exactly the substrate a ragdoll needs. Decide: (a) active ragdoll on the bone
+entities, (b) break into rigid parts (each bone entity becomes a physics body), (c) both, chosen per
+creature by content (a `DeathStyleDef`, sibling of `DissolveProfileDef`).
+Blocked on: nothing technical after T-219 — this is a design call plus a physics-integration decision
+(we have no rigid-body physics today; that is the real cost).
+
+**DECIDED (2026-07-14): option (c), staged honestly — `DeathStyleDef` is the primitive, CRUMBLE is
+the style that ships now, active ragdoll is a later style in the same registry.**
+
+Why not active ragdoll first: it needs a rigid-body solver with joint constraints. We have none, and
+adding one is a large dependency + per-tick-cost decision that should be taken on its own merits, not
+smuggled in under a death animation. The ticket already names this as the real cost; nothing since has
+made it cheaper.
+
+Why crumble is now nearly free — three things landed that did not exist when this was filed:
+  - T-223 gave the client a boneId ↔ bone-entity identity map. The bones are ADDRESSABLE for the
+    first time; before, they were anonymous THREE.Groups inside one mesh record.
+  - T-337 moved `ballisticStep` into `@voxim/engine`, shared by client and server. A falling body part
+    is a ballistic body — the integration already exists, and it is the SAME one the projectiles use.
+  - T-340 gives the impact dust for free: a landing part emits a content-defined burst.
+So a crumble needs zero new physics: each bone's mesh detaches into an independent piece, integrates
+with the shared ballistic step against the terrain-height lookup the client already has, settles, and
+fades on the corpse's existing linger timer.
+
+The dissolve is NOT left beside this as a second path — it becomes a STYLE in the same registry
+(`DeathStyleDef` naming its `DissolveProfileDef`). One dispatch, two styles, chosen per creature by
+content: a corrupted haunt frays, a bandit's body comes apart.
+
+**Live-verified post-merge (2026-07-15).** Killed a humanoid and tracked its detached pieces
+frame by frame: 17 (one per bone), horizontal spread 0.33 -> 0.56 -> 1.39 as they fly apart, top
+piece falling z 2.08 -> 0.69, lowest holding at z -0.16 on the terrain lookup. The crumble_timer
+resource reaches the client and getActiveDeathStyle dispatches to the crumble handler; dissolve's
+handler is a registered no-op (its visual rides AnimationState.dissolutionPhase). The headless
+client's ~2 FPS makes a clean action screenshot hard to time — the piece positions are the proof;
+a real browser shows it plainly.
+
+**Closing notes (lane/t339-death-crumble):** landed exactly as decided — `DeathStyleDef`
+(`data/death_styles/{id}.json`) is a discriminated union (`style: "dissolve" | "crumble"`), dispatched
+by registry on BOTH server (each of `shed_dissolve`/`shed_crumble` resolves the dying entity's
+`NpcTemplate.deathStyleId` via a shared `resolveDeathStyle` helper and no-ops unless its own style
+matches — no second nested registry, `Registry<DeathHook>` was already the dispatch layer) and client
+(a new `registerDeathStyle`/`getDeathStyleHandler` Map registry mirroring `particle_sources.ts`/
+`decal_sources.ts`). Dissolve did NOT survive as a parallel path: `shed_dissolve.ts` now resolves
+through `DeathStyleDef` instead of reading `NpcTemplate.dissolveProfileId` directly, and that field is
+renamed to `deathStyleId` (no shim). `DeathStyleDef.resourceKey` names the Resource id each style's
+DeathHook seeds (`dissolve_timer` / `crumble_timer`, each its own resource, same convention as
+`buff_timer`/`crafting_timer`) — naming it on the CONTENT def, rather than each side separately
+hardcoding a `"${style}_timer"` string, is why server and client can never drift on what key to look
+for. `crumble_timer.json` mirrors `dissolve_timer.json` exactly (`cross@0 -> destroy_self`, already
+`destroySubtree`-safe from the T-219/ce0c01f fix — zero server code needed for corpse teardown).
+
+Client mechanism: `CrumbleController` reparents the entity's EXISTING `mesh.boneGroups` (built once by
+T-281's `buildMergedSubMeshes`) via `THREE.Object3D.attach()` into a per-corpse container —
+world-transform-preserving, flattening the skeleton hierarchy so every bone becomes an independent
+falling piece. Zero new `THREE.Mesh`, zero new geometry, only reparenting — T-281's per-corpse
+draw-call count is preserved BY CONSTRUCTION (live before/after count deferred to post-merge, see
+checklist). Pieces integrate with `ballisticStep` (`@voxim/engine`, T-337) — the same integrator
+projectiles/particles use — settle on terrain contact, fire a content-defined impact burst
+(`ParticleSystem.spawnBurstAt`, a new fixed-mechanism trigger joining muzzle-flash/ambience), and fade
+per-piece (never alpha) before the server's timer destroys the corpse. `EntityMeshGroup.crumbling`
+gates the renderer's per-entity pose-eval block off for a crumbling entity — one line, in `renderer.ts`
+only; confirmed by `git diff` that `swing_pose.ts`/`ik_solver.ts`/`skeleton_solver.ts`/
+`skeleton_evaluator.ts` were never touched.
+
+Per-entity STYLE dispatch (dissolve / crumble / none) turned out to need NO new wire field: the
+already-networked `Resource` component (T-262) carries `dissolve_timer`/`crumble_timer` as ordinary
+resource keys, so the client scans loaded `DeathStyleDef`s for whichever `resourceKey` is present on
+the dying entity and reads `durationTicks` off that key's wire-authoritative `.max`. KNOWN V1
+LIMITATION, same shape as the pre-existing `getSoleDissolveProfileSync`: which CrumbleStyleParams
+apply is resolved from whichever `DeathStyleDef` matched the style, not per-archetype — a non-issue
+today since exactly one `"dissolve"` and one `"crumble"` def exist, but would need a real per-entity
+archetype id on the wire (the same gap `getSoleDissolveProfileSync` already lived with) if content
+ever authors a second def sharing a style. A second, separate limitation: crumble is purely
+`EntityDied`-event-driven with no wire-replicated per-piece state, so a client entering AoI (or
+reconnecting) mid-crumble sees that corpse standing upright for the remainder of its timer, then just
+disappears — acknowledged, not fixed, matches the spirit of dissolve's own pre-existing v1 gap.
+
+Content: `bandit`/`wolf`/`archer`/`heavy_thrower`/`rotten_knight`/`shield_knight` (the six combat
+NPC archetypes; all skeletal — `biped_skeletal` or `wolf`) get `deathStyleId: "crumble"`; `drowner`
+keeps `deathStyleId: "dissolve"` (renamed from its old `dissolveProfileId`); `merchant`/`villager`/
+`training_dummy`/`training_dummy_attacker`/`generated_test_npc` are left with no `deathStyleId`
+(corpse vanishes, the pre-existing default — training dummies specifically never reach `DeathSystem`,
+they heal back instead). Active ragdoll remains explicitly out of scope — a later style in the same
+registry; no physics engine was added.
+
+`BOOTSTRAP_VERSION` 23 → 24. In-lane verification only: type-check matrix green, full suite 1088
+passed (1071 baseline + 17 new: 6 server DeathHook tests, 8 `CrumbleController` tests, 3 death-style
+registry tests). LIVE VERIFICATION (screenshot of an actual crumble + the T-281 mesh-count
+before/after) deferred to post-merge per lane rules — see the lane implementer's final report for the
+exact procedure.
+
+### T-323 · Hits don't connect — the hitbox is the skeleton, not the body
+Effort: M   Status: done   Commit: dd71a68   (user, live play 2026-07-07)
+
+Swings visibly pass through enemies without registering. The mechanism is mostly right — capsules
+DO follow the live animation pose (`HitboxSystem` → `evaluateAnimationLayers` → `solveSkeleton` →
+`applyHitboxTemplate`), and biped capsule radii DO come from the body recipe — but two concrete
+gaps make the hittable volume much thinner than the drawn body:
+
+1. **Non-biped skeletons have no `bodyRecipe`.** `data/skeletons/wolf.json` (11 bones) carries none,
+   so `deriveSkeletalCapsules` falls through to the `BONE_RADIUS` table — which is keyed by BIPED
+   bone ids (`torso_upper`, `upper_arm_l`, …). A wolf's bones don't match a single key, so every one
+   of them gets `DEFAULT_BONE_RADIUS = 0.20` → a stick-figure hitbox inside a fat visible wolf.
+   Wolves are the most-fought enemy; this alone explains most missed hits.
+2. **`tapered_box` parts get a cylinder capsule.** The recipe's box parts render a BOX of half-width
+   `radiusOrWidthTop/Bot`, but `bodyPartCapsule` returns a capsule of radius `max(top,bot)` — the
+   box's corners stand ~√2 outside the capsule, so edge/corner hits on the visible silhouette miss.
+
+Fix direction: give every skeleton a real body volume the hitbox can read (a `bodyRecipe` for wolf +
+any future archetype, or a per-skeleton radius table — a *shared* source, not a second one), and make
+the capsule cover the drawn box (inscribe vs circumscribe is a decision: circumscribing the box costs
+generosity, which is probably right for feel). Verify with a LIVE probe, not just unit tests: use the
+new T-322 swing-sweep debugger + a scene probe comparing the swept blade capsule against the target's
+live `BodyPartVolume` capsules in world space, and find where they actually miss.
+Done when: swinging at the visible body of a wolf AND a humanoid connects reliably, verified live.
+
+**Closing notes (lane/t323-hitbox):** re-verified both diagnoses against the actual code before
+fixing — #2 held exactly as described; #1 did not, in a way worth recording so nobody re-derives it:
+`data/models/wolf.json` HAS 11 subObjects (not zero), so `deriveHitboxTemplate` never reaches
+`deriveSkeletalCapsules`/`BONE_RADIUS` for wolf at all. The real bug was narrower and worse: 9 of
+those 11 subObjects (tail + all 4 leg segments) were authored `"hitbox": false` — they render but had
+**zero** hittable volume; only body/head had a capsule. Fixed by dropping the opt-outs so every
+visible sub-object gets a capsule from its own voxel AABB — the same mechanism body/head already used
+(one shared source, no new table). Deliberately did NOT add a `bodyRecipe` to the wolf skeleton:
+wolf's bones carry no `restRot` (unlike biped's Mixamo-derived bind pose), so `bodyPartCapsule()`'s
+assumed "local +Y = bone axis" direction is false for wolf — a recipe-driven capsule would point the
+wrong way (e.g. straight up) without also reworking the bind pose, which risks the live render/anim
+look and needs verification this lane couldn't do (no live stack). Fix #2 (tapered_box circumscribe)
+landed as literally described. Live verification (swing at a wolf + a humanoid, confirm hits land) is
+deferred to post-merge per the lane's scope — see postMergeChecklist in the closing commit report.
+
+### T-346 · Procedural bow/crossbow generation (T-306 composition)
+Effort: M   Status: todo   (deferred from T-338, 2026-07-14; renumbered from a T-340 collision — T-340 was already the particles ticket, and numbers are never reused)
+
+T-338 (bow/crossbow hold-to-aim path) shipped `wooden_bow`/`wooden_crossbow` on their existing
+AUTHORED models (`model_bow_basic`/`model_crossbow_basic`) rather than composing with T-306's
+procedural equipment generation, as originally asked. Deliberately deferred, not dropped: a bow is
+two curved limbs + a string, which doesn't map onto `blade_grammar.ts`'s single-spine
+limb+pommel+guard composition — the closer structural analog is `armor_grammar.ts` ("purely
+visual"; a bow has no hit-sweep capsule of its own — the arrow's collision radius is a separate,
+already-existing `ProjectileActionConfig.radius`). Sizing this properly (a `bow_grammar.ts` pure
+evaluator in `@voxim/content` + a client `procmodel/generators/bow_grammar.ts` + a `ProcModelDef`
++ a boot-cross-checked field on `SwingableData` naming it, following the exact
+`bladeGrammar`/`deriveBladeGeometry` pattern) is comparable in scope to blade_grammar/armor_grammar
+themselves (each has its own dedicated multi-case test file) — realistically its own ticket, not a
+tail end of T-338.
+Done when: `wooden_bow`/`wooden_crossbow` (or their replacements) render a generated bow instead of
+the static model, seed-unique per equipped instance, with zero change to the T-338 mechanic.
+
 ## Stealth
 
 ## Lore & Skills
+
+### T-328 · Externalise Lore UI — write a learned fragment to a blank tome
+Effort: S   Status: todo
+
+Found while building T-072 (heir-ritual UI): `CommandType.Internalise` (read a
+tome, T-020) now has a client entry point (InventoryPanel's "Read" action),
+but `CommandType.Externalise` (write a learned Lore fragment to a blank tome,
+T-019) still has none — the server handler has been sitting dead since it
+shipped. This is the OTHER half of how tomes get into the family library in
+the first place (a living player banks fragments for the next heir to read),
+distinct from the heir-ritual flow T-072 covers.
+Done when: a player with a learned fragment and a blank_tome in their burden
+can pick a fragment (LoreLoadout has no UI surface for `learnedFragmentIds`
+today either — that selector is part of this ticket) and write it, producing
+a filled tome they can carry to the library.
 
 ## Crafting & Economy
 
@@ -99,183 +334,109 @@ Select city locations from world map (flat terrain, near water, resource diversi
 `CityState` (T-044) for each. Seed each with a founding NPC and a starting workbench.
 Done when: world generation produces N cities at valid locations with initial state files.
 
-### T-212 · POI runtime + wilderness-stair unlock
-Effort: L   Status: in-progress   (v1 PoiSystem done -- 03525ae; v2 trinket->stair-unlock + boss/wave/puzzle open)
+### T-332 · Client assets served without Cache-Control — stale CSS desyncs from the bundle
+Effort: S   Status: done   Commit: e90c642
 
-**v1 landed**: PoiTrigger component + PoiSystem with two dispatch paths:
+`serveDir` emitted an ETag but no `Cache-Control`, so browsers applied HEURISTIC freshness and served a
+stale asset without revalidating. A rebuild shipped new markup (new class names) while the browser kept the
+OLD `theme.css` — the new elements got no styles, collapsed into document flow, and stacked at the top of
+the page (hit live during the T-314 HUD rework). Fixed with `Cache-Control: no-cache` ("always revalidate",
+not "never cache" — the existing ETag makes it a cheap 304).
+**Verification gap this exposes:** the headless testplay harness ALWAYS starts with a cold cache, so this
+entire bug class is invisible to it. A UI change that touches CSS can break in a real browser with the
+harness fully green.
 
-- `encounter` — spawn NPCs from a (stub) spawn-table mapping at the
-  POI's zone centroid via `spawnPrefab`. Wolf pack, bandit pack,
-  drowner swarm, etc. map to existing NPC templates.
-- `exploration` — publish `LoreInternalised` to the triggering player
-  with the POI def's `loreId`.
-- `bossfight` / `wave` / `action` / `puzzle` — stubbed (log only).
-  Full implementations are T-212 v2.
+### T-333 · Hit resolution bubbles to the nearest ancestor carrying the component
+Effort: M   Status: done   Commit: ddaab6b   (scene-graph prerequisite; user decision 2026-07-07)
 
-PoiSystem runs each tick; for each `PoiTrigger`, checks if any
-player session is within `triggerRadius` and fires the activity on
-first crossing. `fired` flips to true and stays — non-respawning
-behaviour for v1.
+Prerequisite for the scene-graph migration (T-219/T-221). Once an entity's geometry is split across a
+parent + child subtree, a hit lands on a CHILD entity — but the behaviour lives on an ancestor. Today
+`ResourceNodeHitHandler` requires `ctx.targetId` itself to carry `ResourceNode`, so a tree whose trunk
+became a child entity would be silently UNHARVESTABLE (the T-221 audit found exactly this). Same shape for
+T-219: a hit on a bone entity must resolve to the creature carrying `Health`.
 
-**Remaining (T-212 v2)**:
-- `bossfight` — boss prefab spawn at centroid + arena rules
-  (lockEntry sets a temporary path-zone collision when engaged; HP=0
-  drops it). Adds-table spawns at phase triggers.
-- `wave` — state-machine component cycling through `activity.waves`
-  in order with `interWaveSeconds` delay. Cleared on full clear.
-- `action` — interactable prefab spawn at centroid (chalice pedestal,
-  signal brazier, etc.) — needs the entity-hover/click system from
-  T-100 to dispatch usage.
-- `puzzle` — reserves `data/puzzles/` content category; each puzzle
-  template defines its own internal rules (lever sequences,
-  reflection paths, valve sequences). Solving the puzzle fires the
-  reward path.
-- Stair runtime UNLOCK on trinket consumption — currently locked
-  stairs stay locked forever. Needs the trinket-inventory checkpoint
-  (when a player picks up trinket X, scan stairs whose `lockedBy === X`
-  and call `applyStairUnlock` + broadcast heightmap-Δ to AoI clients).
-  This is the bridge from "found stairs work" (T-213 v1) to "earn-your-
-  way-up-the-plateau".
+Build it once, generically: hit resolution walks UP the `Parent` chain from the struck entity to the
+nearest ancestor carrying the component the handler needs, and dispatches there. This is an engine/hit-
+dispatch capability, not per-handler logic — the handlers stay unchanged. Keep the struck child's identity
+available (a handler may want to know WHICH part was hit — e.g. a headshot).
+Done when: a hit on a child entity dispatches to the ancestor's handler, the struck-part identity survives,
+and a tree/creature split into a subtree behaves exactly as it does today.
 
-Make POIs actually do something at runtime + make stairs actually
-gate movement. Tile-server reads `TileNarrative` on tile load, spawns
-per-POI runtime adapters:
+Landed as designed. `World.findAncestorWithComponent` (engine, cycle-safe, mirrors
+`worldTransform`'s walk) + `HitHandler.requiredComponent` (declarative, optional) +
+`combat/sweep.ts`'s `dispatchSweepHit` resolving `ctx.targetId` per handler before calling `onHit`.
+All 4 registered handlers (`ResourceNodeHitHandler`/`HealthHitHandler`/`BlueprintHitHandler`/
+`WorkstationHitHandler`) declare their component; `onHit` bodies untouched. `ctx.bodyPart` (already
+handler-neutral) carries the struck-part identity through the bubble. T-320 aim-assist's
+Health+Hitbox candidate check extended to accept a Hitbox on any scene-graph descendant, so a
+Health-on-root/Hitbox-on-bone creature is still pickable. Nothing is parented in production yet, so
+every path is behaviour-preserving today — unit-tested at the engine primitive (`scene.test.ts`),
+the generic dispatch layer (`combat/sweep.test.ts`), the concrete tree-trunk-as-child scenario
+(`resource_node_hit_handler.test.ts`), and aim-assist (`aim_assist.test.ts`).
 
-  encounter   → ProximityTrigger spawns SpawnTable on player entry
-  bossfight   → boss prefab + arenaRules (lockEntry collides path
-                zone until HP=0)
-  wave        → state-machine component, sequential spawns
-  action      → interactable prefab at the POI's zone centroid
-  exploration → one-shot lore-unlock trigger
-  puzzle      → reserves a new `packages/content/data/puzzles/`
-                content category (stub for v1; full puzzle
-                templates ship later)
+### T-334 · Seeded pool/probability selection on `Prefab.children`
+Effort: M   Status: done   Commit: 69a91be   (scene-graph prerequisite; user decision 2026-07-07)
 
-Stair runtime: stair entity at each `StairInstance.anchorPixel` with
-a `Lock` component referencing `lockedBy`. Player approaching an
-unlocked stair gets a "Climb" prompt; using it teleports the player
-2u up onto the wilderness plateau (collision-safe, no heightmap
-mutation in v1 — the elevation step stays as a visual hint).
+Prerequisite for T-221. `Prefab.children` (T-217) is a flat `{prefabId, local?}[]` with NO PRNG concept,
+but real multi-part content is seeded-random: `tree_oak` has 1 static trunk + 24 branch entries selected by
+`pool` + `probability` (the `resolveSubObjects` idiom). Extend the children schema with the same seeded
+pool/probability vocabulary and consume it in the engine's subtree spawn walk (`engine/src/prefab.ts`).
 
-When the player completes a POI that drops a trinket the player's
-inventory gains the trinket. When any stair's `lockedBy` trinket is
-in inventory, the stair flips to unlocked + broadcasts a
-`StairUnlocked` event to all AoI clients.
+**Load-bearing:** `hitbox_derive.ts` today REPRODUCES `resolveSubObjects`' exact PRNG consumption order so
+hitboxes match the visible geometry. Whatever seeded selection the children walk uses, that reproduction
+must stay correct — or hitboxes silently drift from what's drawn (the exact bug class that made wolf legs
+unhittable in T-323). One seeded selection, consumed identically wherever geometry is derived.
+Done when: a seeded multi-part prefab spawns a deterministic subtree from its seed, identical on server and
+client, with hitbox-vs-visual agreement preserved.
 
-Tests:
-- dump/reload preserves stair-unlock state byte-identical
-- entering an unlocked stair places the player at the wilderness
-  centroid with proper Y elevation
-- locked stair refuses the climb prompt
-- POI completion → trinket inventory → stair unlock → climb → POI
-  completion (the full loop, in one integration test)
-
-Done when: a baked tile with the matcher's narrative is fully
-playable end-to-end: spawn → walk → fight encounter → get trinket →
-climb stair → fight boss → terminal trinket.
-
-### T-213 · Physical stair object — heightmap ramp + step-up walkability
-Effort: M   Status: in-progress   (v1+v2 stair carve/props done -- 867766f; T-213b runtime unlock open)
-
-**v1 landed**: `applyStairUnlock` helper + "found" stairs (lockedBy === null)
-apply at tile boot. Wilderness plateaus reachable from boot via lerped ramps.
-
-**v2 landed**: `placeStairs` spawns a visible voxel-staircase prop at every
-narrative stair anchor. Stone variant for "found" stairs (the heightmap ramp
-underneath makes them walkable); stone + iron-capped variant for "locked"
-stairs (no ramp, wilderness wall still blocks — the iron cap reads as the
-unlit gating cue). `Stair` server-only component carries `{stairId, toZoneId,
-fromZoneId, trinketId, anchorXY, unlocked}` so the future unlock pipeline
-has everything it needs to flip state at runtime.
-
-**Remaining (T-213b — next ticket-or-extension)**:
-- Runtime unlock: when a player consumes a trinket that matches a locked
-  stair's `trinketId`, flip openMask + apply ramp + swap the entity's
-  ModelRef from `model_stair_locked` to `model_stair` + broadcast a
-  Heightmap-Δ + StairUnlocked event to AoI clients.
-- Client heightmap-delta application — applying a ramp at runtime requires
-  the client to re-mesh those chunks. Pattern exists for building-system
-  edits; reuse it.
-- Per-biome stair models (root stairs for grove, crag stones, …) — currently
-  one stone shape for every biome.
-
-T-210's stairs are currently only a *narrative* artifact — they
-declare gating in `TileNarrative.stairs[]` but the engine still
-blocks players at the wilderness boundary because the heightmap step
-(wallHeight = 2u) exceeds `stepHeight`, and openMask still reads 0
-on closed-kind pixels. T-212 originally proposed solving this with
-a teleport interactable; this ticket says **no — make the stair a
-real ramp the player walks up**.
-
-Mechanism per StairInstance:
-
-  1. RAMP CARVING. For each unlocked stair, modify the heightmap at
-     the stair anchor and a small neighbourhood: lerp from path-floor
-     height (≈0) at the path-side pixel up to wilderness-plateau
-     height (= wallHeight) over a 3-5 pixel run. Width matches the
-     stair's "tread" (3-4 pixels, configurable).
-  2. OPENMASK FLIP. The ramp pixels become walkable: openMask = 1
-     across the lerped run. Wilderness pixels reachable from the ramp
-     also become walkable — but ONLY those connected to the unlocked
-     stair (downstream flood-fill from the anchor, bounded by
-     wilderness-zone id).
-  3. PHYSICS CONTINUITY. Existing tile-server collision uses
-     openMask + heightmap + stepHeight. Once openMask flips and the
-     heightmap is lerped, the player naturally walks up — no new
-     traversal mechanic.
-
-Two states per stair:
-
-  LOCKED — heightmap stays at full wall-height across stair pixels;
-           openMask = 0; stair anchor renders as a visible prop
-           (vertical "step" plate) so the player can see WHERE to
-           climb once it unlocks.
-  UNLOCKED — heightmap lerped to ramp; openMask = 1; the prop animates
-           a brief "open" pose. Wilderness pixels behind the stair are
-           now reachable; the player walks up naturally.
-
-Wire deltas needed:
-
-  - Heightmap delta over the ramp pixel range (small — typically <20
-    pixels). Reuse the per-tile heightmap-Δ pattern that future
-    building / digging will need.
-  - openMask delta over the same range + the flooded-reachable
-    wilderness pixels.
-  - StairUnlocked event with stair id (so the client can play the
-    open animation).
-
-Visual:
-
-  - Stair prefab at the anchor — small stone steps or vine-overgrown
-    ramp depending on the wilderness zone's dominant kind (crag →
-    stone steps, grove → root-stairs, hollow → grassy ramp). One
-    prefab per wilderness role, picked at narrative-bake time.
-  - Locked stairs are visible from the start so the player can plan
-    ("I need to find a key for THAT stair").
-
-Tests:
-
-  - Snapshot: locked-stair heightmap == pre-stair heightmap byte-
-    identical (so save/reload before any unlock reproduces).
-  - Unlock event applies the heightmap delta deterministically — same
-    stair on same tile always produces same delta.
-  - Server-side collision integration test: player attempts to walk
-    onto a wilderness pixel near a locked stair → blocked. Same
-    pixel after unlock → walkable.
-  - The flooded-walkable region is bounded by the wilderness-zone
-    id; a wilderness pixel in a DIFFERENT wilderness zone is NOT
-    reachable through this stair.
-
-Out of scope:
-- The stair PROP CONTENT (the actual 3D model variants per zone
-  role). For v1, ship one generic "step plate" model and pick it for
-  every stair; per-role visuals are a follow-up.
-- T-212's POI runtime (encounters firing, bosses spawning) — that's
-  the gameplay layer; this ticket is purely the physics + visual
-  realisation of stairs.
+**Closing notes (lane/t334-seededkids):** built the ONE shared primitive doctrine literally asked for —
+`resolveSeededPick` (`@voxim/engine`, `rand.ts`) is now the single place the probability-then-pool draw
+happens. `ChildPrefabRef`/`ChildSpawn` grow `pool?: string[]`/`probability?: number` alongside an
+now-optional `prefabId`, mirroring `SubObjectRef` exactly (pool wins if both set). The engine's
+`spawnPrefab` children walk resolves each entry through `resolveSeededPick` off one `mulberry32` stream
+seeded via a new optional `ctx.resolveSeed(overrides, id)` hook; tile-server wires it to the SAME
+expression `installVisualShell` already uses for `ModelRef.seed` (`ov.seed ?? hash32(id)`), so one seed
+governs an entity's own sub-object variance AND which of its children spawn. The load-bearing half:
+`resolveSubObjects` (store.ts) and `hitbox_derive.ts`'s hand-copied "reproduce resolveSubObjects' PRNG
+order" loop both now CALL `resolveSeededPick` directly instead of duplicating the draw — the duplication
+itself was the risk, and it's gone, not just re-verified. New test in `hitbox_derive.test.ts` pins the
+invariant mechanically: across 50 seeds on a pool+probability model shaped like tree_oak (fixed trunk +
+pool branches + one `hitbox: false` opt-out to prove the PRNG stays lockstep across it),
+`deriveHitboxTemplate`'s ids equal `resolveSubObjects`' rendered ids minus the opt-outs, in order, always.
+Loader validation extended (`validatePrefabFields`/`validatePrefabChildRefs`, both exported to match the
+existing `validate*Def` convention and directly unit-tested): a child needs a `prefabId` or a non-empty
+`pool`, `probability` ∈ [0,1], and every id a child COULD spawn (fixed or pooled) is cross-checked against
+the concrete/non-abstract prefab set at load. Nothing in production sets `pool`/`probability` on
+`Prefab.children` yet — pure capability add, `tree_oak` migration stays T-221's job. Full suite green (885
+tests, was 580 at ENVIRONMENT.md's writing — branch has grown); atlas snapshot suite byte-identical
+(untouched). No live-stack verification possible/needed from this lane (no production consumer exists to
+exercise on the live tile).
 
 ### T-215..T-224 · Scene graph as a central engine system
-Effort: XL (multi-ticket arc)   Status: planned
+Effort: XL (multi-ticket arc)   Status: in-progress
+
+**BOUNDARY DECISION (user, 2026-07-07) — what is an entity:** **everything visible is an entity**, with one
+honest exception that is not a compromise: **procedural scatter stays scatter**. The decorative forest
+(thousands of trees per chunk) is NOT entities today and never becomes them — it is client-side procedural
+placement from server fields, rendered as one `InstancedMesh` node (exactly as SCENE_GRAPH_PLAN.md's client
+tree already shows: `ForestInstances (InstancedMesh)`). What DOES become entities: every authored,
+identity-bearing thing and its parts — bones, equipment, attachments, POI scene parts, and the parts of
+harvestable/interactable props.
+
+Measured cost of that call (live tile, 2026-07-07): ~276 entities today → ~5k with prop sub-objects
+promoted. Affordable because the plan's own static-vs-dynamic split makes it so: static entities carry
+Position/ModelRef/optional Hitbox, NO behaviour components — no system iterates them per tick, the 20 Hz
+changeset loop is unaffected by their count, and AoI ships only their initial spawn (they never change →
+never ship deltas). The extra join cost is ~0.3–0.5 MB against a 6 MB content blob + 5 MB terrain stream.
+
+Two capabilities this decision REQUIRED first — **both now DONE**: **T-333** hit-bubbling to the nearest
+ancestor carrying the component (else a tree split into a subtree becomes unharvestable), and **T-334**
+seeded pool/probability on `Prefab.children` — `resolveSeededPick` (`@voxim/engine`) is the ONE shared
+primitive, wired through the engine spawn walk + tile-server's `ctx.resolveSeed`, with
+`resolveSubObjects`/`hitbox_derive.ts` converged onto it too (so the geometry the client draws and the
+hitbox the server derives cannot drift — the T-323 bug class, closed structurally).
+Order: T-333 + T-334 → T-219 (bones — where the real content is) → T-221 (static props) → T-223 → T-224.
+T-222 (coordinator) is deferred: its subject (cities) does not exist yet (T-059 is open).
 
 See [`SCENE_GRAPH_PLAN.md`](SCENE_GRAPH_PLAN.md) at the repo root for the
 full design + migration plan. Summary:
@@ -319,24 +480,219 @@ Migration phases (each its own ticket):
     hook refined to also pass parentId — service bakes child *world*
     Position off the parent (static subtrees; live compose is T-223). 2
     poi_spawner tests + 103 content/engine/poi green; bake byte-identical.
-  - T-219 — skeletal bones as scene-graph entities
-  - T-220 — equipment attachment via scene-graph
-  - T-221 — static prop sub-objects as scene-graph children
+  - T-219 — DONE (lane/t219-bones, merged with T-220 as one arc per the
+    plan's own note — T-219 was invasive enough that splitting them would
+    have meant re-deriving the same equip-slot-to-bone resolution twice).
+    `spawner.ts`'s `installSkeletonBones` spawns one real ECS entity per
+    `SkeletonDef.bones` entry at skeletal-installer time (17 for biped, 11
+    for wolf), scene-graph parented to mirror the skeleton's own hierarchy
+    exactly (immediate `world.setParent`, safe — runs inside `preInstall`,
+    before the entity is ever visible to any session, same argument as
+    `buff.ts`'s `spawnBuffChild`). `Bone` component (wireId 59) carries
+    ONLY `boneId` — restPose/parentBoneId stay content data
+    (`SkeletonDef.bones`), the parent-bone ENTITY link is the engine's own
+    `Parent`. **Bone transforms are never replicated** — motion stays
+    derived client-side from `AnimationState` (already on the wire), the
+    same derivation `entity_mesh.ts`'s pre-existing `boneGroups` pipeline
+    already computed; this is the load-bearing decision the plan called
+    out (17 bones × ~20 humanoids × 20 Hz of wire traffic for something the
+    client already computes would have been the wrong path).
+    A required engine prerequisite surfaced during implementation and
+    fixed first: `world.setParent` writes `Parent` immediately
+    (`world.write`), invisible to the wire delta builder
+    (`AppliedChangeset.sets` sources exclusively from `pendingOps`) for an
+    entity a session already knows about — the one existing live caller
+    (`buff.ts`) was safe only by always targeting a brand-new entity.
+    `world.reparent()` (deferred, routed through `world.set`) is the
+    system-safe twin; `applyChangeset()`'s commit loop now maintains the
+    child index on a committed `Parent` set/removal (previously only
+    `setParent`'s immediate path did — a deferred reparent would have
+    silently desynced `getChildren`/`descendants` from the wire-visible
+    Parent value). Also closed in passing: `Parent`'s wire id 49 was
+    registered in `NETWORKED_DEFS` since T-215 but never reached
+    protocol's `ComponentType` enum or `CODEC_BY_WIREID` — every Parent
+    byte the server has ever sent was silently dropped on decode
+    (`COMPONENT_TYPE_TO_NAME.get(49)` → undefined). `aoi.ts` gained a
+    generic scene-graph subtree-expansion pass (`world.descendants()` on
+    every already-in-AoI entity) — bones/equipped-items carry no Position,
+    so without it they'd be structurally correct server-side but never
+    sent to any client; `descendants()`'s own parent-before-child DFS
+    ordering resolves the "child must not arrive before its parent" hazard
+    structurally, no separate sort pass needed.
+  - T-220 — DONE (same lane/commits as T-219). Equipping = `world.reparent`
+    (not `setParent` — EquipmentSystem is a live system touching
+    already-AoI-known entities, exactly the gap the engine fix above
+    closes) to `resolveAttachParent`'s resolved bone entity; unequipping /
+    dropping = `world.reparent(..., null)` (+ the existing Position write
+    for drop). `resolveAttachParent`/`EQUIP_SLOT_PRIMARY_BONE` cover the
+    five SINGLE-bone equip slots (weapon→hand_r, offHand→hand_l, head→head,
+    chest→torso_upper, back→torso_upper — mirrors the client's existing
+    `entity_mesh_registry.ts` attachment table; a small, documented,
+    human-reviewable duplication flagged for unification when T-223 gives
+    the client a reason to consume the wire-replicated Bone/Parent data
+    itself). `legs`/`feet` are deliberately EXCLUDED — the client's own
+    table maps those to 2–4 bones each, so a single item entity has no one
+    bone to parent to; they keep falling back to the holder root, same as
+    a skeleton-less holder. Every character-destroy site
+    (`death.ts`, `server.ts`×3, `poi.ts`) converted `world.destroy` →
+    `world.destroySubtree` so bones/equipment never leak past their
+    holder's death/disconnect (degrades to exactly `destroy()` for a
+    childless entity — behaviour-preserving everywhere else). Found and
+    fixed in passing: the tile-handoff success path never called
+    `destroyCarriedItemEntities` at all (unlike the other two
+    disconnect/death paths) — a pre-existing carried-item leak on every
+    tile crossing, closed at the same call site as its `destroySubtree`
+    conversion.
+    **Scope boundary, recorded so it isn't re-litigated:** client
+    rendering (`entity_mesh.ts`'s `boneGroups` Three.js Map,
+    `skeleton_evaluator.ts`) is UNCHANGED this lane. Bone entities are
+    real and replicated server→client (`client_world.ts` gained typed
+    `parent`/`bone` `EntityState` fields so the decode isn't silently
+    dropped), but nothing client-side consumes them for rendering yet —
+    the client still builds its Three.js pose hierarchy directly from
+    content `SkeletonDef.bones`, exactly as before T-219. This trivially
+    satisfies "client visual output identical to pre-T-219" and is the
+    SAME precedent T-218 already set for POI props ("live transform
+    composition is still T-223"); building a one-off entity-driven
+    Three.js pipeline just for bones ahead of T-223 (which gives the
+    client a real materialize-from-World-scene-graph pipeline) would be
+    throwaway work. The `Equipment` component is RETAINED as the
+    slot-name authority (still read by AoI's own-item visibility, the
+    Status/Modifier `equipment` ModifierSource, the Trigger `equipment`
+    TriggerSource, CraftingSystem, every UI paperdoll read) — `Parent` is
+    an ADDITIVE scene-graph fact layered on top for topology/lifecycle
+    correctness, not a replacement; ripping `Equipment` out would cascade
+    into the Status/Modifier and Trigger primitives, well outside either
+    ticket's stated files-touched scope.
+    In-lane verification: 8 new/extended test files (`scene.test.ts`
+    reparent cases, `components.test.ts` boneCodec round-trip,
+    `codec_registry.test.ts`, `skeleton_loader.test.ts`,
+    `spawner_bone.test.ts`, `aoi_scene_graph.test.ts`, `equipment.test.ts`,
+    `equip_cleanup.test.ts`) — full suite 914 green (894 baseline + 20),
+    atlas snapshot suite byte-identical (no atlas file touched; atlas
+    never spawns creature/skeletal prefabs into a World). The no-foot-slide
+    proof (`swing_pose.test.ts`) and every producer in the pose pipeline
+    (gait, foot-terrain IK, look-at, crouch, locomotion lean, swing IK)
+    stayed untouched and green throughout — none of them read `boneGroups`
+    through anything this lane changed. Live-stack visual verification
+    (characters animate, sword follows hand) deferred to post-merge per
+    lane rules — see the lane implementer's final report for the exact
+    procedure.
+  - T-221 — static prop sub-objects as scene-graph children. **DEFERRED (2026-07-14) — the
+    original blockers are GONE, but the payoff is not here yet.** T-333 (hit bubbling) and
+    T-334 (`resolveSeededPick`) both landed, so the two hard blockers named below — a child
+    trunk being unharvestable, and `Prefab.children` having no PRNG concept — are answered:
+    a hit on a child now bubbles to the nearest ancestor carrying the handler's component,
+    and `Prefab.children` can express `tree_oak`'s 1 trunk + 24 pool/probability branches.
+    The ticket is buildable. It is deferred anyway, because what it would BUY is not
+    rendering (the client draws prop parts from content today, merged and cheap) but
+    **dynamic per-part state** — a branch you can break off, a wall that partially collapses.
+    Nothing needs that yet. Building it now costs draw-call risk (25 parts × ~200 props, if
+    the batching is lost) and wire/entity growth for capability with no consumer. **Revisit
+    when T-339 (death: ragdoll / crumble into voxels or parts) makes the requirement
+    concrete** — at which point it specifies itself instead of being guessed at. [Update,
+    lane/t339-death-crumble: T-339 landed (2026-07-15) — did NOT unblock this ticket. Crumble
+    is skeleton bone-GROUP detachment off T-219/T-223's addressable bones, an entirely
+    different subsystem from `Prefab.children`/static props; the PRNG-on-`Prefab.children`
+    blocker described below is untouched.] The
+    2026-07-13 audit's findings, preserved because they are still the map of the terrain: `subObjects` (packages/content's `ModelDefinition.subObjects`, resolved by
+    `resolveSubObjects`/`hitbox_derive.ts`) is populated on exactly 5 models in the repo, and
+    every one fails a different way: (1) the ticket's own named targets —
+    `model_building_well`/`_cottage`/`_ruin_tower`/`_ruin_wall` — all have `subObjects: []`
+    (confirmed unchanged since the T-095 file split); there is nothing there to migrate without
+    first hand-authoring new multi-part building content, an art/content decision outside
+    doctrine. (2) The four populated non-empty models — `drowner`/`human_base`/`rotten_knight`/
+    `wolf` — are 100% `boneId`-driven bone-segment attachments; that's T-219's job. [Update,
+    lane/t219-bones: the bone-ENTITIES half of T-219 has since landed — one real ECS entity per
+    skeleton bone, server-replicated — but live transform composition off them is still not
+    landed (deferred to T-223, same as this note originally said); client rendering for these
+    four models is unaffected either way.] Not a "static prop" regardless. (3) `tree_oak` (the
+    one non-skeletal model with real content: 1 fixed `trunk_oak` entry + 24
+    `pool`+`probability` branch entries, consumed by the dormant-but-tested `tree`/`yew_tree`
+    resource-node prefabs) needs seeded pool/probability selection that the landed
+    `Prefab.children` (T-217, `engine/src/prefab.ts`) does not have — it is a flat
+    `{prefabId, local?}[]` with no PRNG concept at all — so giving it one is a new engine
+    capability, and doing it for tree-density content (not POI-density) reopens the plan's own
+    wire-size/entity-count invariant (§3) for real: every rendered branch across every tree in a
+    tile would become a live networked child entity instead of a free client-side render trick.
+    Even the ONE fully-static, PRNG-free entry (`trunk_oak`) is not safe to move in isolation:
+    `deriveHitboxTemplate`/`applyHitboxTemplate` merge every sub-object capsule onto the
+    *parent's single* `Hitbox`, and `ResourceNodeHitHandler.onHit` requires `ctx.targetId`
+    itself to carry `ResourceNode` (authored on the `tree`/`yew_tree` prefab, i.e. the parent) —
+    moving the trunk capsule onto a child entity makes the trunk unharvestable unless hit
+    resolution learns to bubble a child hit up to an interactable ancestor, which nothing in the
+    hit-handler pipeline (`handlers/`) does today. None of this is inferable from doctrine or
+    the landed T-215–218 shape; it needs an explicit call on (a) whether pool/probability
+    belongs on the scene-graph primitive at all vs. staying a render-only trick, and (b) how
+    hit/interaction identity should resolve across a subtree. No files touched other than this
+    entry.
   - T-222 — coordinator world-scale scene graph
-  - T-223 — client render-scope scene graph
-  - T-224 — inspector / editor tooling against any World
+  - T-223 — DONE (lane/t223-client-scene-graph, commits f591ed7/dffac04/f6766ec/83a9513).
+    Re-specified after recon (6cecdd5: "entities supply structure, content supplies
+    transform" — the original text's "materialize Three.js objects from entity
+    transforms" was unbuildable, since bone entities carry no transform, ever).
+    `ClientWorld` gains a parent→children reverse index (`childrenOf`/`descendants`,
+    mirroring engine `World`'s exact DFS shape) — an EXTENSION of ClientWorld per the
+    plan's open call #3, not a fork of engine `World`. Each skeletal `EntityMeshGroup`
+    gains a `boneEntityByBoneId`/`boneIdByEntity` identity map, built once per skeleton
+    from `ClientWorld.descendants(entityId)` — bone entities acquire IDENTITY, never
+    geometry; `boneGroups` (the THREE.Group-per-boneId pose target) is completely
+    untouched, still built from content `SkeletonDef` data. `syncEquipment` now resolves
+    every equipped item's attach bone via a new pure `resolveItemAttachment(world, mesh,
+    characterId, itemEntityId)` — a 3-way result (bone / holderRoot / unresolved)
+    distinguishing the five single-bone slots (graph-derived) from legs/feet (T-220's
+    deliberate holder-root parenting — no single bone fits) from a transient
+    not-yet-resolved window — which DELETES `ARMOR_SLOTS`/`SLOT_REST_BONE` outright, the
+    ticket's primary deliverable, closing the drift hazard against spawner.ts's
+    `EQUIP_SLOT_PRIMARY_BONE` (now the sole surviving slot→bone table, server-side only,
+    doc comment updated to say so). Legs/feet's old static 4-anchor table (2 of which
+    were always empty in practice) is replaced by a content-driven fan-out over the
+    equipped item's own `armor.coversBones` (new optional `ArmorData` field, boot-
+    validated in loader.ts) — NOT every bone the item's `armorGrammar` happens to author,
+    since `plate_armor_iron` is one procModel SHARED across plate_chest/plate_helm/
+    plate_greaves (torso_upper+head+upper_leg_l+upper_leg_r combined) and naively
+    enumerating it would plate the wrong body parts on a legs-only item. Draw calls are
+    unchanged by construction (fan-out only creates anchors for bones the item actually
+    covers). Pose pipeline (`swing_pose.ts`/`ik_solver.ts`/`skeleton_solver.ts`/
+    `skeleton_evaluator.ts`) untouched — `git diff 6cecdd5` on all four is empty, the
+    tripwire the plan named explicitly. 25 new tests across three first-ever test files
+    (`client_world.test.ts`, `entity_mesh_registry.test.ts`, `armor_covers_bones.test.ts`);
+    full suite 940 green (915 baseline + 25). **Live-stack verification DONE post-merge
+    (2026-07-14, merge 74b343d):** attachment resolves through the graph in the live client
+    (17-entry bone identity map; `childrenOf(player)`=1 root bone, `descendants`=19 = 17
+    bones + 2 held items; anchors `main_hand`/`off_hand` present, equipment = stone_axe /
+    iron_sword). **Per-humanoid render cost is IDENTICAL, measured not asserted:** the
+    fully-equipped player's mesh subtree is 61 Object3D / 22 THREE.Mesh both before
+    (6cecdd5) and after (74b343d) — bone entities took identity, not geometry, exactly as
+    the re-spec required. (Total scene draw calls are NOT a usable metric here: the same
+    build measured 970 and 1030 in two runs, a 60-call spread, because NPCs wander and the
+    visible chunk set differs — the +13 seen between pre/post builds is far inside that
+    noise. The per-humanoid subtree count is the deterministic one.) ANIM gates 6/7 with
+    the single failure (`locomotion clip while moving`) proven PRE-EXISTING by running the
+    same gates against the pre-lane build, which scores 5/7 — the check looks for a
+    walk/run CLIP, but since T-308 the gait is procedural (`applyGaitPose`), so no clip is
+    active while limbs demonstrably sweep (0.127 vs 0.015 idle). **The harness check is
+    stale, not the code — it should be rewritten to assert limb sweep, not clip identity.**
+  - T-224 — inspector / editor tooling against any World. **CLIENT HALF DONE
+    (2026-07-14): `ScenePanel`** — the replicated Parent/Bone hierarchy as a live tree
+    (Debug → Scene graph). Only buildable since T-223 gave `ClientWorld` a children
+    index; before that the client held a flat Map and there was no tree to walk. Shows
+    the player subtree with the equipped weapons visibly hanging off `hand_r`/`hand_l`,
+    chunks as roots, per-entity component detail, filter, live/pause, and a "reveal me"
+    that expands the 17-bone chain in one click. Orphans (a child whose parent left AoI)
+    are shown flagged rather than dropped — a silently vanished subtree is precisely the
+    failure this panel exists to expose. It deliberately renders the ENTITY graph, not
+    the Three.js scene: those are two different trees on purpose (entities supply
+    structure, content supplies pose), and conflating them would hide the bug you opened
+    the panel to find.
+    STILL OPEN: the generalisation the ticket actually names — one `EngineInspector`
+    module taking any `World` (bake-time / runtime / replicated), with the atlas
+    inspector and a tile-server admin endpoint as specialisations of it. The client panel
+    is a purpose-built consumer, not that shared module.
 
 The T-214 IR + reducer + rasterizer split work is the substrate this
 builds on. Snapshot determinism stays the invariant across every
 phase.
-
-### T-066 · Client roof rendering for enclosed areas
-Effort: M   Status: todo
-
-On `EnclosureChanged` event, client generates roof geometry over the enclosure polygon.
-When the player entity is inside the enclosure, the roof is hidden (player sees interior).
-When outside, the roof is visible.
-Done when: an enclosed building renders a roof; walking inside makes the roof disappear.
 
 ## Client Rebuild
 
@@ -347,403 +703,345 @@ InstancePool, fed by models/terrain/placement/ghost), one **palette authority**
 (renderer god-class → `EntityMeshRegistry`). Each phase deletes the old path with
 the new (replace, don't accrete). Phases are ordered cheapest-identity-win first.
 
-### T-279 · Client rebuild (umbrella)
-Effort: XL (multi-phase arc)   Status: planned
-
-Tracks the arc in `CLIENT_REBUILD_PLAN.md`: a general internal-architecture sweep
-+ a central voxel-build pipeline (place single voxel / line of voxels with
-scaling/spacing, voxels of different sizes, voxels as terrain edges) + a strict
-cohesive color palette for visual identity. Keep-grade core (`voxel_bake`,
-`displacement`, `bake_pool`, `InstancePool`, input/intent spine, `Place`-command
-authority, post-FX edge-ink) is preserved; the mess (renderer god-class, terrain
-height-quads, five color authorities, drifted dead code) is replaced. Closes when
-T-280..T-284 land; Phase 5 (sparse-voxel chunk wire) stays deferred until volume
-editing demands it.
-
-### T-280 · Client rebuild Phase 0 — cleanup + palette authority
-Effort: M   Status: done   (8 commits 20efcb4..fc67344)
-
-Every on-screen color now resolves from one `palette.json`: dead static-voxel + IK
-paths deleted (20efcb4); the palette authority + CIELAB material snap-on-load
-(reserved signal swatches + intent-override map), shipped in the bootstrap blob
-(d330699); terrain reads the one source — drifted `MAT_COLORS` gone (5e58043);
-day-night lighting/sky/fog from the palette `phases` — cyan sky gone (438b195);
-the ~23 ad-hoc render hex literals routed through a `render/palette.ts` token
-accessor (782c9ab); the four `MaterialDef→Material` builders collapsed into one
-`buildVoxelMaterial` (28c3174); the UI's legacy `--col-*` alias shim inlined onto
-the Dreamborn tokens and deleted (fc67344). A designer retunes the whole game —
-chrome and world, ground and ghost — from `palette.json`. Headline screenshot-
-verified: candy spring-green world → cohesive ash-hazed identity.
-
-Highest identity-per-effort, no new capability. Delete dead code
-(`upgradeToVoxelModel`/`collectVoxelModelBakeSpecs` entity_mesh.ts:415-490,
-`ik_solver.ts`, `swing_predictor.ts`, stale T-182/CSM comment scaffolds). Create
-`packages/content/data/palette/world.json` (the ~22-swatch ash-hazed ramp + a
-`phases` lighting block) + a CIELAB load-snap in the content loader + a boot
-cross-check (every `MaterialDef.color` on-ramp, fail-fast) + `render/palette.ts`
-exposing named tokens. **Delete terrain `MAT_COLORS`/`colorForMat`
-(terrain_mesh.ts:34-48)** and read `content.getMaterialSync().color` — closes the
-ground-vs-prop drift, the single biggest cohesion defect. Collapse the four
-`MaterialDef→Material` builders (entity_mesh/forest_props/renderer/terrain) into
-one `buildVoxelMaterial`. Lift `makePhaseLights` into the palette `phases` block;
-retune sky off cyan `#7aa4cc` onto ash-grey. Migrate the ~23 ad-hoc render hex
-literals to `palette.*` (no raw hex in `render/`). Collapse the UI's two token
-generations (theme.css Dreamborn + legacy `--col-*` alias shim) to one source;
-delete the shim.
-Done when: every on-screen color resolves from `palette/world.json`; terrain and
-props share a material color; a designer can retune the whole game's palette from
-one file; the dead modules are gone; `deno check` + client bundle green.
-
-### T-281 · Client rebuild Phase 1 — voxel atom + one bake kitchen
-Effort: L   Status: done   (ce3cf90, c95c004, 4bc941d, dd4acd4, 55cf331)
-
-`VoxelAtom {cx,cy,cz, sx,sy,sz, materialId, vid?}` + `render/coords.ts` (ce3cf90);
-`bakeVoxels(atoms, materialId)` — THE bake kitchen — with per-voxel size,
-`bakeSubModel` a thin adapter so the prop/forest path runs through it (c95c004);
-the character body (4bc941d) then held weapons + armor (dd4acd4) collapsed onto
-`buildMergedSubMeshes` (one merged mesh per material per sub-object via
-`bakeVoxels`) — the per-node `buildVoxelMesh` + the collector/cursor
-parallel-traversal coupling are gone, and with all baking now sync (a character is
-tens of voxels) the whole off-thread bake worker was deleted: `bake_pool`,
-`bake_protocol`, `bake_worker`, their test, and the second esbuild entry (55cf331).
-"Voxels of different sizes" is mechanically unlocked (parity-tested); a data source
-arrives with terrain (T-283) / placement (T-284). Verified live: ANIM harness 7/7
-(skeleton builds, walk articulates, swing fires) at each step.
-Deferred to T-283/T-284: routing InstancePool's archetype key off per-entity scale
-(it currently keys by scale → mixed-size props would explode archetypes; only
-matters once varied sizes are emitted).
-
-NOTE (env, T-274 follow-on): `docker restart` of a stack service DROPS the
-`./packages` dev bind-mount — the container reverts to its stale image-baked
-`/app/packages`, so the tile (which serves the client `dist/game.js` on :14433
-from the shared host dist) serves a stale bundle and live verification silently
-tests old code. Fix: recreate WITH the dev override, e.g.
-`docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --force-recreate --no-deps tile-1 client-dev`.
-Use `--force-recreate` (compose), never `docker restart`, for dev containers.
-
-Introduce `VoxelAtom {cx,cy,cz, sx,sy,sz, materialId, vid?}` (center + per-voxel
-size + material) in `@voxim/content` + `render/coords.ts` `modelToThree` (route
-the 6 inline coordinate-swap derivations through it). Promote `bakeSubModel` →
-`bakeVoxels(atoms, materialId)`; swap the bake-worker protocol from
-`VoxelBakeSpec[]` to `VoxelAtom[]` returning merged `BakedMesh` batches; route
-InstancePool through atoms. Collapse the per-node entity path onto the merged
-path — delete `buildVoxelMesh`/`buildDisplacedVoxelGeo` and the
-collector/cursor parallel-traversal coupling (entity_mesh.ts:403-434). Per-voxel
-size mechanically unlocks "voxels of different sizes" (the unit-box template
-already scales).
-Done when: models + props bake through one `bakeVoxels` path; an entity can carry
-mixed-size voxels; draw calls collapse; the parity test still passes.
-
-### T-282 · Client rebuild Phase 2 — renderer breakup (scene-graph; subsumes T-223)
-Effort: L   Status: in-progress   (renderer breakup substantively COMPLETE — 50% cut; only low-value polish remains)
-
-FIVE cohesive units lifted out of the renderer god-class — renderer 2120 → 1063
-lines, a 50% cut (T-281 had already shrunk it by deleting the bake-worker pool +
-per-node path):
-  · `WeaponTrailRenderer` (`render/weapon_trail.ts`, d4ee296) — owns slice/mesh
-    state + scene layer, fed `update(...)`/frame.
-  · `GateMarkerRenderer` (`render/gate_marker.ts`, 491b74e) — owns the gate-pillar
-    Groups + buildGateMarker; `screenPos()` takes camera+canvas at construction.
-  · `EntityMeshRegistry` (`render/entity_mesh_registry.ts`, c5fadd6) — THE
-    headline: the entity-mesh lifecycle (live-mesh map + pooled-prop positions +
-    the async spawn→build state machine + equipment sync + per-frame attachment
-    placement + `_addStaticProp`/`computePropHalfExtents`). Hybrid boundary from
-    a design panel: minimal lifecycle island so the 3 async stale guards +
-    velocity-defer + 4 slot re-checks move VERBATIM; the render loop's
-    interpolation/cull stays byte-identical in the renderer. The renderer no
-    longer names the entity Maps — public methods are thin delegations; external
-    callers (game.ts, interaction, hover) unchanged.
-  · `loadSlotModel` fold (af963cd) — syncHandSlot + syncArmorSlot's byte-identical
-    async prefetch→recheck→load→attach preambles folded into one helper; the slot
-    stale-guard is now single-sourced.
-  · `EnvironmentLighting` (`render/environment_lighting.ts`, 29eb5d1) — sun + hemi
-    + sky/fog + day-night lerp + shadow-frustum follow/snap + sun disc, driven by
-    one `update(cameraTarget, cameraPos)`/frame after the camera settles.
-    setDayPhase/toggleShadows/palette→lighting become delegations. Verbatim move
-    (shadow-snap math byte-identical); screenshot-diffed against baseline (sky,
-    sun shading, fog, tree shadows all match; shadows follow the moved player).
-All verified each step: deno check (4 targets), grep-zero invariant, 9/9 render
-unit tests, ANIM 7/7, screenshot identical to baseline.
-
-REMAINING (low-value polish — the core goal is met, see below):
-  · OPTIONAL: extract terrain mesh management (terrainMeshes/Hmaps/Mats +
-    updateTerrain/_rebuildChunk/removeTerrain + the cull loop + colorForMat) into
-    a `TerrainMeshManager` to chase the ~800-line target. Note: terrain is
-    already LOW-coupling (its own maps + methods) — this is line-count cosmetics,
-    not untangling, so it's deferred unless the <800 target is wanted for its own
-    sake. (T-283 rewrites terrain into voxels anyway — may moot this.)
-  · OPTIONAL: `scene` → private behind `addLayer`/`removeLayer`. Marginal: the
-    renderer already NEWs the one scene and hands refs to its subsystems; only ~3
-    external reachers (game.ts ×2, hover_outline) touch it. Visibility nicety.
-  · NOT DOING — the `velocity={0,0,0}` "hack": on inspection it is SOUND, not a
-    hack. The synthesis is in applySnapshot (the unreliable movement datagram, a
-    flat vx/vy/vz struct); the registry's settle test asks "is it moving?" via
-    MAGNITUDE, which is the functionally-correct question (an item at rest has
-    ~zero velocity regardless of component presence). A protocol change to make
-    presence honest would be high-effort for zero behavioral gain. Closed.
-Done when: the core goal — the god-class's COUPLED responsibilities (entity
-lifecycle, trail, gates, lighting) out of the renderer — is MET. The renderer is
-now scene/camera/post-FX + the render() pipeline + (low-coupling) terrain, at
-1063 lines. The remaining items are optional line-count/visibility polish; this
-ticket can close here or carry the optional terrain extraction.
-
-### T-283 · Client rebuild Phase 3 — terrain becomes voxels
-Effort: L   Status: done   Commit: bf2ff74
-
-Client re-expresses heightmap+materialGrid as voxel atoms: per cell ONE COLUMN-BOX
-atom (top face at the cell height, bottom reaching the lowest of its 4 neighbours
-so the side faces ARE the exposed cliff), bucketed per material per chunk and
-baked through `bakeVoxels`. Cliff faces are baked voxel boxes sharing `vertexDisp`
-+ palette with props — "voxels ARE terrain edges" is literally true. Heightmap
-stays the collision/authoring source (physics + AoI + wire UNCHANGED). The
-quad-emission path (`terrain_mesh.ts`) is deleted, not shimmed.
-
-Implemented (3-approach design panel + judge → hybrid): column-box atomization in
-a new THREE-free `terrain_voxels.ts` (`buildChunkAtoms` + `TERRAIN_DISP_MAG`);
-heights are 0.25-quantized so the per-voxel-size unlock (T-281) carries cliff
-depth — no unit-stacking. The judge's load-bearing catch: `mag = 0.10*min(scale)`
-is PER-VOXEL, so different-depth column boxes would crack at a shared cliff corner
-— fixed by an optional constant `mag` on `bakeDisplacedVoxel`/`bakeVoxels`, pinned
-to `0.10*HEIGHT_STEP` for terrain (default path byte-identical → prop parity).
-Uniform palette material via `buildVoxelMaterial` per matId (cellVariation +
-vertexColors + the renderer's `_matColor` table dropped). terrainMeshes →
-`Map<key, Mesh[]>`; all-4-neighbour rebuild.
-Verified: deno check (4 targets); 10/10 render unit tests incl an adversarial case
-proving constant-mag welds a shared cliff corner while default mag cracks it; ANIM
-7/7; 220 chunks render voxelized + crack-free; screenshot shows blocky
-palette-shared terrain meeting props with no gap.
-
-### T-284 · Client rebuild Phase 4 — build spine on the real pipeline
-Effort: L   Status: done   Commit: d0cca73   (all 3 chunks landed; the client-rebuild arc is complete)
-
-CHUNK 1 DONE (b5cf82f) — the client build interaction, via a 3-approach design
-panel + judge (height-column cursor pick won): VoxelHit {cellX,cellY,baseZ,layer}
-replaces WorldCell; `_resolveVoxelHit` = flat-plane ray + terrain-top + per-column
-stack count (top-of-column placement, vertical stacking). New `input/build_line.ts`
-holds the ONE shared `bresenhamCells`+`brushCells` (deletes both dups; ghost +
-commit share it → WYSIWYG). New `state/build_occupancy.ts` mirrors placed
-blueprint entities per column (drift-free). `build_ghost.ts` bakes the preview
-through `bakeVoxels` at the brush voxelSize, palette-tinted. New `BuildHud.tsx`
-(size/spacing steppers). `Placeable.tool` "polyline"→"line" across content +
-game_config building.defaultVoxelSize/defaultSpacing. Verified: deno check, 25
-unit tests, ghost screenshots (single/line/spacing). NO wire/server change yet.
-Deferred (per judge scope cut): side-face placement, a layered occupancy grid,
-mid-stack picking, invalid/red ghosting (needs server validation).
-
-CHUNK 2 DONE (d919c1e) — server authority. New `PlaceVoxels=23 { prefabId,
-voxelSize, cells:[{cellX,cellY}] }` command + codec replaces chunk 1's per-cell
-Place loop; the client sends ONE command (the spacing-decimated brushCells list).
-`PlacementSystem._handlePlaceVoxels` is authoritative over BOTH validity and
-HEIGHT: each cell's z is the terrain top (`getHeight` on the chunk's Heightmap +
-`snapHeight`) + the column's stack × voxelSize — not the placer's z (fixed a
-pre-existing ghost-vs-actual mismatch). Stacking allowed (no cellMustBeEmpty),
-out-of-reach cells skipped, tool gate reused. The ghost tints red (new palette
-`ghostInvalid`) when any cell is out of reach (`_isCellReachable` mirrors the
-server gate). Verified: deno check (5 targets), 10 tests (6 codec round-trip +
-4 placement: terrain-z/stack/reach/tool-gate), live red out-of-reach line ghost +
-tool-gate rejection. NOTE the wire sends the final cell list (server reach-gates
-each), not (anchor,end,spacing) — the "shared bresenham server-side" anti-fabrication
-is deferred (reach is the real authority; sharing bresenham needs it in a shared
-package). Mid-stack `layer`/`baseLayer` fields dropped — the server derives the
-stack itself.
-CHUNK 3 (folds) — 2 of 3 done:
-  · DONE (d170c42) RadialMenu content-driven: the hardcoded STRUCTURE_OPTIONS
-    (which listed non-existent wood_door/wood_floor/dirt_ramp) is now a
-    `contentService` query over prefabs with BOTH `placeable` + `blueprint`.
-  · DONE (f7b0976) Decode registry-dispatch: new `CODEC_BY_WIREID` (in
-    @voxim/protocol — NOT @voxim/codecs as guessed; protocol→codecs dep direction
-    forbids it) replaces client_world's 31-case switch + the hand-rolled
-    health/worldClock DataView decodes (new worldClockCodec). The 3 terrain-grid
-    components keep explicit cases (chunk-binding side effects). Coverage test +
-    ANIM 7/7 confirm behaviour-identical decoding.
-  · DONE (d0cca73) networked-`Container` chest UI (T-077/T-078): Container went
-    on the wire (id 53, codec → @voxim/codecs, CODEC_BY_WIREID dispatch); aoi.ts
-    streams a chest's banked unique items to the owning dynasty's client.
-    ContainerDeposit/Withdraw commands (24/25) + a new ContainerSystem (mirrors
-    EquipmentSystem; proximity-gated; helpers switched world.write→world.set so
-    the move ships as a delta). ContainerPanel mirrors WorkstationPanel (slot =
-    deposit drop-target + withdraw drag-source); makeContainerHandler + E-key
-    open it range-gated. Verified: deno check, 335 server/protocol tests, client
-    bundle, and a live headless E2E (deploy chest → decode container → deposit a
-    unique sword → withdraw it round-trips on client+server).
-
-ORIGINAL SCOPE (full ticket): Brush descriptor on `modeState` (`tool:"single"|"line"`,
-`voxelSize`, `spacing`) + `ui_store` fields + a build HUD (size/spacing). Content-
-drive the RadialMenu (replace hardcoded `STRUCTURE_OPTIONS` RadialMenu.tsx:22 with
-a `contentService` query over placeable prefabs). De-duplicate `bresenhamCells` to
-one shared helper consumed by ghost-preview AND commit. Swap the `BoxGeometry`
-ghost for `bakeVoxels` at the brush size, palette-tinted. Voxel-face-aware cursor
-pick with vertical stacking (one `cursor→voxelHit` resolve feeding ghost + facing).
-The `Place` command grows `voxelSize`/`spacing`/cell-list; `PlacementSystem`
-validates with the shared `bresenhamCells` (server authority unchanged). Fold in
-the networking cleanup: export `CODEC_BY_WIREID` from `@voxim/codecs` and replace
-the 31-case decode switch + hand-rolled DataView decodes (client_world.ts:155-283).
-**The deferred networked-`Container` chest UI (T-077/T-078) lands here** once
-Container is given a wire id + the deposit/withdraw UI is built on the rebuilt
-client.
-Done when: a player places single voxels and lines with size/spacing control, the
-ghost matches the commit cell-for-cell, the radial is content-driven, and decode
-is registry-dispatched.
-
-### T-285 · Procedural Model primitive — generator + per-tile variant pool
-Effort: L   Status: done   Commits: b2391ed (a) · 399ab7c (b) · 7d2925e (c) · 8ee1576 (d)
-(design: `PROCMODEL_PRIMITIVE_PLAN.md`; all four phases landed)
-
-The fifth content-driven primitive (visual), generalizing `ForestPropsRenderer`
-into the rebuild's named "Models (entity/prop/forest)" producer — the
-`instance_pool.ts` "future rocks and litter" hook. Two locked decisions: (1)
-generator = **parametric atom-grammar** emitting `VoxelAtom[]` from a seed (SPEC
-L22), not authored `subObjects`+`pool`; (2) **all scatter is visual-only (zero
-ECS entity, collision from `OpenMask`); harvest nodes are separate invisible
-`ResourceNode` entities** co-located in scatter cells (positional link, accepted
-drift) — which frees the generator's PRNG order from any server hitbox contract.
-
-Shape: content `ProcModelDef` (`data/procmodels/`, `{generator, params}`) +
-`ScatterDef` (`data/scatter/`, `{kind, procModel, pool, stride, scaleJitter}` —
-absorbs every `FOREST_*` hardcode); a client **generator registry**
-(`register("tree_grammar", (seed,params)=>VoxelAtom[])`, boot-cross-checked, no
-`switch`); a per-tile **VariantPool** (roll `tileSeed`→K sub-seeds→K generator
-runs→K baked geometries→K archetypes `scatter:{id}:{i}|{mat}`); a
-**ScatterRenderer** replacing `ForestPropsRenderer` that picks `variantIndex =
-hash(worldPos) % pool` per cell and rides scale/rotation jitter on the instance
-matrix. The fixed-K pool IS the instancing economics (K meshes, thousands of
-instances). Scale-on-matrix (not in the archetype key) **resolves the deferred
-T-281 archetype-explosion**. Whole look inherited free via `bakeVoxels` +
-`buildVoxelMaterial` + `InstancePool`.
-
-Phasing (see plan): **T-285a** schema + registry + cross-check + fix the
-`VoxelAtom` half-extents comment (atoms are FULL edge lengths — `voxel_bake.ts:135`
-is authoritative), lands inert · **T-285b** `tree_grammar` (trunk/branch-L-system/
-foliage-blob) + bake test · **T-285c** VariantPool + ScatterRenderer, delete
-`forest_props.ts`, `FOREST_*`→content, live-verify via `scripts/testplay.mjs` ·
-**T-285d** second generator (`boulder_grammar`) + 6-variant stone scatter, zero
-engine edits. Replace-not-accrete: `tree_oak`/`branch_oak_*` retire for forests.
-Sibling ticket (not here): deterministic server harvest-node placement in scatter
-cells.
-Done when: forests render from `tree_grammar` variant pools (≥`pool` distinct
-silhouettes, stable across reloads), `ForestPropsRenderer` and the `FOREST_*`
-hardcodes are gone, and a stone ScatterDef adds 6 variants with no code change.
-
-DONE (all four phases). Foundation (a): `ProcModelDef`/`ScatterDef` categories,
-client generator registry + cross-check (the client twin of server.ts's checks),
-bootstrap v14→15, VoxelAtom comment fixed. Generator (b): `tree_grammar`
-(trunk taper + recursive whorl branches + hash-gated foliage), deterministic,
-bakes crack-free. Integration (c): `ScatterRenderer` + per-tile `VariantPool`
-replaced `ForestPropsRenderer` wholesale (deleted) — scale rides the instance
-matrix, not the archetype key (resolves the deferred T-281 explosion); verified
-live (8 archetypes / 4 variants / 4653 instances, frame budget intact).
-Generalization (d): `boulder_grammar` + stone scatter (6 variants) added with
-ZERO renderer edits — one handler + one register() + two data files. Deferred
-clean-up (still open): retire the now-unused authored `tree_oak`/`branch_oak_*`
-models for forests, and the sibling server harvest-node placement.
-
-### T-286 · Artistic sweep — filmic grim grade + readable lighting
-Effort: M   Status: done   Commit: 0a98014
-
-The grim palette ("a green-grey world the ash fell on") was invisible — even at
-noon the world rendered as a near-black void; the desaturated earth tones never
-read. An art pass to make the world readable AND more cinematic, without losing
-the grim, low-chroma identity. All in lighting + the EdgePass post (no LUT):
-
-- **Filmic tone** — the EdgePass renderer was `NoToneMapping` + a raw linear→sRGB
-  clamp; added an in-shader ACES curve + exposure (1.5) on the LIT radiance
-  (before the fog-of-war dim), so lifted midtones read while sunlit/ember patches
-  roll off instead of clipping.
-- **Readable fill** — hemisphere intensity bumped across phases (noon 0.25→0.5,
-  …, midnight 0.04→0.16 + moonlit sun 0.06→0.18) so shadowed faces aren't black.
-  Explored-but-unseen fog dim lifted 0.55→0.66.
-- **Split-tone grade** — cool shadows / warm highlights by luminance (±~6%),
-  reinforcing the palette's own deep-water/frost ↔ timber/sand axis — painterly
-  depth for the flat grey, no recolour.
-- **Vignette** — a subtle corner falloff for focus (0.12), sitting on top of the
-  fog-of-war (not fighting it).
-- **edgeInk plumbed** — EdgePass no longer hardcodes `0x0d0d0d`; the silhouette/
-  crease ink reads the `edgeInk` palette token (peat `#161611`, warmer) via
-  `setEdgeColor`, wired where the palette applies (the PROCMODEL §6.4 fix).
-
-Verified with a true before/after at snapped-noon (sun 2.5, hemi 0.25→0.5): the
-lit world reads with tonal depth where it was a muted void, grim mood intact.
-
 ## Animation & Render Verification
 
-### T-275 · Animation freeze — locomotion clobbered by empty-slot idle fallback
-Effort: S   Status: done
-
-The user reported "the charactermodel is not animated." Root-caused live via the new animProbe
-(T-277): the server WAS selecting the right clip (`walking`, time advancing) and the client WAS
-translating, but the rendered skeleton pose was **byte-identical to idle** — the character slid
-around frozen.
-
-Cause in `tile-server/src/systems/animation.ts`: `projectLocomotion` is reused for all three
-action slots (locomotion / primary / reaction) and resolved `slot?.actionId || "idle"`. The
-`|| "idle"` fallback is correct for the **locomotion** slot (empty → idle, no rest-pose flash on
-the first post-spawn tick) but wrong for **primary/reaction**: when not attacking/staggered those
-slots are empty, so the fallback fabricated a **full-body, weight-1, override, unmasked** `idle`
-layer that composited ON TOP of locomotion and overwrote the walk pose every frame. (`primary`
-held `primary_idle`, which has no `animation` block → correctly projects nothing; the empty
-`reaction` slot's idle fallback was the actual clobberer.)
-
-Fix: scope the idle fallback with a `fallbackToIdle` param — only the locomotion call passes
-`true`; primary/reaction stay silent when empty. Reuses the existing bone-mask layering
-architecture (empty slots project nothing; real upper-body actions like swings/hits mask
-themselves). Verified live: walk limb-articulation (relative to root) jumped 0.03 → 1.20 (~33× idle
-baseline), layer stack dropped from `[walking, idle]` to `[walking]`. Parity test extended with the
-"empty primary/reaction projects nothing" case.
-
-### T-276 · Bake-pool resilience — worker-load failure must degrade to the sync bake
-Effort: S   Status: done
-
-Second "character not animated" failure mode (distinct from T-275; this one leaves no skeleton at
-all). `client/src/render/bake_pool.ts` only registered `worker.onmessage`. A module-LOAD failure
-(404 / wrong MIME / CSP blocking workers) does NOT throw from `new Worker()` — it fires an async
-`error` event. Unhandled, `usingWorkers` stayed true, `bakeModel` posted to a dead worker, and its
-resolve-only promise NEVER settled, so the renderer's `await bakePool.bakeModel()` hung →
-`upgradeToSkeletonModel` never ran → the entity stayed an unrigged shell, frozen in rest pose.
-
-Fix: honour the file's own contract ("the render path always has a result"). Register
-`onerror`/`onmessageerror` → `#fallbackToSync()` (terminate workers, empty the pool so all future
-bakes take the synchronous path, and resolve in-flight `#pending` entries via the same
-`bakeDisplacedVoxel` the worker runs). Plus a per-request timeout backstop for a silently-dropped
-message. Verified live via `BLOCK_WORKER=1` (T-277): with the worker aborted, `hasSkeleton` still
-flips true and the character animates.
-
-### T-277 · Headless animation test harness — animProbe + testInput + assertions
-Effort: M   Status: done
-
-`scripts/testplay.mjs ANIM=1` now asserts the character is actually animated, not just that a clip
-id is on the wire. Added client test hooks: `game.animProbe()` (live AnimationState layers +
-`renderer.sampleBoneWorld`/`hasSkeleton`), `game.testInput.down/up` → `IntentTranslator.pressKey/
-releaseKey` (drives the REAL input path, since the browser canvas can't reliably receive synthetic
-key events). Assertions: skeleton built (polled — survives the async bake), clip plays at rest,
-idle near-static, player translates, locomotion clip while moving, **limbs sweep while moving**,
-attack drives a primary action — plus walk/idle screenshots for the human "looks good" gate.
-
-Key measurement lessons baked into the harness: (1) the limb-motion metric is the
-translation-AND-rotation-invariant **inter-bone distance range** (a sliding/turning rigid body
-preserves bone gaps; only a flexing pose changes them) — centroid-subtraction was too weak and read
-walk == idle; (2) movement direction is fixed (no cursor → always one heading) and player position
-PERSISTS between runs, so the test tries W/S/A/D until one is clear of terrain; (3) the whole
-hold→sample→release loop runs in ONE in-page `evaluate` (cross-boundary key+poll raced under load);
-(4) one-shot actions (attack) are re-pressed across a dense window so a press eaten by a stall can't
-hide the brief swing. `BLOCK_WORKER=1` routes `bake_worker.js` to abort as the regression test for
-T-276. Stable 7/7 across repeated runs in both normal and worker-blocked modes.
-
-### T-278 · Keyboard control — game keys hijacked by browser defaults
-Effort: S   Status: done
-
-The user reported "we don't have full control over the keybindings" for the browser-hosted canvas.
-`InputCapture` listened at `document` but never called `preventDefault`, so the browser ran its own
-defaults for game keys: Space and the arrow keys scrolled the page, Tab stole focus, '/' opened
-quick-find, etc. — fighting the game input.
-
-Fix: inject an optional `preventDefaultFor(e)` policy into `InputCapture` (kept game-agnostic — the
-predicate is supplied by `game.ts`). It swallows the browser default for `IntentTranslator.GAME_KEYS`
-on bare presses, and deliberately does NOT when (a) a text field is focused (never hijack typing) or
-(b) a ctrl/meta/alt modifier is held (so Ctrl+C/R/V, Ctrl+Shift+I and other OS/browser shortcuts
-keep working). Verified live: Space/ArrowDown → defaultPrevented; KeyP, Ctrl+W, and Space-in-an-input
-→ not prevented.
-
 ## Client / Controls, Feel & Render Polish
+
+### T-347 · The WorldClock was never replicated — day/night and the whole atmosphere layer were dead client-side
+Effort: S   Status: done   Commit: (see below)   (found live chasing T-340's ambience, 2026-07-14)
+
+`WorldClock` is a networked component on a POSITIONLESS SINGLETON entity — no Position, no Heightmap,
+no GateLink. AoI admits entities by spatial proximity, by being a chunk, by being a gate, by being a
+carried item, or by being someone's scene-graph descendant. **The clock is none of those**, and AoI
+never mentioned it. So it was never sent to any client, ever.
+
+Everything time-of-day hangs off that one entity in `renderer.render()`:
+
+    const clock = this.world?.getWorldClock();
+    let t01 = 0.5;
+    if (clock) { …sun arc, atmosphere selection, mist, god rays, ambience… }
+
+With no clock the branch never fired: `t01` froze at 0.5, no `AtmosphereDef` was ever applied, and
+`EnvLighting` ran on its constructor defaults forever. The entire T-311 atmosphere arc — sun arc,
+mist, god rays, biome-selected atmosphere — was inert on the client, and `debug_set_time` did nothing
+visible. It survived because the fallback still *looks* like weather: it reads as "the lighting is a
+bit flat", not as a replication hole.
+
+Found only because T-340's ambient drift is selected off `AtmosphereDef.ambienceParticleId` and
+stubbornly produced zero particles while every other part of the chain checked out.
+
+Fix: one line in `aoi.ts` — `for (const { entityId } of world.query(WorldClock)) inAoI.add(entityId);`
+Verified live: clock received, `biomeTag: "hills"`, atmosphere "default" applied, 320 ambience
+particles alive, draw calls unchanged.
+
+### T-345 · `movement: "slowed"` was a lie — the mode nothing implemented
+Effort: M   Status: done   Commit: (see below)   (user, live play, 2026-07-14)
+
+The user asked for a movement debuff while casting. It turned out the field already existed and
+was **dead**: `ActionMovement` was `"free" | "slowed" | "locked"`, 17 ActionDefs declared
+`"slowed"`, and `isMovementLocked` said so in its own doc comment — *"`slowed` is currently treated
+as `free` (no consumer yet)"*. So every one of those defs was lying about its own behaviour, and
+drawing a bow felt exactly like walking.
+
+Fixed by making the mode the NUMBER itself: `ActionMovement = "free" | "locked" | number`, where the
+number is a speed multiplier in (0,1] applied per PHASE. That is what makes the penalty depend on
+what you are doing — which was the actual request, and which a single global "slow" constant could
+not have delivered:
+
+  crossbow_draw.hold 0.25 · bow_draw.hold 0.30 · spell_draw.hold 0.40 · throw_draw.hold 0.50
+  block.hold 0.55 · swing_heavy.windup 0.42 · swing_light.windup 0.70 · hit_front 0.35
+
+`PhysicsSystem.actionSpeedMultiplier` takes the strictest value across occupied slots (a permissive
+second slot must not rescue a committed first one) and multiplies it INTO the modifier stack, so
+encumbrance and a channelled cast compound instead of one masking the other.
+
+The `"slowed"` string is retired, not deprecated: all 17 content files migrated in the same commit,
+the type no longer admits it, and the boot validator rejects it BY NAME with the reason — because
+falling through to a generic "not a number" message would lose exactly the explanation someone will
+need. 3 new tests pin the consumption site, the per-action difference, and the strictest-slot rule.
+
+### T-343 · Spatial grid was rebuilt BEFORE the systems, but AoI reads it AFTER
+Effort: S   Status: done   Commit: (see below)   (found live, 2026-07-14)
+
+The tick did `spatial.rebuild()` at the top of step 2 (run systems), and `computeSessionUpdate`
+(step 6, AoI) then read that same grid. So an entity BORN during step 2 — a projectile, a dropped
+item, a spawned NPC — was not in the grid, and on its first tick was replicated **to nobody**.
+
+For a projectile that is not a rounding error, it is the feature: a bow arrow lives ~3 ticks, so a
+third of its flight was never sent and it appeared to the client already downrange. Anything dying
+inside one tick would NEVER be rendered at all, while the server happily reported the hit — i.e.
+"the arrow doesn't show up but the damage lands", which would have been chased as a render bug
+forever.
+
+Fix: a second `spatial.rebuild()` on the COMMITTED world, after `applyChangeset()` and before the
+AoI pass. The step-2 rebuild stays — the systems must all see one consistent snapshot. O(entities
+with Position) and allocation-free, so the second pass is cheap next to shipping an invisible
+projectile.
+
+### T-344 · `Inventory` is a multi-writer component still using get-then-set
+Effort: M   Status: done   Commit: 491d765   (found live, 2026-07-14)
+
+`world.mutate` (T-249) exists precisely because a component with several writers cannot be updated
+with a `get` → `set` pair: two writers in the same tick both read the same pre-tick value and both
+write their own version, so the second silently clobbers the first. `Health` and `Resource` were
+migrated. **`Inventory` was not**, and it has at least seven writers: DebugCommandSystem, Trader,
+Container, Placement, BlueprintHitHandler, StaleSlotCleanup, EquipmentSystem.
+
+Found live: giving a bow and arrows in the same tick delivered only the arrows — the bow's slot
+append was overwritten. Fixed in `DebugCommandSystem` (both give paths now `mutate`), but the
+pattern is repo-wide and the same lost update is reachable in real gameplay whenever two of those
+writers land on one tick (loot a stack while a crafting output completes; a trade settles while a
+blueprint consumes materials).
+
+Done when: every `world.set(..., Inventory, ...)` is a `world.mutate`, with the read-side
+validation (capacity, "do I still have the item") moved INSIDE the closure — checking against a
+stale read is the same bug wearing a hat. Audit `Equipment` and `Container` for the same shape
+while in there.
+
+**Landed** (13 files, every `world.set(..., Inventory, ...)` converted — grep confirms zero
+remain; `_giveTrinket`'s stale capacity check, the exact trap the ticket called out, was fixed
+too). Two closure shapes throughout: TARGETED-DECLINE (re-locate a captured slot identity via the
+new `inventory_ops.ts`, decline if gone) and AGGREGATE-RECHECK (recompute the gating property
+against `cur`). Several sites move an item between TWO components in one command — those got
+COUPLED-DECLINE (destination claims first, source's removal is dependent) so the paired write
+didn't stay a plain `set` wearing the same trap: `Equipment`+`Inventory` (equip/unequip),
+`Container`+`Inventory` (store/withdraw), `WorkstationBuffer`+`Inventory` (Load/TakeWorkstation,
+craft_at_workbench's NPC transfer), `TraderInventory.stock`+`Inventory` (buy — also fixed an
+adjacent oversell bug), `LoreLoadout`+`Inventory` (internalise). `BlueprintHitHandler`'s materials
+claim got a 3-closure claim/commit/revert (2-closure fails in both directions for the co-op
+same-tick-first-hit race this ticket's own text names) — the only site that warranted it.
+`Equipment` and `Container` were audited per the ticket's ask: both were genuinely multi-writer
+(Equipment: equipment.ts + stale_slot_cleanup.ts; Container: its own store/withdraw ops) and are
+now fully `mutate`-based, zero `world.set` remaining for either.
+
+Residuals stated per site, not papered over — two recurring classes: (1) an irreversible
+side-effect (spawn/destroy/reparent) ahead of a closure that can still decline — accepted where
+narrow and nothing owned is lost (orphaned entity), flagged where a same-tick race could strand or
+double-touch state; (2) COUPLED-DECLINE only fully closes the LOSS direction (destination gates
+first) — a narrow duplication residual remains if the exact same captured item is independently
+touched by a SECOND same-tick command, needing two contradictory commands from one client, not the
+ordinary "two different writers" case this ticket targets. `BlueprintHitHandler` is the one site
+closed against both directions. Full suite 1002 baseline → 1065 (63 new regression tests, 0
+failed).
+
+Found but explicitly OUT of this ticket's scope: `WorkstationBuffer` has 7 more get-then-set sites
+not paired with an Inventory move (`crafting.ts` SelectRecipe, `crafting/steps/time_step.ts`,
+`repair_step.ts`, `treat_step.ts`, `crafting/util.ts`'s `resolveRecipe`,
+`resources/effects/resolve_recipe.ts` ×2) — same shape, same fix, but a standalone-buffer
+concern with its own multi-station-hit race, not this ticket's Inventory-audit mandate. Worth a
+follow-up ticket if it bites live.
+
+**Adversarial verification (commit 6a68ff0)** found "destination gates first" is not a safe
+universal COUPLED-DECLINE rule — only correct when the destination IS the shared/contested
+resource. Two sites had it backwards, where the SOURCE was actually shared: `container.ts`'s
+`withdrawFromContainer` (Inventory, private per-holder, claimed first; Container, the shared
+chest, second) and `crafting.ts`'s `_handleTakeWorkstation` (Inventory claimed first;
+WorkstationBuffer, worked by multiple players, second). Both let two different actors racing the
+SAME item both "win" — reproduced live with probe tests (two dynasty members withdrawing the same
+chest slot; two players taking the same buffer slot), no contradictory commands needed, just
+ordinary co-op play. Fixed with 3-closure claim/commit/revert (the pattern
+`blueprint_hit_handler.ts` already used): the shared resource claims first, the private
+destination's grant is dependent + rechecks capacity itself, the shared resource reverts if the
+destination turns out full. New adversarial regression tests pin both the duplication case and the
+revert-on-full case. Full suite 1065 → 1069, all green.
+
+### T-335 · Ctrl+W closes the browser tab — crouch is bound to Ctrl
+Effort: S   Status: done   Commit: (see below)   (user, 2026-07-14)
+
+Fixed at the level of the CLASS, not the instance. The instance: crouch sat on Ctrl, so
+crouch-walking forward (Ctrl+W) was the browser's "close tab" chord — and a page CANNOT
+preventDefault a reserved chord, so no client-side handling could ever have saved it. The class:
+**any modifier binding turns every ordinary movement key into a browser chord.** The failure is
+combinatorial, not local to one key.
+
+What landed:
+- Keyboard bindings are now CONTENT (`game_config.input.bindings`: action id → KeyboardEvent
+  codes). `IntentTranslator` switches on the bound ACTION, never on a literal key code, so a
+  rebind is a JSON edit. `DEFAULT_BINDINGS` mirrors the shipped content for the pre-bootstrap
+  join screen.
+- `validateInputBindings` (loader.ts) REFUSES at boot any binding to `Control*`/`Alt*`/`Meta*`,
+  `Tab`, or an F-key, and any code bound to two actions. **That guard — not the rebind — is the
+  deliverable**: the bug cannot come back through an innocent-looking JSON edit.
+- Crouch → `KeyC`; consume moved off C → `KeyQ` (the only collision the rebind created).
+- 6 new tests (`input_bindings.test.ts`), incl. one asserting the SHIPPED config binds no
+  reserved key.
+
+### T-336 · Faster movement
+Effort: S   Status: done   Commit: (see below)   (user, 2026-07-14)
+
+**It was never a speed-knob problem.** Tuning `maxGroundSpeed` first, then measuring live, exposed
+the real cause: a freshly-spawned player carried **59.55 weight against a 50 carry cap** — 119%
+overloaded, pinned at the encumbrance floor (`minSpeedMultiplier: 0.4`) from the first second.
+Effective speed was `9 × 0.4 = 3.6`. The arithmetic checked out against the live measurement to two
+decimals (12.5 × 0.457 = 5.71 measured), which is what turned the guess into a diagnosis.
+
+The load: the starting inventory handed every new player **five workstation kits** — including an
+anvil (15) and a furnace (14), 43 of the 59 units. A portable forge in your backpack. That is a dev
+fixture, not a game start, and a `give_item` debug command already exists to hand them out on demand.
+
+Fix (root cause, not the symptom):
+- Starting loadout trimmed to an adventurer's kit (3 tools, berries, campfire kit, coins) →
+  **16.55 / 50 = ratio 0.33**, comfortably under the 0.5 penalty threshold. Encumbrance stays
+  CALIBRATED — it still bites when you actually haul loot, which raising `maxCarryWeight` (the easy
+  fix) would have quietly killed as a mechanic.
+- `physics.maxGroundSpeed` 9 → 11, `groundAccel` 65 → 95.
+- Net: effective speed **3.6 → ~11**, a 3× change. Live-measured 9.82 m/s in a free direction
+  (the shortfall is accel ramp + 20 Hz position quantization, not a penalty).
+
+Gait verified live at the new pace: stride sweep 0.19–0.23 with fine sampling — the T-308
+distance-driven stride scales with speed exactly as designed, no re-authoring needed. (The ANIM
+harness's coarse 160 ms sampling ALIASES at the higher stride frequency and reads a false 0.014;
+sample at ≤40 ms or you will "discover" a regression that isn't there.)
+
+### T-331 · Some terrain chunks bake with WHITE vertex colours (material lookup lost at bake time)
+Effort: M   Status: done   Commit: ed11d0d   (found during the T-313 live-verify, 2026-07-07)
+
+Root-caused and fixed. `renderer.ts`'s `_rebuildChunk` called
+`this.content?.getMaterialSync(matId)` with NO gate on whether the bootstrap
+ContentService had hydrated yet — a miss (`undefined`) fell through to
+`buildVoxelMaterial`'s `FALLBACK_COLOR` (flat, textureless, no vertex-colour
+mottle break-up), which under this scene's exposure/tonemap reads as a pale/
+white patch with hard voxel edges — reproduced live by directly forcing this
+exact fallback for one material (`path`, id 14) via a monkeypatched
+`getMaterialSync`, producing a pixel-identical match to the reported bug.
+
+The RACE is real, proven live by forcing it (a 2.5s artificial delay before
+`BootstrapSource.load`'s gunzip decode, which IS a genuine async yield —
+`TileConnection.connect()` wires its state-stream read loop with a
+fire-and-forget `.catch()` before it even returns, so terrain messages can
+race ahead of Step 4's `await BootstrapSource.load(blob)`): with the delay,
+all 256 chunks land and `_finishLoading()`'s threshold check fires WHILE
+`this.renderer` is still null, permanently latching `loadingComplete = true`
+and silently orphaning every chunk (`renderer?.updateTerrain` no-ops via
+optional chaining, and the idempotent `if (this.loadingComplete) return`
+guard means no retry ever happens) — the whole world rendered as empty
+ground, not a patch. This is the SAME hazard family as the ticket's "chunk-
+ready before bootstrap hydrated" suspicion, one level earlier (the renderer
+object itself, not just its content cache). The second smell (`material.color`
+`#ffffff` vs `#7c6440` across meshes) is NOT a bug: `#ffffff` is the
+by-design base for any material with a `render.textureStyle` (dirt/grass/
+etc. — the texture already bakes the real colour into its pixels via
+`hexToRgb(color)`, so `color:0xffffff` is the multiplicative identity), while
+flat materials like `path` (no textureStyle) correctly show their real
+colour directly. Once the illegitimate third value (fallback grey reading as
+near-white) is eliminated, only these two well-explained values remain — no
+further "uniform" change was made (that would have regressed the procedural
+texture system).
+
+Fix: (1) `ContentCache.isHydrated()`. (2) `_rebuildChunk` gates on it —
+defers (queues the chunk key) instead of baking with an unresolvable
+material; `VoximRenderer.onContentHydrated()` rebuilds every deferred chunk,
+called from `game.ts` right after both `setBootstrapService` call sites
+(initial join + tile transition, where the renderer survives the reconnect).
+(3) once content IS confirmed hydrated, an unresolvable materialId now
+THROWS with chunk coords + materialId (a genuine content gap, not a race) —
+never silently paints white. (4) `_finishLoading()` no longer latches
+`loadingComplete` with a null renderer — bails and lets the next message (or
+Step 4's own post-hydration check) retry, closing the "whole world missing"
+variant proven above. `clearWorld()` (tile transition) clears the pending
+queue too — stale coordinates from the source tile's world.
+
+Verified live: full 262,144-cell world scan post-fix found zero unresolvable
+materialIds; scene-wide scan found zero fallback-coloured terrain meshes;
+re-running the forced 2.5s-delay race post-fix renders correctly (previously
+rendered as an empty world); the monkeypatched-miss reproduction now throws
+instead of silently falling back. `deno check` + full suite (865 tests, incl.
+3 new `ContentCache.isHydrated()` tests) green.
+
+
+### T-328 · Mouse turns the CHARACTER, the camera rides along (supersedes T-320's facing/camera model)
+Effort: M   Status: done   Commit: fb4f8b9   (user, 2026-07-07)
+
+Landed: facing is mouse-driven (`IntentTranslator.applyLookDelta` ->
+`facingFromLook`, wrapped), camera yaw is a rigid derived read
+(`CameraRig.setYaw`, no accumulator, no damping), and movement is
+transformed by the FACING basis so A/D strafe and S back-pedals while
+still facing the target. Pitch stays camera-only, unchanged. No wire
+change. Unit-tested (facing wrap/continuity, yaw-tracks-facing exactly,
+A-press-is-a-strafe-not-a-turn) + a `cameraProbe.facing()` headless hook
+alongside the existing yaw()/pitch(). The raw pointer-lock FEEL (mouse
+turning the character, circling a target) is the user's manual live-play
+check — un-headless, same as T-320/T-324's pointer-lock work.
+
+Invert T-320's rotation ownership. Today: mouse-X drives the CAMERA yaw directly, and facing is
+derived from the movement direction. The user wants: **mouse-X rotates the PLAYER'S FACING, and the
+camera follows that facing.** Consequences, all intended:
+
+- **Facing is mouse-driven, not movement-derived.** `facing += dx × sensitivity` (wrapped), accumulated
+  from the same pointer-locked raw deltas T-324/T-324b already deliver. DELETE the movement-direction
+  facing derivation T-320 introduced (replace, don't flag).
+- **Camera yaw is DERIVED from facing** — the camera sits behind the character's heading. Rigid coupling
+  by default (the user asked for the camera to rotate *with* the facing, and T-324 just proved that any
+  damping reads as sluggish); if a slight lag is wanted later it becomes a content knob, not a default.
+  The pitch pan (mouse-Y, clamped band) is unchanged and stays camera-only.
+- **Movement becomes facing-relative, which is the real win:** W = forward along facing, S = back-pedal,
+  A/D = STRAFE while still facing the target. Today you cannot circle an enemy while looking at it —
+  that is the bug this fixes, and it is what makes the combat model (aim-assist, blocks, dodges) work.
+  The locomotion animation must read the movement vector RELATIVE to facing (strafe/backpedal poses
+  become genuinely meaningful — coordinate with T-308's strafe/turn lean).
+- Server-side soft aim-assist (T-320) is unchanged and composes: your facing is now literally where you
+  point, so the swing already starts aimed; aim-assist only snaps it onto the best in-cone target.
+- No wire change: `facing` already rides the InputDatagram. Camera stays pure client presentation.
+
+Done when: moving the mouse turns the character (and the camera behind it), A/D strafes around a target
+while still facing it, S back-pedals, and swinging goes where the character points — verified live.
+
+### T-324 · Camera feels sluggish and snaps ~90° at a certain rotation
+Effort: M   Status: done   Commit: 36112c8   (user, live play 2026-07-07 — T-320 regression)
+
+Root-caused empirically, not by feel: a dense 5-turn `cameraProbe.yaw()` sweep (both offline and
+against the live served bundle, both directions, several per-event pixel magnitudes) found ZERO
+discontinuities — disproving all three prime suspects below (`camera_rig.ts`'s yaw is a private
+field with exactly one mutation site, `applyLookDelta`, which already sums every pointer-lock
+event directly with no dt-scaling or damping). The real, fixable defect for both symptoms was
+that `requestPointerLock()` never asked for raw input — Chromium applies its OS-level pointer-
+acceleration/ballistics curve to `movementX/Y` by default, which compresses slow deliberate turns
+(sluggish) and can emit an anomalous single-event jump when the curve recalibrates (the snap).
+Fixed by requesting `{ unadjustedMovement: true }` with a `NotSupportedError` fallback to a plain
+lock. Yaw continuity is now pinned as a regression test (`camera_rig.test.ts`); the OS-curve fix
+itself isn't headless-testable (pointer lock can't be driven headless at all — real hardware feel
+is a manual check).
+
+Two distinct defects in the new free-look camera (T-320):
+- **Sluggish** — rotation lags the hand even after the sensitivity bump (0.0022 → 0.007). Suspect a
+  residual smoothing/damped step surviving from T-317's chase controller, or the yaw only being
+  applied once per render frame while pointer-lock `movementX` events accumulate faster (deltas being
+  dropped/overwritten rather than summed), or a dt-scaling that shouldn't be there for a *direct*
+  (non-damped) rotation.
+- **~90° snap at a certain rotation** — smells like a wrap/quadrant bug: an `atan2`/shortest-arc wrap,
+  a yaw normalisation crossing ±π, or the pitch clamp interacting with the look-at basis and flipping
+  the up-vector. Reproduce by rotating slowly through a full circle and logging `cameraProbe.yaw()`
+  continuously — the snap will show as a discontinuity at a specific angle.
+Done when: a full 360° sweep is continuous (no jump), rotation tracks the hand 1:1 with no damping,
+and both are verified with the `cameraProbe` hook (yaw sampled across a slow sweep) — not by feel alone.
+
+### T-325 · Input rework — UI clicks also drive the camera
+Effort: M   Status: done   Commit: 0c6d8cb   (user, live play 2026-07-07 — T-320 gap)
+
+Landed the real routing pass: `input_mode.ts` is one computed `InputMode` ("gameplay" | "ui" |
+"build") derived from `modeState` + `uiState.openPanels` + `uiState.radialMenu`, with zero writers
+(a pure derivation can't desync from the state it answers about). `PointerLockController` and
+`IntentTranslator` both read it instead of re-deriving their own partial answer. Found and closed
+two concrete gaps: (1) the build radial menu is a plain `uiState.radialMenu` patch, never added to
+`openPanels`, so the old `worldOwnsCursor()` check didn't know about it; (2) `exitPointerLock()` is
+async, so a panel opening between mouse events used to leave a window where in-flight deltas still
+reached the camera before the browser caught up — fixed by gating `_onMove` on the mode signal
+itself, not just the DOM `_locked` mirror. Held-button bookkeeping (`rmbDown`, `holdState.lmb`)
+still clears unconditionally on release so a panel opening mid-hold can't leak a stuck block bit or
+a phantom charge bar. Verified live with real pointer-lock via Playwright's CDP mouse (trusted
+input, unlike page.evaluate()-constructed events): opening Inventory/Stats releases the lock with
+zero yaw change, aggressive click+drag+move while a panel is open produces yaw delta 0, closing +
+re-clicking restores control (yaw moves again) — see T-324/T-325 arc notes for the numbers.
+
+Clicking a UI element both actuates the UI *and* rotates/steers the camera: pointer-lock and the DOM
+UI are fighting over the same mouse. T-320 released the lock on panel-open, but the guard is
+incomplete — clicks land on the canvas (or the lock re-engages) while the UI is up. This needs a real
+input-routing pass, not another patch: ONE owner decides, per frame, whether the mouse belongs to
+gameplay (pointer-locked camera) or to the UI, and the other side sees nothing. Consider an explicit
+input-mode state (gameplay / ui / build) driven off the UI modal stack, with pointer-lock engaged only
+in `gameplay`, and canvas mouse handlers bailing out in any other mode.
+Done when: with any panel open, no mouse movement or click reaches the camera; closing it restores
+camera control; build mode keeps its cursor; and the transitions are verified per panel.
 
 Born from the 2026-06-24 client-overhaul analysis (7-reader sweep over the post-rebuild
 client). Root finding: **facing is never predicted client-side** — the local body's
@@ -758,114 +1056,110 @@ ground color and an imperceptible ±6% split-tone tint — NOT a blocked T-286 b
 palette IS the runtime authority via `applyPalette`). Chosen directions: controls →
 camera-relative movement + cursor-aim (Diablo/PoE); color → deutlich bunter.
 
-### T-287 · Camera-relative movement + client-predicted cursor-facing
-Effort: M   Status: done   Commit: 31be627
-
-Two coupled control fixes; chosen scheme = camera-relative + cursor-aim (Diablo/PoE).
-
-1. **Camera-relative movement.** `IntentTranslator.buildDatagram` builds the movement basis
-   from the player's cursor `facing` (`intent_translator.ts:245-252`) — W moves toward the
-   cursor. Replace the basis with the fixed camera yaw (`CameraRig.getYaw()`): W = screen-up,
-   D = screen-right, regardless of where the cursor points. `facing` still rides the wire
-   (cursor-aim) so the body and swings aim at the cursor. Inject `getCameraYaw` into the
-   translator.
-2. **Predicted facing.** The local mesh `rotation.y` is set only from networked `state.facing`,
-   so the body turns a round-trip late. Pass the local `IntentTranslator.facing` through
-   `renderer.render()` and apply it to the local player's `group.rotation.y` in the same
-   override block that already overrides local position (`renderer.ts:879`), using the
-   `-angle - π/2` convention. Remote entities stay on the interpolated networked path.
-
-DONE: aiming turns the body the instant the cursor moves (no ~50-100ms delay); the swing
-trail sweeps toward the cursor every time (fixes "attacks go random directions"); WASD moves
-relative to the camera, not the cursor. No server change. Verify via the testplay harness
-(local mesh `rotation.y` tracks the cursor angle within one frame).
-
-### T-288 · Single saturated lighting authority — de-grey the atmosphere
-Effort: S   Status: done   Commit: 4917ad5
-
-The world reads grey because the palette's own atmosphere is near-grey: noon `sky` and `fog`
-are both `#9aa39e` (~5% saturation), and fog color = sky color washes the whole scene toward
-grey at `fogFar` 230. The hemisphere GROUND color (`0x334433`) is hardcoded in the
-`environment_lighting.ts` ctor and never palette-driven (only `hemi.color`/sky updates in
-`applyPalette`). User wants DEUTLICH BUNTER. Make `palette.json` the sole, saturated authority:
-(a) decouple fog color from sky and push both toward chroma; (b) add `hemiGround` to palette
-phases and drive `hemi.groundColor` from it (warm toward sage/earth); (c) delete the dead
-hardcoded `makePhaseLights()` fallback table now that all four phases live in the palette (fail
-loud on a missing phase rather than silently falling back to cyan). DONE: noon scene reads with
-real color (oak/sand/ember are colored, not grey); exactly one phase table; removing a phase
-from `palette.json` errors at boot. Final values dialed on screen with the user.
-
-### T-289 · Replace dead split-tone tint with a real saturation control
-Effort: S   Status: done   Commit: 2ddeab1   Depends: T-288
-
-The post-process split-tone tint (`edge_pass.ts:202-207`) is ±6% RGB on an already-desaturated
-base — below perceptual threshold (ΔE<2 from neutral), pure cognitive noise. Delete it and add a
-real `uSaturation`/vibrance uniform that lifts chroma in the grade (>1, toward "deutlich
-bunter"). Re-tune exposure/ACES/vignette around the now-authoritative palette. DONE: the post
-pass carries one honest knob instead of a dead tint; the scene has visible chroma punch; the
-change is delete-tint + add-one-uniform. Tuned on screen with the user.
-
-### T-290 · Skill-cast animations — populate the `animation` field on skill ActionDefs
-Effort: S   Status: done   Commit: bd88c96
-
-Skill ActionDefs (`data/actions/skill_fireblast.json`, `skill_mend.json`) have phases/effects/
-costs but NO `animation` block, so `AnimationSystem.projectLocomotion` reads `undefined`, returns
-null, and the client renders no motion during the cast despite the action running its full
-windup/active/winddown server-side. Pure content hole — `swing_light.json` shows the structure.
-Add an `animation` block to each skill mapping windup/active/winddown to a cast clip (reuse an
-existing channel pose or author a dedicated cast clip in the skeleton's `animationSlots`),
-full-body override to match swing behavior. No code change. DONE: pressing a hotbar skill plays a
-visible cast animation for the action's full duration on local and remote characters; verified via
-the animation harness. (Cast-bar UI off `ui_store.castState` is a separate nicety, not required.)
-
-### T-291 · Client-side layer crossfade — kill the pose snap on every server delta
-Effort: M   Status: done   Commit: 1248bed
-
-`AnimationState` arrives as a full layer snapshot at 20Hz and is applied raw each frame with no
-blend — idle→swing / idle→walk hard-cut the pose in one frame and layer weights jump 0↔1. Add a
-client-only per-mesh crossfade: a small pending-blend queue keyed by layer id; a layer appearing
-in the new snapshot fades in (~150-250ms), a disappearing one fades out (retain the previous clip
-during the window); fold the eased weight into the layer evaluation. No wire/server change — the
-client derives the blend schedule from layer-presence deltas. DONE: idle→walk→swing→idle
-transitions are visibly smoothed (no single-frame limb snap), verified frame-by-frame on the
-harness. Optional follow-up: sync locomotion clip time to fractional ticks for 60fps-smooth walk.
-
-### T-292 · Combat impact juice — hit feedback, hitstop, knockback emphasis
-Effort: M   Status: todo   Depends: T-287
-
-CORRECTED 2026-06-24 after verifying the code (the analysis reader was wrong here, as it was on
-lighting): the combat mechanics are NOT invisible. `health_hit_handler` already installs
-`hit_front`/`hit_back`/`stagger_light`/`stagger_heavy` into the `reaction` slot on a weapon_trace
-hit (and `stagger_heavy` on the attacker for a parry); `block` (primary/ambient), `dodge_roll`
-(locomotion) and the reactions all carry `animation` blocks and project into `AnimationState.layers`
-via `AnimationSystem`, so they ALREADY animate and reach the client over the existing wire. A
-parallel combat-state enum would duplicate a working mechanism (anti-accretion doctrine) — do NOT.
-
-The real gap is impact JUICE — client-side, no wire change. `DamageDealt` reaches the client
-(`game.ts:660`) but only `console.log`s it; `HitSpark` spawns particles but there is no hit flash,
-no hitstop, no knockback emphasis. Build (and tune live): (a) a brief damage flash on the victim
-mesh on `DamageDealt` (per-entity — needs a non-shared material hook or an emissive overlay; mind
-the voxel material cache), (b) optional hitstop (a few-frame freeze of attacker+target anim on a
-confirmed hit), (c) knockback emphasis — the server impulse already moves the body; add a short
-reactive flinch or a small screen-space punch, (d) a floating damage number off `DamageDealt`.
-DONE: a landed hit reads with weight (flash + spark + reaction pose, optional hitstop); blocked hits
-read distinctly; knockback has impact. All client-side, tuned on screen with the user. NOTE:
-playtest the post-T-287 combat FIRST — with attacks finally going where you aim and the reactions
-already animating, scope the juice against what actually still feels missing.
-
-### T-293 · Movement responsiveness tuning pass
-Effort: S   Status: done   Commit: 496ed4e   Depends: T-287
-
-After T-287 removes the body-lag (the biggest chunk of perceived sluggishness — pain "model too
-slow" is feel, not render cost, which is already sub-ms), tune the remainder. In
-`game_config.json`: lower `prediction.correctionHalfLifeMs` 60→~35-40, raise
-`prediction.hardSnapThresholdUnits` 2.0→~3.0, raise `physics.groundAccel` 40→~60-70 (max speed
-stays 6 — reach it in ~1 frame). Verify no rubber-band on high-divergence cases (hitting an
-unpredicted obstacle). Render/voxel-bake cost is already fine — explicitly NOT an optimization
-ticket. DONE: turning/stopping feel crisp, HUD `inputLag` within 1-2 frames, no rubber-band
-regressions; all changes are content/config values.
-
 ## Symphony — Feel, Content & Voxel Language
+
+### T-326 · Warped voxels everywhere — one organic-disturbance axis, applied consistently
+Effort: M   Status: done   Commit: eb4883b, 97c4912   (user, live play 2026-07-07)
+
+The randomized/warped voxel surface we now have (terrain relief, `vertexDisp`, the stacked-stone
+language) should be used **consistently across every voxel class we can apply it to** — walls, props,
+structures, equipment, characters — **always with an explicit "how warped is this" factor**, not
+ad-hoc per subsystem. T-301 already decided the principle ("organic everywhere, but silhouette
+proportions stay anchored"); this ticket makes it real and uniform: one disturbance/warp axis, one
+knob per material/class (`generatorPreferences` and/or `render.relief` are the existing homes), one
+shared application point in the bake so a wall, a sword and a shoulder all read as the same physical
+world. Audit where warp is currently applied vs. skipped (terrain: yes; scatter/props/characters:
+partly; walls/built structures: no) and close the gaps.
+Done when: every voxel-baked class reads its warp amplitude from content, the factor is authorable
+per material/class, and a wall, a prop and a character in one screenshot share the same surface idiom.
+
+**How it landed:** picked `MaterialDef.render.relief.dispMag` as the ONE authoritative home
+(already terrain's field; `generatorPreferences` is generator hints — density/thickness/layerable/
+emission — not an amplitude, documented as such in `DESIGN_LANGUAGE.md` §2/§5 so it can't grow into
+a second warp path). Wired the same field through every other `bakeVoxels` call site that was
+previously stuck on the internal hardcoded per-voxel default: `bakeSubModel`/`buildSubModelGeo`
+gained a `dispMag` parameter (previously had NO way to receive one at all — this was the concrete
+"walls/built structures: no" gap, since ruin walls/resource nodes/ground items/built structures all
+render as static instanced props through this path), `entity_mesh.ts`'s `buildMeshesFromAtoms`
+(characters, equipment, dynamic props — every skeleton/armor/held-item mesh funnels through this
+one function) and `scatter_renderer.ts` now resolve `matDef.render.relief.dispMag` instead of
+passing `undefined`. Terrain's own path (`renderer.ts`) already read it; unchanged apart from a
+doc comment. Absent `dispMag` ⇒ each call site's pre-existing default, byte-identical for every
+material that hasn't authored one (none do yet — this ticket lands the mechanism + schema
+documentation, not new art-direction numbers, since no live-stack verification was available in
+this lane; see the lane's closing report for the exact live-stack proof procedure). Decals and the
+build-ghost placement preview are deliberately out of scope (decals are non-structural/ephemeral
+per `DESIGN_LANGUAGE.md` §3; the ghost has no resolvable `MaterialDef` — `GHOST_MAT_ID` is a
+sentinel, not a content material). Verified in-lane only (type-check green + `deno test -A
+packages/`, 826 green, incl. 3 new `bakeSubModel` dispMag tests) — no live-stack testplay per lane
+rules.
+
+### T-327 · Combat-feel pipeline — windup / active / winddown / dodge / block / hitstop tuning loop
+Effort: L   Status: done   Commits: server da90070 · client 5dc4558 · devtools 81d73fd
+(design settled 2026-07-07: **A + B** below — live tuning is the core, the
+Studio timeline is the precision complement. Feel is only findable by feeling; the panel is for seeing
+exactly what you just felt.)
+
+**A · Live tuning against a running fight (the core).**
+- A **training dummy**: `DebugSpawnDummy` — an NPC that takes hits, shows its state, never dies
+  (auto-heals after N ticks) and optionally attacks on a fixed loop so blocks/dodges/i-frames can be
+  practised against a predictable telegraph.
+- A dev **tuning panel** (client, dev-only) exposing the live knobs of the action you're actually
+  swinging: phase ticks (windup / active / winddown / recovery), `hitStopTicks`, the dodge i-frame
+  window, the block window, knockback scale, and the aim-assist cone/range. Editing a knob takes
+  effect on the NEXT action — no restart, no reload.
+- Mechanism: ActionDefs live server-side and drive the dispatcher, so the panel sends a
+  `DebugSetActionParam { actionId, field, value }` command; the server patches its in-memory
+  ContentService ActionDef. Follow the existing debug-command surface exactly (`debug_commands.ts` +
+  CommandType + the client `_handleUIAction` case — the same pattern `DebugKillEntity`/`DebugSetTime`
+  use). Nothing about this touches production content until you press save.
+- **Save back to content**: a button that writes the tuned values into `data/actions/*.json` (reuse
+  the devtools `serve_devtools.ts` POST/`WRITABLE_PREFIXES` path, or an admin endpoint) so a good feel
+  becomes content, not a lost session.
+
+**B · Studio "Phases" timeline panel (the precision complement).**
+A tab beside T-322's Sweep tab in the Studio animation editor: pick an ActionDef, see its phase
+timeline in TICKS as bars — windup / active / winddown / recovery edges, the hitbox-live window, the
+i-frame and block windows, the hitstop freeze — scrubbable, with the same action's blade sweep (T-322)
+visible alongside. T-322 shows the swing's GEOMETRY; this shows its TIME. Together they are the
+authoring pair.
+
+Done when: you can spawn a dummy, swing at it, change a phase tick / i-frame / hitstop live, feel the
+difference on the very next swing, and save the values you liked into content — and the Studio
+timeline shows you exactly which windows you just moved.
+Unblocks: T-297/T-298/T-299's numbers are placeholders until this exists.
+
+**LANDED (lane/t327-feelpipe, in-lane verified — live-stack pass still needed, see below):**
+A: `DebugSpawnDummy` (`training_dummy`/`training_dummy_attacker` NPCs+prefabs+BTs; the attacker
+swings every 40 ticks via the new generic `check_tick_interval` BT node). "Never dies" is a Health
+floor at 1 in `health_hit_handler.ts` for any `TrainingDummy`-tagged entity (has to be at the
+damage-write site — DeathSystem's composed-lethal sweep independently kills on committed
+`Health.current <= 0`); `TrainingDummySystem` heals it back to full `healDelayTicks` after the last
+hit. `DebugSetActionParam { actionId, field, value }` patches a numeric leaf of the live
+ContentService in place (`actionId="$config"` reaches GameConfig for knockback/aim-assist/parry-window
+— those aren't per-ActionDef) — dispatcher re-fetches `content.actions.get()` every tick so it's live
+next-action, no restart. Client `DebugPanel` gained "Training dummy" + "Action tuning" sections.
+Save-back is `POST /debug/save-action` on the admin HTTP server (same origin as the client, devMode-
+gated) rather than the devtools static server, so it doesn't depend on a second process being up.
+B: Studio "Phases" tab beside Sweep — phase bars in ticks + i-frame/block/hitbox-live windows derived
+generically from the def's `effects` (`phase_windows.ts`, no hardcoded phase names) + the blade sweep
+alongside via Sweep's own overlay primitives, manual weapon-action picker when nothing's pinned.
+Verification done: type-check matrix, `deno test -A packages/` (839 passed), `deno task bundle` +
+`deno task build-studio`. NOT done (no live stack in this lane): actually spawning a dummy, editing a
+knob mid-fight, and confirming the Studio timeline against a live swing — see postMergeChecklist.
+
+The phase timings (windup / active / winddown / the new `recovery`), dodge i-frames, block windows,
+hitstop and knockback all need real iteration — and there is no loop for iterating them. Today a
+tuning change means: edit JSON → restart tile → reload client → fight something → guess. That is too
+slow to find feel.
+
+What's needed is an authoring/tuning PIPELINE, in the spirit of the Swing Inspector / the new T-322
+sweep debugger, but for TIMING and RESPONSE rather than geometry. Design open — to decide together:
+what the loop looks like (live-tunable knobs against a running fight? a Studio panel that scrubs an
+action's phase timeline against a dummy target? recorded playback with a frame-by-frame scrubber?),
+what it must expose (phase edges, i-frame/block windows, hitstop freeze, the attacker/target state at
+every tick), and how tuned values get back into content without a restart.
+Blocks: T-297/T-298/T-299's numbers are placeholders until this exists — we can't tune what we can't see.
 
 The 2026-06-24 vision arc: the mechanics exist but don't FEEL good yet — they must become a
 SYMPHONY, made accessible through FEEL not TELL. Verified reality: the engine + all four primitives
@@ -877,137 +1171,6 @@ decisions: combat pace = **fast everywhere** (Vermintide frequency, short telegr
 still read). Sequenced as 3 batches; lead with the feel core so the symphony is testable soonest.
 See [[project_client_overhaul]] memory + the workflow design framework.
 
-### T-295 · Action commitment flag (micro-cancel) — no bail after the first windup tick
-Effort: S   Status: done   Commit: 96be004
-
-Verified: `dispatcher.arbitrate()` already locks active/winddown (`cancel.into:[]`) and runs the
-reaction-interrupt block (stagger/hit/death via `interruptPriority`) BEFORE the cancel matrix
-(`dispatcher.ts:243-262`); only `windup.into:["any"]` keeps swings bailable. Add optional
-`ActionDef.committed?: boolean`. When set, the dispatcher honors the action's cancel matrix ONLY
-while `current.phase === "windup" && current.ticksInPhase === 0` (the ~50ms micro-cancel grace the
-user chose); after that, reject all non-reaction displacements (one branch above the cancel-matrix
-block; the reaction-interrupt path stays untouched so stagger/hit/death always cut in). Set
-`committed:true` on all `swing_*` and `skill_*` actions. Stamina still deducts on start (commitment
-is a resource bet). DONE: press swing then dodge on the same frame → bail works (tick 0); one tick
-later → swing is locked and completes, dodge dropped; getting staggered still interrupts. Verify via
-the testplay harness.
-
-### T-296 · Hitstop on weapon contact
-Effort: S   Status: todo
-
-Add `ActionDef.hitStopTicks` (default 0). The `weapon_trace` resolver, on a landed hit, freezes
-attacker+target movement for N ticks via resolver-local scratch (reuse the rewind-tick scratch
-pattern — no new component) and emits a contact event the client maps to a sharp audio crack + brief
-freeze. Tune light=2, heavy=4-5. DONE: hitting an enemy produces a visible 2-5 tick freeze + crack;
-a heavy swing reads heavier than a light one. No wire change beyond the contact event.
-
-### T-297 · Telegraph lead clip for actions
-Effort: M   Status: todo   Depends: T-295
-
-Add optional `ActionDef.animation.preWindup {clipId, ticks}`; bootstrap codec carries it;
-`skeleton_evaluator` plays the pre-clip for `ticks` before the `windup:enter` clip (server already
-sends phase names — the client derives the lead). With the fast global pace, keep tells SHORT: a
-1-2 tick player tell, 3-5 tick enemy tells (readable but quick; the heavy-thrower gets the longest).
-DONE: a heavy enemy visibly winds up before its hitbox goes live; a player can read and space against
-it; falls back cleanly when `preWindup` is absent.
-
-### T-298 · Readable i-frames + recovery-exposure visuals
-Effort: M   Status: todo   Depends: T-295
-
-`skeleton_evaluator` reads `dodge_roll`'s `ticksInPhase` to render a flash / bone-shine during the
-i-frame window (client-only, existing server state — the player SEES why the dodge worked). Add an
-optional 4th `recovery` phase to the action schema; actions without it treat `winddown` as both.
-Author `recovery` on the heavy swings so the post-swing exposed stance is a distinct, punishable
-clip. DONE: the i-frame window is visually obvious; a whiffed heavy swing leaves a legible openable
-window.
-
-### T-299 · Two committed hostile archetypes + global rear multiplier
-Effort: M   Status: todo   Depends: T-295, T-297
-
-Author a **Heavy-Thrower** (the ONE slow showcase enemy against the fast global pace: a single
-uninterruptible telegraphed overhead via `committed:true` + a new heavy weapon_action + an
-`uninterruptible_active` gate so only block/dodge/death stop it, big knockback) and a **Shield-Knight**
-(blocks until flanked, then one committed heavy), using existing primitives + `RequestedActions` BT
-nodes. Add a global rear `partMultiplier` (1.25-1.5) to `game_config` + a per-archetype gate
-exception. DONE: each enemy rewards a distinct defense — dodge-through the thrower, flank the knight —
-readable from telegraph alone. Pure content + a BT variant.
-
-### T-300 · Curated showcase tile_layout — the teaching outpost
-Effort: S   Status: done   Commit: 5f88375   (landed ahead of T-299 — placed existing enemies; new archetypes still T-299)
-
-Rewrite `tile_layout.json` into a curated opening scene: keep the stations + trader, add a craft
-pavilion (forge+anvil+nearby iron ore/coal), a 2-3 drowner marsh-edge, a rotten_knight ruin, the
-T-299 heavy-thrower in a clearing, an archer perch — each at 50-80 cells so the player chooses
-engagement. Bump safezone `npcSpawnDensity` 0.08→0.2 so enemies are visibly present; let procedural
-fill the fringe. DONE: spawning into the world shows combat, crafting, enemy variety, and procedural
-scatter at a glance. Zero code.
-
-### T-301 · Codify the voxel design language (DESIGN_LANGUAGE.md + material generatorPreferences + boot coherence check)
-Effort: M   Status: todo
-
-Write `DESIGN_LANGUAGE.md` (repo root): the 4-word grammar vocabulary (SOLID / LIMB / SHELL /
-SCATTER-FLECK), the human-anchored scale hierarchy (1 unit = 1u; standing human = 1.2u, head ≈12.5%
-for readable silhouette; trees 5-12u, boulders 0.5-3u), the signal-hue reservation (ember/rot/blood/
-bile/frost NEVER on structural mass) + semantic density bands per material tag. DECISION (user):
-**organic everywhere** — vertexDisp / irregular surfaces across ALL classes including characters and
-equipment, BUT silhouette PROPORTIONS stay anchored to the human scale and the ground plane so
-figures still read and animate at gameplay distance (organic surface ≠ unreadable form). Extend the
-material schema with `generatorPreferences {density_range, thickness_range, layerable, emission}`. Add
-a client-boot coherence check (mirror `server.ts` fail-fast): every ProcModelDef/ScatterDef resolves
-its generator + materials, no signal hue on a structural-mass material, character-class generators
-emit at the ground plane. DONE: the doc exists, the schema carries hints, boot fails loudly on a
-clashing generator — it unblocks every later generator's param + proportion choices.
-
-### T-302 · humanoid_grammar — Layer 2 procedural character bodies
-Effort: L   Status: todo   Depends: T-301
-
-Implement `humanoid_grammar(seed, params, ctx) → VoxelAtom[]` (T-186 Layer 2): emit SOLID torso/head
-+ LIMB arms/legs that FILL limb volume from the existing 6 morph keys, organic surface per
-DESIGN_LANGUAGE.md, ground-anchored, fail-fast on missing materials. Add a `generated:true` prefab
-path so a test NPC spawns from a generated body, not the authored `biped_skeletal`. DONE: a generated
-character reads as solid mass at gameplay distance, varies by seed, animates on the existing
-skeleton. Reuses bakeVoxels / the morph wire path / skeleton infra; no wire or schema-breaking change.
-
-### T-303 · Voxel-to-stats slice — Composed sword + material-derived stats
-Effort: M   Status: todo   Depends: T-301
-
-Author one Composed sword prefab (blade/grip slots with `materialCategories` + `statContributions`)
-and implement the unused `deriveItemStats` `_parts` path: sum `material.properties[property] ×
-multiplier` per slot into weight/damage; optionally read the already-derived blade AABB length into a
-reach/attackRange stat. DECISION (user): voxels feed **weight/damage/reach, NOT swing speed** (speed
-stays a per-action design dial the commitment/telegraph work depends on). Keep hardcoded
-`swingable.damage` as fallback when Composed is absent. DONE: swapping the blade material measurably
-changes the sword's weight and damage via the live StatContribution schema — voxels feed stats.
-
-### T-304 · POI activity handlers (T-212 v2) — encounter spawning
-Effort: M   Status: todo   Depends: T-299
-
-Wire the POI activity registry (`Registry<H>`, mirror the action-effect pattern): implement the
-`encounter` handler first (reads a POI mob table, spawns mobs at the trigger centroid, sets aggro on
-player entry), boot-cross-check existing POIs against the registry. Defer bossfight/wave/puzzle to a
-follow-up. DONE: walking into a wolf_den / bandit_camp trigger spawns the pack and they aggro —
-dynamic combat at runtime, not just static placement. Reuses spawnPrefab + TickContext; no new
-components.
-
-### T-305 · Per-instance morph variety for NPC spawns
-Effort: S   Status: done   Commit: 119e117   (humanoids done; wolf needs quadruped morphParams — follow-up)
-
-Extend the spawner's morph sampling so each NPC of a type rolls morph values within a per-prefab
-range (e.g. drowner armLength 1.2-1.6, hipWidth 0.8-1.1) from its spawn seed. DONE: a pack of
-drowners has visibly distinct silhouettes despite sharing clips/skeleton — cheap visual variety, zero
-animation cost, works on authored OR generated (T-302) bodies.
-
-### T-306 · blade_grammar + armor_grammar — procedural equipment
-Effort: L   Status: todo   Depends: T-301, T-302, T-303
-
-Two generators on the ProcModel substrate: `blade_grammar` (LIMB spine + SOLID pommel + SHELL guard;
-straight/curved/serrated; material per the density bands) emitting trace metadata the `weapon_trace`
-resolver re-derives server-side from the same seed at prefab-load (zero wire cost); `armor_grammar`
-(SHELL plates keyed by bone, merged into the character's baked mesh at build time). DONE: a weapon's
-blade shape and an NPC's armor are seed-unique, the swing hitbox follows the generated blade, and
-stats can feed off the emitted materials (composes with T-303). The vision-4 capstone; depends on the
-language + body + stats work landing first.
-
 ## Procedural Animation
 
 The Overgrowth/David Rosen direction: a few authored anchors + procedural everything-between + IK,
@@ -1015,16 +1178,34 @@ over one substrate (the skeleton). Poses, IK, and body attachments all hang off 
 orthogonal behaviours (crouch + strafe + swing) compose instead of needing a combinatorial clip
 matrix. See `swing_pose.ts` (the shared producer) and the Swing Inspector (the authoring tool).
 
-### T-307 · Authored swingPath + procedural full-body swing
-Effort: L   Status: done   Commit: 4f9007b
-
-Re-introduced `SwingPathDef` (authored blade arc) on `WeaponActionDef`; authored 9 default swings;
-`solveSwingPose` derives the whole body from the hilt path (spine twist+lean, weapon-arm IK with
-blade·aim=1.0 so hit==visual, off-hand counter). Ported to game: server hit sweeps hilt→tip directly,
-client renders the producer over locomotion. Replaces borrowed Mixamo melee clips for swing actions.
-
 ### T-308 · Procedural pose catalogue (locomotion poses + IK + secondary motion)
-Effort: L   Status: in-progress
+Effort: L   Status: done   Commit: 6a5c072
+
+**GAIT DESIGN SETTLED (user, 2026-07-07): option (b) — LAYERED, and the locomotion itself is built
+the Overgrowth way: a few authored KEY POSES, interpolated, on layers — not baked clips.**
+(David Rosen, GDC 2014 — see the memory note; the repo's `swing_pose.ts` producers are already this
+shape.) Concretely:
+
+1. **Key poses, not clips.** Author a SMALL pose catalogue per gait direction (a stride is ~3-4 poses:
+   contact / low-pass / push-off). Content, in the existing pose/producer idiom — NOT new clip files.
+2. **Phase driven by DISTANCE, not time.** The gait phase advances with ground distance travelled, so
+   foot speed matches ground speed and the feet never slide (the talk's central point). Speed changes
+   the stride length/frequency, not a clip's playback rate.
+3. **Directional blending off the movement-vs-facing vector** — which T-328 just made real: forward /
+   back-pedal / lateral strafe are now genuinely distinct inputs. Blend the directional pose sets by
+   that vector instead of assuming movement == facing.
+4. **Layering (the (b) decision):** the procedural gait owns the LOWER body + pelvis/root; the authored
+   weapon-style clips (`$idle`/`$walk_forward` tokens → `great_sword_idle`, `sword_and_shield_idle`, …)
+   stay as the UPPER-body layer, so each weapon keeps its authored character. Compose through the
+   EXISTING masked layer stack (`AnimationState.layers` + bone masks + `evaluateAnimationLayers`) — do
+   not invent a second composition path.
+5. **Feeds the landed pieces:** foot placement from the gait drives the already-landed
+   `applyFootTerrainIK`; secondary motion (the landed snappy exponential ease) rides on top; the
+   landed `applyLocomotionPose` lean composes.
+
+Done when: walking/running/strafing/back-pedalling is generated from interpolated key poses with no
+foot sliding at any speed, each weapon style still reads distinctly in the upper body, and the whole
+thing composes with crouch + swing + foot-IK without a combinatorial clip matrix.
 
 The fused pipeline: base-pose catalogue (idle/walk/run/strafe/crouch/turn as parametric poses or
 blends) → action overlay (swing/block/dodge) → IK layer (weapon arm, foot planting, look-at) →
@@ -1036,12 +1217,92 @@ constraint; hands excluded so blade==hit; commit 05f13c2). **input locomotion le
 (1cf601d) wired into the client (local player strafe from movement intent; remotes from velocity;
 strafe sign unverified live). **crouch + foot IK** (49f1161 pose+inspector, d450415 client): solveSkeleton
 gained an optional `rootOffset`; `applyCrouchPose` drops the pelvis + re-plants feet via `aimLimb` on the
-leg chains; client crouches on Ctrl (eased `crouchEased` + a root-group translation). NEXT: parametric
-gait replacing idle/walk clips; look-at; foot-on-terrain IK; tune crouch depth/knee-pole + strafe sign.
-Dual-wield deferred (2nd server sweep + AnimationState channel).
+leg chains; client crouches on Ctrl (eased `crouchEased` + a root-group translation). **foot-terrain IK +
+look-at + facing-relative back-pedal lean** (lane/t308-anim, commit 1625089 — also closes T-186's foot-IK
+aux item, same primitive, built once): `applyFootTerrainIK` re-plants each foot at the LOCAL terrain
+height under it (self-consistent delta-from-root via `ClientWorld.getTerrainHeight`, clamped against the
+unloaded-chunk-returns-0 artifact); `applyLookAtPose` is head/gaze stabilization — counter-rotates the
+head against accumulated spine lean at a partial (0.6) gain, NOT target-tracking (no look-target signal
+exists on the wire); `LocoState` gained `moveFwd` (facing-relative forward/back, alongside the existing
+lateral `strafe`) and `applyLocomotionPose` folds the spine back on back-pedal (forward movement adds no
+lean — clips already carry that) — closes the gap for T-328 (mouse-turn + facing-relative movement,
+landing concurrently on lane/t328-facingcam), which makes back-pedal/strafe real, distinct locomotion
+states for the first time. Both new producers gate on the pose pipeline's existing extra-solve branch
+(crouch/locomotion/swing active) rather than running unconditionally every frame — a fully idle entity's
+rest pose has no lean to correct yet; whether idle-on-a-slope also warrants the always-on cost is a live
+profiling question (see postMergeChecklist in the lane's report). 9 unit tests on a synthetic-skeleton
+fixture (`swing_pose.test.ts` — the file had none before). NOT done, and NOT attempted blind (needs a
+design decision this lane couldn't make alone, or live-stack visual verification this lane doesn't have):
+the full parametric-gait-replaces-clips rewrite (walk_forward/backward/strafe_* stay clip-authoritative —
+collapsing weapon-style idle/walk variance into pure procedural motion is a real design call, not a
+mechanical follow-on); target-tracking look-at (needs a look-target wire signal); crouch depth/knee-pole
+FEEL tuning and strafe-sign LIVE verification (the sign math is convention-consistent by code review —
+see the lane report — but "feel" tuning needs testplay iteration this lane cannot do). Dual-wield deferred
+(2nd server sweep + AnimationState channel).
+
+**PARAMETRIC GAIT LANDED (lane/t308-gait, commits ab3e36f content + 6a5c072 client) — closes the
+"full parametric-gait-replaces-clips rewrite" item above, for the LOWER body.** `GaitDef`
+(`data/gaits/*.json`, `SkeletonDef.gaitId`) authors a SMALL single `forward` key-pose track (contact /
+push-off / low-pass, one foot's own phase-0..1 offset from its rest position) — `backward`/`strafe`
+are DERIVED from it (mirror fwd for backward, swap fwd onto the lateral axis for strafe), the same
+"author one source, derive the rest" doctrine `deriveTip()` uses; a gait may still author an explicit
+override track later if the derived approximation doesn't read right live. `applyGaitPose` (new
+swing_pose.ts sibling producer) is phase-driven by GROUND DISTANCE, not time — the client's
+`EntityMeshGroup.gaitDistance` accumulator advances by the entity's ACTUAL ground-plane position
+delta every frame (not intended speed), so a wall-blocked entity's feet correctly stop cycling
+instead of sliding. **The no-footslide property is proven exactly (1e-6), not just hoped for** — 6
+new tests in `swing_pose.test.ts` show a planted foot holds its WORLD position across the whole
+stance interval for forward, backward, left-strafe and right-strafe, at arbitrary phase granularity
+(the function is pure/memoryless in `phase`, so this generalizes to any real-time speed profile that
+produces those phase values). Composes through the EXISTING masked layer stack per the settled
+design: `applyGaitPose` only ever touches the leg IK chains, so the weapon-style clip's upper body
+(arms/spine/head) rides through completely untouched (also tested); it supersedes
+`applyCrouchPose`'s own foot-replant while moving, sharing the same pelvis-drop `rootOffset` so
+crouch + walk compose without either producer running first (also tested — no combinatorial clip
+matrix, no wall-clock time in the composition). Falls back to the locomotion clip's own leg track for
+skeletons with no `gaitId` (the wolf archetype). **Explicitly NOT covered by this landing** — the
+literal "Done when" bar (interpolated key poses, no slide at any speed, upper body distinct, composes
+with crouch+swing+footIK) is met, but: diagonal movement blends the three direction tracks linearly
+(the same informal idiom `applyLocomotionPose` already uses for simultaneous strafe+turn) — proven
+exact only at the three cardinal blends, not at every angle; pelvis/root vertical bob + lateral sway
+were scoped OUT (the vertical case needs the same render-time root-translation plumbing crouch uses,
+generalized beyond local-player-only — a small follow-up, not a design question); the Studio gait/pose
+authoring panel named as "if useful" was not built (unit tests substituted); and — like every other
+client-visible piece in this ticket's history — live testplay FEEL verification (does the walk actually
+read well, does the derived strafe/backward approximation look right) needs the live stack this lane
+didn't have. See the lane's closing report for the exact live-verification procedure.
 
 ### T-309 · Body attachment slots — hotbar items rendered on the body
-Effort: M   Status: todo
+Effort: M   Status: done   Commit: 1b86532 (+ 461a960 prerequisite)   (2026-07-13)
+
+**LANDED (lane/t309-hotbar):** both halves. (1) Prerequisite — `hotbar_assign`/`hotbar_use` are
+real: `HotbarState.assignments` maps hotbar slot → inventory slot index; the displayed item is
+derived live from `InventoryState` (new `hotbarItems` computed, `ui_store.ts`); drag-drop from
+`InventoryPanel` assigns (new drop-zone in `Hotbar.tsx`, mirrors `EquipmentPanel`'s pattern);
+clicking an occupied slot sets `activeIndex` (`hotbar_use`); a new `hotbar_clear` action
+unassigns via right-click (assign-only with no way back would be a dead-end). Client-local only,
+session-scoped (not persisted across reconnect, not networked) — see below for what that defers.
+(2) Body-anchor rendering — `EntityMeshRegistry.syncHotbar()` renders each occupied NON-active
+hotbar item at a new bone-parented body anchor (`sheath_back` → `torso_upper`, `hip_l`/`hip_r` →
+`torso_lower` — a LIMITED set of 3, per the ticket; slots 3-7 hold items but have no anchor yet).
+Generalizes the held-weapon absolute-scale build (`prefab.modelScale`, not the body's
+`entityScale`) onto a bone anchor instead of an entity-root one, per the ticket's step (1).
+`ensureBoneAttachment` gained an optional authored rotation for anchors not aligned to a
+body-part sub-object. The active slot is always skipped (rendered nowhere by this path — it's
+presumed already in hand via the separate, real Equipment system; this path never equips
+anything). Anchor pos/rot are aesthetic defaults picked by code review against the skeleton's
+bone-local offsets, NOT verified live (this lane had no live-stack access) — flagged tunable in
+the code; **live-verify + retune before calling the placement final** (exact procedure in the
+lane's postMergeChecklist).
+
+**Deferred, NOT built (scope note from the launching prompt, and too big for this ticket):** the
+full vision this ticket originally described — the hotbar becomes a real NETWORKED component so
+other players see slung gear, and the full inventory panel gets gated behind selecting a BACKPACK
+slot on the hotbar — is its own arc. Split out as **T-329** so it doesn't get lost. Gating the
+*visible slot count* by equipped carry-gear (step 3 of the original plan) waits on that same
+arc (there is no carry-equipment/backpack system yet to gate on).
+
+**Original ticket text + the 2026-07-07 blocking audit, kept for history:**
 
 Render the player's HOTBAR items on body anchors (sword on back, axe at hip, etc.) — a LIMITED set of
 slots, the count EXTENDABLE by carry-equipment (backpack/belt). The active hotbar item is in hand; the
@@ -1059,70 +1320,521 @@ hotbar is what you carry on your body; the backpack is one slot that opens the b
 for free (anchors are bone children → slung gear sways with the body). This pulls the hotbar from a
 client-UI mapping into a real networked component + an inventory-access gate — sizeable; its own arc.
 
+**Blocked on landing even the client-local slice (lane/t309-attach audit, 2026-07-07):** the ticket's
+premise "the hotbar exists client-side" is true only for the UI *shape* — `ui_store.HotbarState` (8
+slots + activeIndex) and `Hotbar.tsx` render it — but there is NO data behind it anywhere in the repo.
+`hotbar_assign`/`hotbar_use` are still routed to the `console.debug("[UIAction unhandled]")` catch-all in
+`game.ts` (never implemented); `uiState.hotbar` is initialized once to `{ slots: Array(8).fill(null),
+activeIndex: 0 }` and NOTHING ever calls `patchUI({ hotbar: ... })` — confirmed by grepping every
+package for `hotbar`/`hotbarSlot`/`HotbarSlot`: zero writers, zero server component, zero
+inventory-slot↔hotbar-slot mapping convention, in client, codecs, protocol, or tile-server. Contrast
+with `equipment`/`inventory`, which the same boot code maps from real networked `state.equipment` /
+`state.inventory` (`game.ts` L415-416). So "render each occupied non-active hotbar item's model" has
+no occupancy to read: rendering body anchors now would mean anchors that are permanently empty (dead
+code with no live caller), which is scaffolding-for-later, not a shippable slice — the refactor
+doctrine's "no half-built parallel paths" applies here even though this is new work, not a refactor.
+Landing the visible win (even client-local, unnetworked) requires FIRST deciding + building the
+missing piece: what populates the hotbar (most likely: client-local drag-drop from inventory→hotbar,
+persisted in `ui_store`, i.e. actually implementing `hotbar_assign`/`hotbar_use` against the existing
+`InventoryState`) — a real design/scope decision (persistence across reconnect? decoupled from the
+eventual server-authoritative version this ticket also calls for? does drag-drop from inventory panel
+onto the Hotbar component need new drop-target wiring in `drag_system.ts`?) that a doctrine-following
+agent should not guess. Recommend splitting: a prerequisite ticket to implement client-local
+hotbar assignment (make `hotbar_assign`/`hotbar_use` real against `InventoryState`, wire drag-drop),
+THEN this ticket's body-anchor rendering has real occupancy to key off. No code changes landed on
+`lane/t309-attach` beyond this note — see the lane's final report for the full audit trail.
+
+### T-322 · Swing-sweep debugger in the Studio animation editor (against the T-307 swingPath model)
+Effort: M   Status: done   Commit: a537704   (found during the T-191 closeout audit)
+
+T-191e ("weapon sweep debugger + per-clip attachment overrides") was closed `obsolete` on
+2026-06-22 on the premise "zero swingPath in content" (blade geometry was clip-driven
+baseLocal/tipLocal at the time). T-307 (2026-06-25, three days later) re-introduced
+`SwingPathDef` wholesale — 9 default swings now author their blade arc in
+`data/weapon_actions/*.json`, and `solveSwingPose` derives the full-body pose from it. T-191e's
+obsolete rationale is therefore stale, but the ticket itself described a specific v1-era
+mechanism (`data/clip_overrides/{clipId}.json`, hand-bone-matrix-vs-forearm-blend comparison)
+that no longer matches how blade attachment works post-T-307/T-308 (aimLimb IK, not clip
+blending) — reopening the old text verbatim would be reintroducing a stale plan, not honest
+scoping. This is a fresh ticket instead.
+
+`AnimationEditor.tsx` (Studio) still carries only a stub comment (`// weapon-sweep /
+attachment-override tooling (T-191e).`, line ~153) — no visualisation of a swingPath's blade arc,
+interpolated tip position at scrubbed t, or the swept-capsule volume exists in any devtool today.
+Build it against the CURRENT model: a Studio panel (either a new tab on the animation editor or a
+dedicated route) that loads a `WeaponActionDef`, renders its `swingPath` keyframes as a 3D curve
+in hand-local space via the same `deriveTip()`/`solveSwingPose` code path the game and T-306's
+blade_grammar use, scrubs `t` to show the interpolated blade capsule, and overlays the swept
+volume across the action's active window. Read-only v1 is enough (no save-back editing) — the
+done-bar is visual/debugging parity with what the server's `weapon_trace` resolver actually
+sweeps, not an authoring workflow.
+Done when: picking any swingPath-bearing weapon action in Studio shows its blade arc + swept
+capsule scrubbing through the active phase, matching what the live game renders and hits.
+
+**How it landed:** a new "Sweep" tab on `AnimationEditor.tsx` (not a dedicated route — the
+existing skeleton view is right there). `sweep_overlay.ts` is a thin Three.js layer over
+`sampleSwingPath`/`solveSwingPose` from `@voxim/content` — the SAME calls the server's
+weapon_trace resolver and the client renderer use, so no geometry is re-implemented. The posed
+rotations feed straight into the animation editor's existing `SkeletonView.applyPose` (shared
+with the Clip/Morph tabs, same Euler-per-bone convention `entity_mesh.ts`'s `updateSkeletonPose`
+uses); the swung blade box is read back off the posed hand bone's world transform, not
+re-derived, so it can't drift from what's actually posed. Scrub `t` to pose the full body +
+place the blade (red during the active window); toggle a swept-volume overlay (N translucent
+capsules across the active window, sample count adjustable); a teal guide line surfaces an
+authored-hilt-vs-actual-hand-position gap (arm-too-short-for-the-arc), the same tell the
+client's standalone Swing Inspector (`packages/client/src/inspector.ts`, T-307/T-308's
+authoring tool) already exposes. Read-only v1 as scoped — no save-back editing.
+`content/mod.ts` gained the missing `SwingPathDef`/`SwingKeyframe`/`GripDef` type exports;
+devtools' Layer-B `content_loader.ts` WeaponActionDef mirror gained the `swingPath` shape.
+Verified in-lane (type-check matrix + full suite 813 green + studio bundle rebuild); live-stack
+click-through in Studio is the post-merge step (devtools isn't behind the docker dev stack this
+lane could touch).
+
+## AAA Graphics
+
+### T-340 · Spell & ambience particles — experiment, then integrate into the renderer
+Effort: M   Status: done   Commit: 7dcc64f   (user, 2026-07-14)
+
+We have dust motes, hit sparks, weapon trails, an impact flash and the dissolve drift — all bespoke,
+each its own little system. Spells and ambience need MORE, and the answer is not a sixth bespoke pass:
+experiment freely first (what reads right in this voxel idiom — voxel shards? sprite billboards? in-shader
+drift like the dissolve?), THEN integrate the winner as ONE content-driven particle primitive in the
+renderer, and retire the bespoke systems that it subsumes. Doctrine: a designer adds a new effect as one
+content def + one registry entry, never a new render pass.
+Done when: spell and ambience particles exist, they are content-authored, and the pre-existing bespoke
+effects that the primitive subsumes are GONE (replace, don't accrete).
+
+**How it landed:** Phase 1 ran offline (an uncommitted Playwright + local-static-server harness
+against `three.module.js` directly — no docker, no live game) rendering the SAME seeded burst
+geometry three ways: unit-cube voxel shards (flatShaded, no outline), the same shards with an
+`EdgesGeometry` outline approximating the Sobel pass, and sprite billboards copy-pasted from
+`hit_spark_renderer.ts`'s own `makeSparkSprite()`. Screenshotted and looked at: the shards read as
+small angular debris consistent with every other voxel in the world; the sprites read as generic
+soft round glowing dots with no connection to the hard-edged idiom — confirming decal_renderer.ts's
+own precedent-setting call ("the comic idiom — no alpha quads") holds at particle scale/speed too.
+A third candidate, in-shader drift (what the dissolve does), was eliminated analytically before any
+screenshot: it perturbs a model's OWN pre-baked per-voxel vertex attributes (aFray/driftDir, baked
+once at model-build time) — there is no host mesh to perturb for a burst spawned at an arbitrary
+world point unrelated to any model. Voxel shards won.
+
+The primitive: one content shape, `ParticleEmitterDef` (`data/particles/*.json`), mirrors
+`DecalDef`'s exact plumbing (types→store→loader→bootstrap_codec→mod.ts) and its material idiom —
+`material` is a MaterialDef NAME, not a raw palette token, reusing `bakeVoxels`/`buildVoxelMaterial`'s
+palette-snapped colour + flatShading + emissive→HDR-bloom glow for free. Fade is a size curve
+(shrink-to-nothing), never alpha — decal_renderer's voxel-honest decay doctrine. One draw path:
+`particle_system.ts` gives every def exactly one InstancedMesh archetype via the shared
+`InstancePool` (T-315's one-archetype-per-kind lesson, not regressed) — a burst never costs a draw
+call per particle. Dispatch is registry-based, never a kind-switch: `particle_sources.ts` (mirrors
+`decal_sources.ts`) maps a wire GameEvent to a spawn point for event-sourced bursts; a ranged
+`WeaponActionDef.muzzleParticleId` fires on the action's active-phase rising edge (an edge-triggered
+per-entity latch, not a registry — there's no wire event for "phase changed", only continuously-
+replicated AnimationState); `AtmosphereDef.ambienceParticleId` selects a continuous drifting
+population riding the renderer's existing per-frame atmosphere re-selection.
+
+Subsumed and DELETED in the same commit: `dust_motes.ts` → `ember_ambience` (a `ParticleEmitterDef`
+with an `ambience` block, 320 particles/44-unit box, same numbers as the old hardcoded constants).
+`hit_spark_renderer.ts` → `hit_spark` + `hit_flash` (two defs sharing one `hit_impact` source, which
+already covers melee AND ranged hits via the shared `dispatchSweepHit` tail — zero server change
+needed for "wire it to a projectile IMPACT"). `spell_muzzle` wired onto `test_bolt.json` (the T-337
+test staff) — the ticket's spell trigger.
+
+Kept and justified (an unjustified survivor means the primitive isn't general enough):
+`weapon_trail.ts` is a continuous swept-volume ribbon (one growing/decaying slice buffer → one
+triangle strip per attacker), not a population of independent lifetime-driven particles — forcing
+it onto the burst primitive would need per-frame re-triangulation the primitive doesn't do. The
+T-311 dissolve in-shader drift stays separate for the mechanical reason above (no host mesh for a
+free-floating burst).
+
+Verified in-lane: type-check matrix + full suite 1004/1004 green (1002 baseline + 2 new
+`particle_sources.test.ts` cases) + a clean `deno task bundle`. Live testplay screenshot (fire
+`test_staff`'s bolt, confirm the muzzle flash + impact burst + ambience embers all read well against
+the real Sobel/fog/bloom pipeline, and the HUD draw-call delta per burst is small and FIXED, not
+proportional to particle count) is the post-merge step — the lane rules exclude docker/testplay from
+in-lane verification.
+
+
+The 2026-06-26 visual-elevation arc: the mechanics + voxel art language exist; what's missing is
+DETAIL + AAA light/atmosphere. User direction: the comic / pixel-art look is DELIBERATE and KEPT —
+the Sobel outlines and `flatShading:true` stay, voxels (of varying size) remain the atomic units (no
+bevels / smooth-normals / subdivision that would round them away). The ask is "rounder, less eckig"
+re-read as **crisper + more detailed within the comic idiom**, plus AAA lighting & atmosphere (think
+high-end stylized voxel — hard edges, but clean, richly lit, with glow/AO/haze/depth). Sequenced as
+phases, each a self-contained commit verified via the testplay screenshot harness.
+
+### T-311 · Visual data-model arc — author the world's look as content, not client hacks
+Effort: XL   Status: in-progress   Plan: `VISUAL_DATAMODEL_PLAN.md` + `ART_DIRECTION.md`
+
+**Progress:** Phase 0a landed — `MaterialDef.render` block frozen (I2) + TextureStyle
+registry retiring the numeric `DRAW_FN` switch (`abdaf2d`); per-voxel `tintJitter`
+amplitude threaded from `render` through `bakeVoxels` (`a649dee`). Both byte-identical /
+zero visual change, `deno check` + parity tests green. **0b/0c/0d deliberately deferred,
+not skipped:** 0b (CLIFF_* → config) is interim that Phase 6 deletes wholesale + would
+need new bootstrap plumbing → throwaway; 0c (`buildMaterialMap`) is a 10-line stable
+atlas-enum lookup, not a richness hack → converting it is ceremony; 0d (FieldExpr/
+FieldSampler registry) is premature before the Phase-3 grids exist (the critique's #5 —
+build the sampler with its data, not before). Phase 1 landed (both panels, live-verified via
+playwright) — Studio "Material" editor (`0f6f73d`) live-previews `MaterialDef.render`, and
+"ProcModel" editor (`57cf815`) generates trees/plants/rocks through the REAL generator
+registry + bake, both via the curated `@voxim/client/render` barrel (shipped runtime, no
+drift). The Scatter-Field-Painter half of P1a defers to P3/P4 (no field grids to paint
+yet). Phase 2 in progress — **GradeDef** landed (`3a5e940`): the first AuthoredEnvParamSet (G7),
+the 13 EdgePass grade constants lifted into a content `grades/` category (wired
+types→store→loader→bootstrap round-trip), EdgePass.setGrade applied by the renderer; zero
+visual change (values byte-equal to the retired constants). **LightDef** mostly landed (mapped by a
+cartography workflow): LightDef content category (`4e8292b`, BOOTSTRAP_VERSION 15→16) +
+FlickerCurve registry replacing the hardcoded oscillator (`4bf9c4a`) + client LightBudget
+capping dynamic PointLights at 8, degrading the rest to always-on emissive flame voxels
+(`8636ce4`, headless unit-verified). The LightEmitter wire bump landed too (`73eeeb7`):
+`flicker` float retired for a `lightDefId` string (numbers stay on the wire for getLightAt;
+client resolves flicker/castsPool/family from the LightDef — T-250), placed prefabs +
+Illuminator + deriveItemStats + EquipmentSystem all moved in one commit, server boot
+cross-check added. **LightDef is COMPLETE.** **MaterialStateLadder (G3) COMPLETE** too — `resolveMaterialVariant`
+in @voxim/content (colorOverride/HSL-colorShift/emissiveCracks/addsTags; stable id→index, I3c)
++ a Studio Material "State ladder" dropdown previewing each variant through the real resolver
+(the in-game per-cell index comes from P3's SurfaceStateGrid.variantIndex); example
+corrupted/mossy variants on stone, live-verified. **PHASE 2 COMPLETE** (GradeDef · LightDef ·
+MaterialStateLadder). Next: **Phase 3** — the unified per-cell field grids, the ONE permanent
+wire break. **FIELD-SET MATRIX SIGNED OFF (user, I1)** — see `VISUAL_DATAMODEL_PLAN.md §Phase 3`:
+`VegFieldGrid`{canopyLight,corruption,fertility} + `SurfaceStateGrid`{wetness,overgrowth,wear,
+variantIndex u8,ruinAge,traffic} + `WaterGrid`{surfaceLevel f32}; full-res, mandatory RLE/zlib,
+ruinAge+traffic baked in now (no 2nd break). P3 + P4 (multi-layer scatter) unlock the hero-cell
+DENSITY slice. **P3 commit 1 LANDED (`c87a4fc`)** — the grids are minted as networked chunk
+components (wireIds 54/55/56), sync per-plane RLE codecs (gzip ruled out — Serialiser is sync),
+registered in NETWORKED_DEFS + the client CODEC_BY_WIREID decode table, createChunk writes neutral
+defaults so every chunk carries them, MAX_CHUNK_SPAWNS_PER_TICK 20→12; 6 codec round-trip tests +
+deno check ×5 green. **The permanent wire is set.** Remaining P3: **2a LANDED (`70e8e47`)** — pure `deriveFieldPlanes` core, unit-tested. **2b-i LANDED
+(`539ee7d`)** — the `fields` pipeline stage (rasterises pathLevel from the zone graph, calls
+deriveFieldPlanes → state.fields; wired into the typed pipe + ORDERED_STAGES + a tunable
+GenParams["fields"] slice; snapshot unchanged, runner now 12 stages). **commit 3 LANDED (`663bc49`)**
+— Atlas-inspector heat overlays (a "fields" viewer + plane select, encodeState/decodeState `__planes`
+bundle, round-trip unit-tested) + the `fields` GenParams sliders tune the formulas live, no re-bake.
+**DERIVE + VISUALISE + TUNE done.** **2b-ii LANDED + RE-BAKE-VERIFIED** (`<this commit>`): state.fields →
+TileInit → TileInitWire(fieldsB64) → upsample (nearest-resample, NaN-safe water) → atlas_terrain →
+chunksFromBuffers(32² slice) → setChunk* — every chunk now carries the atlas-DERIVED Veg/SurfaceState/
+Water grids. Verified live: brought the docker stack up, `POST /world/bake` ran the fields stage +
+serialised fieldsB64 into the stored wire (canopyLight max 255 / ruinAge max 246 / traffic from paths,
+via GET /tile), and the tile-server loaded the re-baked world cleanly ("atlas terrain loaded" + booted) —
+the re-bake caught + fixed a real transition crash (old worlds lack fieldsB64 → graceful zero planes).
+**FieldExpr (G2) evaluator also landed** (`content/field_expr.ts`). **PHASE 3 COMPLETE** (grids minted +
+derived + threaded to chunks + inspector + FieldExpr). **Phase 4 STARTED + LIVE-VERIFIED:** client stores the per-chunk field grids (`client_world` maps +
+getters) and **field-driven scatter density** landed — `ScatterDef.densityField` (FieldExpr) replaces
+the flat hash gate; `scatter_renderer` evaluates it per cell (dense in fertile/shade, receding on dry
+rock/paths); 4 foliage defs authored; loader boot cross-check. **Verified live on the running stack:**
+re-baked world → tile-server re-derives chunks with fields → AoI → client receives + STORES them
+(probe: fertility 66–167, canopyLight 0–255, traffic 0–255, all varying per cell) → scatter reads them.
+The live loop caught + fixed 3 integration bugs (re-bake decode crash on old worlds; stale-save bypass;
+the T-312b save-load field gap). **FieldExpr (G2)** evaluator also landed. **Scatter CLUSTERS landed +
+LIVE-VERIFIED:** `ScatterDef.cluster {count:[min,max], radius}` — a matching cell seeds a field-sized
+clump (count lerped 0→max by the cell's field density, scattered in a disk) instead of a single prop, so
+fertile/shaded cells read DENSE and dry rock thins to nothing; all instances of a cell share one handle.
+Authored into grass (0-5, r1.4) + fern (0-3, r2.2). End-to-end live proof on a SAVE-loaded world after the
+T-312b fix: fields reach the client (fertility 66-167, canopyLight 0-255 varying), all 256 chunks decorate,
+962 scatter instances place (oak 792, grass 133 clustered, fern 31, rock 6) — visually a dense forest.
+**Bush/mushroom zero-placement SOLVED** — the live placement-funnel probe traced it to THREE substrate
+bugs, all fixed: (1) FieldExpr inverted windows (min>max, the "denser in shade" idiom) silently degenerated
+to a raw≥max threshold via the `span<=1e-6` guard — the declutter pass (415dad2) actually placed ZERO oaks
+(`15b4862`); (2) round() on the cluster-count lerp cliffed everything under density 0.25 to empty
+(`90a8979`, stochastic hash-dithered rounding — field decides expected count, hash only dithers);
+(3) hash2u was Perlin integer noise whose low 16 bits are garbage on cell lattices (median 56576/65535) —
+every `(h&0xffff)` probability gate was broken, the REAL bush=0 cause + a near-constant variant pick
+(`08d46c8`, murmur3 mix32). Plus the atlas gap the probe exposed: fertility was near-FLAT outside chambers
+(no signal could carry groves at all) → **fertility dapple** fbm modulation in `deriveFieldPlanes`
+(`feb10e4`, GenParams `fertilityDappleAmp/Scale`, re-bake). Defs re-authored to the MEASURED band
+(ground fertility mean 0.26, band 0.14–0.45; `aee129f`): live-verified oak 962 grove-varied /
+grass 9.6k / fern 4.8k / mushroom 1.4k / bush 173 / rock 296, paths clear, under InstancePool caps.
+**Moss-creep LANDED** (`a46e14a`): `VoxelAtom.moss01` (G6 sidecar — DATA, palette stays the colour
+carrier) from SurfaceStateGrid.overgrowth × `render.mossBlend` floor/wall bias (+jointBoost on terrace
+ledges); bakeVoxels lerps the per-voxel tint via `resolveMossResponse`; byte-identical when absent
+(test-pinned); authored on stone+gravel; Studio Material editor grew a Moss section with a MOCK
+overgrowth ramp through the real bake (verified grey→mossy-green). **Wetness specular LANDED**
+(`0b4b819`): the G4 **SurfaceTreatment registry** (sibling of TextureStyle; water + `render.reflect`
+join in P5) with the `wet_specular` builtin — per-vertex `aWetness` (VoxelAtom.wet01 →
+SurfaceFieldInput generalises the moss input) darkens diffuse + boosts Phong specular in-shader;
+treatments CHAIN onBeforeCompile after canopyFade; authored on path/stone/gravel/dirt/mud; Studio
+Wetness section verified dry-tan→wet-dark. **Corruption-morph LANDED** (`f28733f`):
+`ProcModelDef.morphTiers` (≤3 deep-merged param overrides = ≤4 tiers, loader-validated) +
+`ScatterDef.morphField` (FieldExpr, cross-checked incl. tier membership); ScatterRenderer builds a
+variant pool PER TIER and buckets each cell's SERVER corruption — the field decides the form, never a
+hash; fern/grass/oak authored (withered → corrupted purple husk), live-verified tier counts (fern t0
+4760 / t1 12 / t2 30 — healthy the norm, corruption marks the old chambers).
+**Decals LANDED (Q8 resolved by user: EPHEMERAL)** (`97510c7`): in-memory + decay, never saved, never
+networked — no DecalGrid wireId (transient state doesn't earn a permanent wire slot; late-joiner gaps
+self-heal by decay). `DecalDef` content category (`data/decals/*.json`, full plumbing, BOOTSTRAP_VERSION
+17) + the client decal-source registry over the closed event catalog (`damage`/`death` — wire GameEvents
+carry the WHERE/HOW-STRONG: DamageDealt hit contact point + amount intensity, blocked draws none;
+EntityDied pools at the entity) + `DecalRenderer` (thin voxel slabs via InstancePool — no alpha quads;
+slab-by-slab crumble decay; MAX_SPLATS=160 perf cap; tile-transition reset; `blood` material id 33).
+Live-verified: stimulated wire events → splats at player, blocked skipped, fast-forward decay → 0.
+**PHASE 4 COMPLETE** (field-driven scatter density/clusters · corruption-morph · moss-creep · wetness
+specular · ephemeral decals). **P4 follow-up (`f7eb022`):** cliff edges are now warped voxel STACKS — the T-310 inset-ziggurat
+voxeliser is DELETED (with it the recede-degeneration bug family, incl. vanishing 1-wide ridges). A cliff
+cell piles 2–5 full-footprint stone boxes base→lip; the hand-stacked read comes from the per-voxel
+language alone: exposed-face warp (`render.relief.warp`, the relief block's first consumer; deterministic
+voxHash, welded faces/z/top stone exact), per-voxel tint, corner displacement, per-stone Sobel ink.
+Live-verified: the pale zigzag ledge artifacts on every cliff edge are gone, TRIS 1718k→1679k. The
+stack TRIGGER stays the client stopgap P6 retires — the stacked-stone language survives on the atoms.
+**Stacked-voxel language completed (`dc93a14`, `3dd769a`):** `VoxelAtom.dispSeed` decorrelates a voxel's
+corner warp from the world-position weld — stones/slabs poke out of the merged mesh, clip into each other
+(deliberate) and get their own facet normals (per-stone light); oversize-into-known-solid (≥ max corner
+roll) guarantees gaps never see through the wall. Extended to the walkable floor as
+`relief.surfaceWarp` + `surfaceWarpField` (FieldExpr, boot-checked): rough clod-mosaic wilderness,
+perfectly smooth trodden paths (traffic-inverted) — one grammar, two consumers; field sampler shared
+(`field_sample.ts`). **Found + fixed en route: ALL terrain had rendered FALLBACK grey** — the legacy
+ContentCache never held ground materials, so getMaterialSync returned undefined and every
+`MaterialDef.render` response silently no-opped on terrain; now falls back to the bootstrap
+ContentService (scene-probe verified: real colours + textures live, golden paths, textured stone).
+Grade retune against the REAL material colours is an open content follow-up.
+**Civilization axis (`989fb8a`, user design principle):** `relief.disturbanceField` (renamed from
+surfaceWarpField) is THE per-cell wildness FieldExpr (1 = wild, 0 = civilized) scaling every
+voxel-disturbance channel: surface roughness, cliff-stack warp, and NEW the per-voxel tint mottle
+(`VoxelAtom.tintScale`, 25% floor) — trodden/worked cells read flat + uniform + orderly, wilderness
+rough + mottled. `path` authors `disturbanceField: []` (empty expr = always civilized). Next: **Phase 5** — AtmosphereDef + server sun-arc (folds in the deferred
+T-310 arcing sun) + creature fragmentation (G6/I3b) + cheap water reflection.
+**Phase 5a LANDED (lane/atmosphere):** `sun_arc.ts` (dependency-free pure altitude/azimuth/direction
+function, unit-tested incl. midnight-wrap continuity) + `AtmosphereDef` content category (sun path, ground
+mist, near-field god-ray params — day/night COLOUR stays on `Palette.phases`, not duplicated). **Resolved
+the I2 render-context-key gap**: 0b/0c/0d were deliberately deferred and never actually landed (verified —
+`GradeDef` still hardcodes `cache.getGrade("default")`); P5a builds the selector as `WorldClock.biomeTag`
+(reuses the existing wireId 23, no new wire field), computed atlas-side via the existing `biomeTag()` ladder
+(already used by zone_namer) from the tile's `WorldCellRecord.biome` — one value per tile, no re-bake
+needed since biome is DB cell metadata, not baked into the tile_init buffer. `environment_lighting.ts`
+now computes the sun direction every frame from the server clock via `sunArc()`; the shadow-camera basis
+is recomputed per-frame (was a one-time precompute); `SUN_DIR` is deleted everywhere (grep-swept). Ground
+mist landed as an EdgePass composite term (reuses the pass's existing depth reconstruction — no new
+render target) with per-phase density from `AtmosphereDef.mist`. God-ray params (the existing
+screen-space radial-scatter pass, near-field-only by construction) now come from `AtmosphereDef.godRay`
+instead of hardcoded literals. Zero look-change at noon (pinned regression in `sun_arc.test.ts`). Full
+suite 605/605 green throughout; atlas snapshot suite unaffected (biomeTag is additive metadata, not baked
+into any buffer). Next: **Phase 5b** — WaterStyleDef + water_renderer rebuild, reusing this same
+biomeTag selector.
+**Phase 5b LANDED (lane/atmosphere):** `WaterStyleDef` content category (wave/fresnel/specular shader
+params + base colour, `data/water_styles/default.json` freezing today's literals verbatim) — selected via
+the SAME `WorldClock.biomeTag` key P5a's AtmosphereDef uses (the point where I2's "one render-context key,
+not three wire bumps" promise is actually redeemed: two independent consumers now share it). `water_renderer.ts`
+rebuilt wholesale on `WaterGrid.surfaceLevel`: the KindGrid-derivation path, the client-mirrored
+`RIVER_DEPTH` constant, and the pending/tryBuild wait machinery are all deleted (closes the T-315 comb
+note); geometry now merges contiguous same-height row runs into single quads (unit-tested, 5 new headless
+tests — no THREE scene dependency needed for pure geometry). Cheap wetness-weighted reflection shipped as
+two additive consumers of the wet_specular's existing `aWetness` input: a sky-tinted `reflect()` term in
+the water shader (EnvironmentLighting is now also the single sky-colour owner via `getSkyColor()`), and a
+new `wet_reflect` SurfaceTreatment for wet ground materials (`render.reflect`, unused since G4 until now) —
+no render-to-texture, no probe, no SSR (the full planar probe stays a named T-313 follow-on). Full suite
+610/610 green throughout. This closes the atmosphere lane's scope (P5a+P5b); P5c (creatures) and P6
+(terrain) remain, owned by other lanes.
+
+**Phase 5c LANDED on `lane/creatures` (creature fragmentation, G6/I3b — see
+`prompts/T-311-P5c-dissolves.md`):** `dissolutionPhase` f32 appended to
+`AnimationStateData` (wire id 14 unchanged, purely additive tail field) —
+DERIVED each tick by `AnimationSystem` from `Resource.values["dissolve_timer"]`,
+never mutated by ResourceSystem directly (ResourceSystem runs before
+AnimationSystem in declared order, and AnimationSystem fully replaces
+AnimationState via `world.set` every tick, so a same-tick `world.mutate` from
+elsewhere would be silently clobbered). `DissolveProfileDef` content category
+(`data/dissolve_profiles/*.json`, mirrors DecalDef's plumbing; one profile
+authored, `drowner_rot`) + `NpcTemplate.dissolveProfileId`, boot-cross-checked.
+**Architecture correction vs. the prompt's literal wording:** death-dissolve
+start is a `shed_dissolve` **DeathHook**, not an `entity_died` Trigger — the
+pinned `bossfight.test.ts` test ("an entity_died Trigger ... does NOT fire")
+already proves that wiring is structurally inert (TriggerSystem's buffered
+drain runs one tick after DeathSystem has already `world.destroy()`-ed the
+entity; see `components/boss_arena.ts`'s header). `DeathHook.onDeath` gained an
+optional `{ linger: true }` return so a profiled corpse can defer
+`world.destroy` to its `dissolve_timer` Resource's terminal threshold
+(`cross@0` → the already-registered `destroy_self` effect) instead of despawning
+same-tick; default behaviour for every other death (players, non-profiled NPCs,
+the boss) is unchanged. Client: G6 sidecar extended (`VoxelAtom.fray01`/
+`driftDir` → `aFray`/`aDriftDir`, byte-identical when absent) + an isolated,
+cleanly-revertible in-shader drift patch (`dissolve_shader.ts`, per-vertex
+`transformed +=` offset only, zero CPU re-bake) + a Studio Dissolve panel
+showing the I3b caps live. **I3b MEASUREMENT: PASS** (post-merge, live stack,
+2026-07-06): 6 drowners killed in one burst via the new `DebugKillEntity` dev
+command (harness commit 148446f); baseline with 14+ live drowners on screen
+POST 0.3–0.8 ms (median ~0.45), during 6 simultaneous dissolves POST
+0.4–1.2 ms across 6 mid-dissolve samples in two runs — worst-case increase
++0.75 ms, typical +0.2–0.5 ms, within the ≤~1–2 ms bar (headless software-GL,
+so absolute costs are conservative). GL stayed inside its baseline noise band
+(8–14 ms). The measurement also FOUND AND FIXED a shipped P5c bug: no corpse
+ever dissolved live — DeathSystem's health<=0 sweep re-killed the lingering
+corpse every tick and shed_dissolve re-seeded `dissolve_timer` back to 60/60
+after each ResourceSystem decrement (commit 87843e6, regression-pinned in
+shed_dissolve.test.ts; the lane's tests never re-ran DeathSystem after the
+linger vote). Known
+v1 scope gap (documented at `ContentCache.getSoleDissolveProfileSync`): the
+wire carries no per-entity archetype id, so the client resolves "the sole
+registered profile" rather than a true per-entity lookup — correct today
+(one profile exists) and a safe no-op the moment a second is authored.
+
+### T-312 · Visual content-authoring arc — fill the libraries the look needs
+Effort: XL   Status: planned (blocked on T-311 tools)
+
+T-311 delivers the **machinery** (field grids, registries, devtools, render hooks); the art-bible look
+only *appears* once content is authored against it. This is that authoring arc — the bulk of the visible
+result, and weeks–months of work even with the tools. **Goal: the layered DENSITY of the screenshots**
+(`ART_DIRECTION.md §1`), reached by composing small primitives (`VISUAL_DATAMODEL_PLAN.md §Density through
+composition`). **Discipline: hero-cell → hero-scene → propagate** — get ONE patch fully dense in the
+devtool until a screenshot crop is matched (the density vertical-slice), then let the field grids + biome
+tables replay that recipe across the world. Do NOT hand-place; tune one recipe and scale by data.
+
+Each sub-library is gated on its T-311 phase tool:
+- **Flora & ground-cover library** — ~12 generators (fern/moss/root/vine/mushroom/grass/thorn/…) ×
+  healthy↔corrupted, biome-tuned `ScatterDef`/`ProcModelDef`. Tool: T-311 P1 ProcModel + Scatter-Field-Painter.
+- **Ruins/props/landmarks library** — chapels/altars/statues/tombs/gates/monoliths + caravan/barrel/crate/
+  well/chest/banner prefabs, sacred↔corrupted + wear states (the ruins + props sheets). Tool: P1 Material + P2 StateLadder.
+- **Creature roster** — the haunts (Wailing Shade, Hollow Lantern, Grief Husk, Mirror Stalker, …) as
+  `voxel_creature` procmodels + `DissolveProfileDef`s + skeletons. Tool: P5 Creature/Dissolve panel.
+- **Settlement module library** — the full tier × upgrade-stage × road-kit content beyond T-311 P7's
+  "one strategy + a handful of modules". Tool: P7 Module Composer.
+- **Atmosphere/grade/material polish pass** — `AtmosphereDef`/`GradeDef`/`render`-block tuning per
+  biome × time-of-day; the final mood pass. Tool: P5 Atmosphere + P2 Grade panels.
+
+LLM-assisted seeding (SPEC L22) is the intended accelerant. Without this arc, T-311 is a richly-capable
+engine rendering a sparse world — the capability gap is closed but the look is not yet authored.
+
+### T-313 · Deferred render-capability extensions — the engine bits T-311 does not add
+Effort: L   Status: done   Commit: e7c13dd
+
+T-311 closes the *data-model* gap, but a few genuine render capabilities the references imply are out of
+its scope. Ranked by **visible-jump-per-effort** (see `VISUAL_DATAMODEL_PLAN.md §boundary` for the table):
+1. **Arcing sun + raking shadows** (HIGH jump / MED effort) — **DONE, landed with T-311 P5a** (not a
+   separate item after all — folded into P5 as planned): `sun_arc.ts` + per-frame shadow-cam basis
+   recompute from the live `sunArc()` direction; `SUN_DIR` is deleted everywhere.
+2. **In-world water verification** (LOW effort) — **DONE, landed during the P5 live-verify**: a water
+   blowout was found and fixed (commit `243ce9c`); `WaterStyleDef` + `WaterGrid.surfaceLevel` water is
+   confirmed live in-world (P5b).
+3. **Shadow cascades / full-frame god-rays** (HIGH jump / HIGH effort) — **DONE (this commit, `e7c13dd`)**.
+   A second, wider (±200u), coarser (1024) `farCascade` DirectionalLight (intensity 0 — shadow-only,
+   rides Three's own castShadow-correct shadow-map machinery for free) extends raking shadows past the
+   near sun's ±60u frustum; `shadow_cascade_pass.ts` reads its shadow map directly and composites the
+   darkening itself in a bespoke fullscreen-quad pass (NOT a material-shader patch — three's own CSM addon
+   globally rewrites `ShaderChunk.lights_fragment_begin`, which would collide with this pipeline's existing
+   onBeforeCompile chains; rejected as a workable-but-wrong-license-for-this-codebase approach). Slotted
+   before BloomPass/GodRayPass so canopy-gap light shafts shape correctly past the near cascade's reach too
+   — the god-ray "widen once the cascade exists" follow-up is folded in for free (no march-distance change
+   needed; `god_ray_pass.ts`'s header updated). 2 cascades total (near unchanged + 1 new far), not 3 — kept
+   to the cheaper, lower-risk end of "2–3 split" given the per-fragment shadow-sample cost every additional
+   cascade light adds to Pass 1 (documented in `environment_lighting.ts`/`shadow_cascade_pass.ts`). Full
+   suite green, `deno check` clean; live perf delta (HUD GL timing) and visual verification are a
+   postMergeChecklist item — this landed on a lane with no access to the live stack.
+4. **Water planar-reflection probe** (MED-localized jump / HIGH + fragile effort) — **explicitly deferred,
+   spun into T-330** (not built): the canal-city mirror needs a second scene pass ordered against outline +
+   bloom, is fragile (RTT ordering against a hand-rolled pipeline with no EffectComposer), and only pays
+   off where water/wet is on-screen. P5b already ships a cheap screen-space sky-streak reflection as the
+   pragmatic v1; T-330 tracks the real planar probe as a named follow-on rather than reopening this ticket.
+
+**NOT pursued (idiom / doctrine):** depth-of-field / painterly softening (fights the crisp Sobel ink — an
+anti-goal for the kept comic idiom); normal/roughness PBR maps (against the `flatShading` atomic-voxel
+doctrine). **Already landed (T-310 follow-ups, not deferred):** foliage wind sway (`canopy_fade` wind
+uniforms), richer material weathering textures, hit-impact flash, camera-occlusion fade.
+
+### T-330 · Water planar-reflection probe — the canal-city mirror
+Effort: M   Status: todo
+
+Split off T-313 item 4 (deliberately deferred, not built there — see that ticket's closing note). P5b
+(`water_renderer.ts`) already ships a cheap screen-space sky-tinted `reflect()` streak keyed off the
+existing `wet_specular` `aWetness` input — good enough for ambient wet-surface sheen, but not a true mirror.
+This ticket is the quality follow-on: a real planar-reflection render — a second scene pass from a
+mirrored camera into its own render target, ordered correctly against the outline (Sobel/EdgePass) and
+bloom passes in the existing hand-rolled (no-EffectComposer) pipeline, sampled by the water shader instead
+of (or blended with) the sky-streak term. Fragile by nature (a second full scene traversal, camera-plane
+mirroring, and RTT-ordering against a pipeline that already has 3+ interleaved passes — see
+`shadow_cascade_pass.ts`'s header for how T-313 reasoned about a similar RTT-ordering problem) and only
+pays off where water is actually on-screen, so it's explicitly NOT a blocker for anything else. Done when:
+a water surface visibly mirrors nearby geometry (not just sky), the pass is skipped/cheap when no water is
+on-screen, and the near-field god-ray/bloom/EdgePass ordering established by T-313 is undisturbed.
+
+### T-314 · ARPG presentation & composition — the non-render gaps that still gate "looks finished"
+Effort: L   Status: done   Commit: d84455e, 421d1d3   (lane/t314-arpg, 2026-07-13 — 2/3 items landed,
+third genuinely blocked, see below)
+
+The references read as "finished" partly for reasons orthogonal to the voxel/render data model. This
+ticket tracks the gap; the work lands in its home domains, cross-referenced so the visual arc doesn't
+pretend the look is done at T-311/T-312:
+
+- **HUD/UI polish — DONE (commit 421d1d3).** Reused the existing Preact UI, no new UI system. Real
+  gaps found and fixed rather than a cosmetic pass: (1) CastBar/StatusBars/Hotbar/SkillBar were four
+  independently `position:fixed` strips with hand-tuned pixel offsets — composed into ONE
+  `.action-frame hud-chrome` bottom dock (`ui_manager.tsx`) using the SAME `.hud-chrome` pressed-metal
+  recipe already shared by Minimap/ZoneCaption/HeirRitual, laid out by DOM order in a flex column
+  (anchored via `bottom` only, so the CastBar — visible only while casting — grows the frame upward
+  without shifting the rows under it) instead of four sets of magic offset math; each component
+  dropped its own positioning, the frame owns layout now. (2) The minimap's coordinate readout was a
+  hardcoded `"0,0"` stub — wired to the real live player world position (`fog.lastPlayer`, same
+  imperative rAF draw loop the heading cone already uses). (3) `HudStats` (FPS/tris/draws/network
+  telemetry) was permanently visible in the primary HUD — exactly the "debug readouts" this ticket
+  says to move away from — gated behind the existing `` ` `` debug-panel toggle alongside DebugPanel/
+  NetworkPanel, so the default HUD no longer shows engine internals. **Quest/objective readout — not
+  built, and not faked.** Grepped the repo: there is no quest/objective content model or player-facing
+  progress-tracking system anywhere in the game (`JobBoard`/`AssignedJobBoard` is NPC production-queue
+  work, not player quests). The one real thing that already plays this role — `HeirRitual` (T-072),
+  a banner deriving live steps from actual dynasty/container state — already composes into the frame's
+  right column under the minimap via the shared `hud-chrome` class; left as-is. Inventing a persistent
+  quest log with no backing data would be exactly the "scaffolding with no live caller" the T-309 hotbar
+  audit warned against — needs a real quest system (design decision, out of scope here) before a
+  readout for it means anything.
+- **Camera-occlusion extension — DONE (commit d84455e).** `canopy_fade.ts` already faded geometry
+  ABOVE the player's head inside a wide radial blob around the camera↔player midpoint (tree canopy);
+  extended the SAME uniforms/shader pipeline with a second "wall" band, combined per-voxel via `max()`
+  before the existing single discard test — no new registration call sites, every material already
+  calling `canopyFade.register()` (terrain, scatter, props) picks it up for free. The wall band's
+  horizontal test is the voxel's distance from the camera→player LINE SEGMENT (projected + clamped to
+  the segment, not a point-radius blob), and its vertical gate starts just above the player's FEET
+  (not the head) so a wall/cliff fades along its whole height while the floor the player stands on is
+  never eaten. New content-driven `game_config.render.wallFade` (minHeight/maxHeight/innerRadius/
+  outerRadius) mirrors `canopyFade`'s existing knobs (T-315 D3 precedent) — no hardcoded shader
+  constants, no `BOOTSTRAP_VERSION` bump needed (GameConfig passes through the bootstrap blob as JSON
+  already). Matters immediately per the ticket's premise: T-328 made the camera sit rigidly behind the
+  character's heading, so side occluders block the view constantly, not just near hypothetical
+  settlements — did NOT wait on T-311 P7 the way the original text speculated, since ordinary terrain
+  cliffs/walls already exercise it.
+- **Composed-scene worldbuilding — NOT built, genuinely blocked, not faked.** Still depends on T-311 P7
+  settlements (authored POI set-pieces + placement), which per the T-312 ticket body is not built
+  ("Settlement module library... beyond T-311 P7's 'one strategy + a handful of modules'" — gated on
+  the P7 tool). No code landed for this item; tracked where it already lives (T-311 P7 / T-312's
+  Settlement module library), not duplicated into a new ticket number.
+
 ## Player UX
 
 ### T-072 · Respawn / heir flow UI
-Effort: M   Status: todo   (core respawn-as-heir done in T-270; remaining: ritual UI + library/treasury)
+Effort: M   Status: done   Commit: 1551de9
 
 On death, spawn heir at family workbench. Show respawn UI: walk to family library, select tomes
 to read (internalise Lore), walk to family treasury, equip stored gear. Guide the player through
 the ritual without hard-coding it.
 Done when: death triggers the heir flow; heir spawns at workbench and can complete the ritual.
 
+Done (client ritual layer; server substrate was already done — T-077/T-078 chests, T-079 heir
+spawn, T-270 respawn-as-heir). Missing signal found and fixed first: `Heritage` (dynastyId/
+generation) has been networked since T-079/T-270 but was never added to the client's
+`CODEC_BY_WIREID` decode table, so the client had no way to know its own dynastyId or notice a
+generation bump — added the one missing entry (protocol, commit 91fe492) rather than inventing a
+new server flag.
+
+**Guidance is entirely derived, not scripted.** `game.ts` arms a session-local `ritualActive` flag
+the moment it sees the local player's own `Heritage.generation` climb DURING THIS SESSION — the
+first heritage snapshot after connect/join is a baseline, never a trigger, so loading in as an
+already-established heir does not fire it; only a real death → heir respawn does. While armed,
+`_recomputeRitualGuide` rescans every entity the client currently knows about for a `Container`
+(T-077/T-078) matching the player's own dynastyId, and reports a step for the nearest tome/
+equipment chest ONLY while it still holds something — no chest built yet, or already emptied out,
+means no step, and the banner disappears on its own once both are gone or the player dismisses it.
+Rendered by the new non-modal `HeirRitual.tsx` HUD banner. There is deliberately no "do it for me"
+button — reading/equipping still goes through the ordinary container + inventory UI, per "guide
+the player without hard-coding it."
+
+**Tome reading** ("select tomes to read"): `CommandType.Internalise` (T-020) had server logic but
+no client entry point anywhere. Added a `read_tome` UIAction wired through InventoryPanel's
+context menu (gated on the item being the content-defined tome prefab), mirroring how "Equip"
+already works — withdraw a tome out of the library into the burden (existing withdraw_container
+flow), then Read it there. No new server command surface, no parallel inventory system.
+
+**Gear equipping** needed no new work — withdraw_container (T-077/T-078) + the existing generic
+Equip action already compose into the full flow.
+
+**Follow-on gap found, not fixed here** (out of scope — a different, living-player workflow, not
+the heir ritual): `CommandType.Externalise` (write a learned fragment to a blank tome, T-019) still
+has zero client UI, tracked as T-328.
+
 ## Heritage & Dynasty
-
-### T-077 · Family library — tome storage at workbench
-Effort: M   Status: done   (server substrate; deposit/withdraw UI deferred to T-072/T-076)
-
-A special chest entity associated with the family workbench serves as the library. Stores Lore
-tome items (T-018). Persists across character deaths (it is a world entity, not character
-inventory). Heir can interact with it during the respawn ritual.
-Done when: tomes placed in the library chest persist after character death; heir can access them.
-
-### T-078 · Family treasury — gear storage across deaths
-Effort: S   Status: done   (server substrate; equip-during-ritual UI deferred to T-072/T-076)
-
-A second chest entity at the family workbench serves as the treasury. Stores equipment items.
-Same persistence model as the library (T-077). Heir equips from here during respawn ritual.
-Done when: items stored in treasury persist across deaths; heir can equip them.
-
-Done (T-077 + T-078 share one primitive): a server-only **`Container`** component
-([components/container.ts]) — entity-ref slots holding UNIQUE item entities (so each tome's
-`Inscribed` and each weapon's `Durability`/`QualityStamped` is preserved per-instance, unlike the
-stack-only `WorkstationBuffer`), gated by `kind` (library=tome / treasury=equipment) + `dynastyId`
-(stamped from the placer's Heritage on deploy via `stampContainerOwner`). Two deployable chest
-prefabs (`library_chest`/`treasury_chest`) + kits + recipes, plus the long-missing `tome`/
-`blank_tome` prefabs the lore path already referenced (now boot-cross-checked). `storeInContainer`/
-`withdrawFromContainer` ([systems/container.ts]) are dynasty+kind+capacity-gated entity-ref MOVES
-(never copy/destroy). **Persistence** is the core work: `SaveManager` (VXM2 v4) now round-trips a
-chest fixture AND the unique item entities its slots reference — a new `KIND_ITEM` record carrying
-each item's instance components with the UUID preserved, emitted before the chest so slot refs
-re-resolve on load (`ItemEffects` was also registered so it stops silently dropping on overlay).
-"Persists across death" holds because the chest is its own world entity — `equip_cleanup`/disconnect
-only walk a holder's `Equipment`/`Inventory`, never a `Container`. 17 deno tests (`container_ops`,
-`container_persistence`): round-trip, death-survival, store/withdraw gates, heir-withdraw-and-equip.
-**Deferred (client-drift):** networked Container + the deposit/withdraw + ritual UI — server-first,
-network later, the same call buffs/modifiers/ActiveActions made.
-
-### T-079 · Heir spawn at family workbench
-Effort: M   Status: done
-
-On character death, instead of direct respawn, create a new character entity at the family
-workbench position. If the workbench was destroyed, heir spawns at a fallback location (tile
-origin) in a weakened state.
-Done when: death spawns an heir at the workbench; no workbench = displaced spawn.
-
-Done: happy-path hearth spawn shipped in T-270; this closes the **destroyed-hearth weakened
-fallback**. `resolveHeirSpawn(world, content, hearthAnchor, tileId)` ([heir_spawn.ts]) decides
-the heir's spawn from the account `hearthAnchor` + LIVE world: standing hearth (a `WorkstationTag`
-entity within `player.hearthDetectRadius` of the anchor) → spawn there; anchor here but no
-workstation → the hearth is destroyed → displaced to default spawn + `weakened`. No destroy-event
-plumbing needed — "still standing" is derived from world state. The hearth anchor is now cached
-per-player at join (`playerHearthAnchors`) so an in-session respawn (no join msg) reaches it; this
-also fixed the prior bug where `respawnPlayer` passed `null` and always fell to default spawn.
-Weakened = the T-008 `Injury` pipeline: `installPlayer` writes the new `game_config.injuries.displaced`
-debuff (moveSpeed ×0.7 through the modifier fold) + starts the heir at `displacedHealthFraction`
-(0.5) of max HP. Server-only, no wire/save change. 6 deno tests in `heir_spawn.test.ts`.
 
 ### T-080 · Dynasty reputation persistence in NPC world
 Effort: L (cross-service arc)   Status: todo   (premise corrected — deferred; needs the prerequisite chain below)
@@ -1179,21 +1891,46 @@ travel / sleeping) and minimap/fog claim overlays to follow-up tickets so this l
 
 ## Species
 
-### T-085 · Species visual variants — skeleton archetype mapping
-Effort: M   Status: todo
-
-Species definitions include a `skeletonArchetype` field that maps to a different skeleton
-definition. Dwarf skeleton is shorter and wider; human is the default. Visual differentiation
-without new animations — same animation set, different bone proportions.
-Done when: a dwarf character renders with dwarf skeleton proportions; animations play on both.
-
----
-
 ## Item Durability
 
 ## World / Environment
 
 ## UI / Interaction
+
+### T-329 · Networked hotbar + backpack-gated inventory access
+Effort: L   Status: todo
+
+Split out of T-309 (done, lane/t309-hotbar, 2026-07-13) — the full vision that ticket originally
+described but which its launching prompt explicitly scoped out as "its own arc, do NOT build it
+here". T-309 landed a CLIENT-LOCAL hotbar (`HotbarState.assignments`, session-scoped, not
+networked) and body-anchor rendering of non-active slung items, visible only to the local player
+on their own screen. This ticket makes it real for everyone else and adds the access gate:
+
+1. **Networked hotbar component.** A new server-authoritative component (wireId, codec in
+   `@voxim/codecs`) replacing/superseding client-local `HotbarState.assignments` — the server
+   is the source of truth for what's assigned to which hotbar slot and which slot is active, so
+   every AoI-visible player's client can render the SAME slung-gear body anchors T-309 built
+   (those anchors are already generic — they just need real data for remote entities, not only
+   the local player). Decide the wire representation: unique items are entity-refs already
+   (inventory slot → item entity), so the hotbar assignment is naturally `hotbarSlot →
+   inventorySlot` (matching T-309's client-local mapping) or `hotbarSlot → itemEntityId`
+   directly — pick one and make `EntityMeshRegistry.syncHotbar` read it for ALL entities with
+   the component, not just the local player via the cached setHotbar() path.
+2. **Backpack-gated inventory access.** No backpack item assigned to a hotbar slot ⇒ the
+   inventory panel doesn't open (or opens empty/locked) — "the hotbar is what you carry on your
+   body; the backpack is one slot that opens the bag." Needs: a backpack item concept (new
+   Equippable-adjacent component or a `carryContainer` flag on a prefab?), the actual inventory
+   capacity/access gate (currently `InventoryPanel` always opens if `uiState.inventory` is
+   non-null), and a design decision on what happens to already-stored items when the backpack
+   is unassigned (locked-but-visible vs fully hidden vs auto-drop — needs a design call, not a
+   default to guess).
+3. **Visible slot count by carry-gear.** T-309's step (3) — gate how many of the 8 hotbar slots
+   are usable by what's equipped (a belt might grant 2 extra slots beyond the backpack's base
+   set) — depends on (2)'s backpack/carry-equipment concept existing first.
+
+Done when: hotbar assignment is server-authoritative and every player sees every other player's
+slung gear (not just their own), and opening the burden panel is gated on having a backpack
+slotted into the hotbar.
 
 ## Housing
 
@@ -1226,6 +1963,17 @@ carries the dynasty tag. Furniture items are defined in item_templates.json with
 
 Done when: a player can build a fully enclosed structure, claim it as home, gain shelter
 bonuses inside, and lose the claim when the structure is sufficiently destroyed.
+
+**Prerequisite the enclosure/roof stack is waiting on (from T-066's live-verify, 2026-07-07):**
+the wall-blueprint completion path currently never writes `OpenMask` — `BlueprintHitHandler.
+applyToTerrain` only touches Heightmap/MaterialGrid, so a completed wall does not close a cell in
+the grid `EnclosureSystem` reads. T-093 must make wall-blueprint completion (1) write `OpenMask`
+(the cell becomes closed) and (2) let `EnclosureSystem` see it (the existing `BuildingCompleted` →
+`markDirty` link then triggers the recompute). Once that lands, T-066's roof rendering activates
+in-world for free (it is built + unit-tested, dormant only for lack of a live enclosure trigger —
+POI room stamps close `OpenMask` at gen but never fire `BuildingCompleted`, so they don't roof
+today either). Decide as part of T-093 whether POI cave-chambers should also roof (would need an
+initial/boot enclosure compute) or whether roofs stay exclusive to player-built houses.
 
 ---
 
@@ -1299,26 +2047,9 @@ from a generator; spawned NPCs get generated names; voxel editor
 spawns procedural sub-objects via the same registry; adding a new
 algorithm is one file in algorithms/ + zero changes elsewhere.
 
-### T-191 · Devtools rebuild
-Effort: L   Status: todo   (umbrella -- shell+voxel+anim Layer A shipped; closes when T-191z + T-191e land)
-
-Scrap the current voxel-editor and build a coherent two-tool suite:
-voxel/model designer + animation editor. Hard separation between data
-tooling (Layer A — operates on raw ModelDefinition / SkeletonDef /
-AnimationClip JSON, zero game-content imports) and game-content
-overlays (Layer B — loads ContentService, lets you preview the
-artifact in a game-like scene with prefab equipment / state machines /
-maneuvers).
-
-Lives next to atlas as a single served Deno+esbuild+Preact app with
-two top-level routes (/voxel, /anim) sharing a common shell.
-
-The old packages/devtools/voxel-editor retires at the end (T-191z).
-
-Phasing → sub-tickets T-191a..e + T-191z.
-
 ### T-186 · Procedural character body generator (skeleton + voxel mesh)
-Effort: L   Status: in-progress   (Layer 1 morph gen done via T-190; Layer 2 voxel recipe unbuilt)
+Effort: L   Status: in-progress   (Layer 1 done via T-190; Layer 2 recipe voxelizer done, see below —
+auxiliary work below remains open)
 
 **Layer 1 delivered as part of T-190.** Sub-object voxel chunks now
 stretch alongside bones via the existing morphParams table. Remaining
@@ -1359,19 +2090,69 @@ Two layers:
     shoulders + narrow waist", "thick thighs", limb taper, asymmetric
     builds — things that uniform per-axis scaling can't express.
 
+**Layer 2 delivered (lane "body", branch lane/body):** `BodyRecipeDef`/
+`BodyPartRecipeDef` schema on `SkeletonDef` (`packages/content/src/types.ts`),
+a shared pure evaluator (`packages/content/src/body_recipe.ts` —
+`evaluateBodyRecipe`/`resolveBodyPartDims`/`bodyPartCapsule`/
+`crossCheckBodyRecipe`, reusing `formula.ts` for morph-scaled expressions), a
+`bodyRecipe` block on `biped.json` covering all 16 bones and all 10
+morphParams (not just the 6 named in this ticket's prose above — biped grew
+`right/leftArmScale` and `right/leftLegScale` since this text was written).
+`bone_segment.json` and `scripts/build_skeletal.ts` are deleted outright —
+every humanoid prefab (player/drowner/rotten_knight/villager/bandit/archer/
+merchant, all `modelId: biped_skeletal`) now renders a recipe-voxelized body
+instead of the 1-voxel-wide bone-colored debug cylinders every one of them
+actually rendered through before this ticket (a placeholder, not a design
+target — the "reads as a body, not a stick figure" bar was used instead of
+byte-parity with that placeholder). Single source of truth for mesh AND
+collision: `hitbox_derive.ts`'s skeletal-capsule fallback now resolves a
+recipe-covered bone's capsule via the SAME `bodyPartCapsule()` dimensions the
+mesh voxelizer used (previously a wholly separate hardcoded `BONE_RADIUS`
+table, decoupled from any voxel geometry — the risk this ticket's "if
+hitboxes derive from authored voxels" bullet named turned out to already be
+latent rather than active, since the debug cylinders were never hit-boxed at
+all; this landing is the first time collision and visuals share one source).
+Studio: a Morph panel in `AnimationEditor.tsx` previews the recipe live
+against slider values through the real `evaluateBodyRecipe()`. Payoff:
+`bandit.json` morphRanges tuned for a thick-set silhouette (wide shoulders,
+narrow hips, stocky legs) alongside `drowner.json`'s already-lanky profile.
+Also fixed in the same lane: a latent hitbox-template cache-collision bug
+(cache key didn't include morphValues) and a client mesh-build bug
+(`entity_mesh_registry.ts` wasn't passing `ModelRef.morphValues` into the
+mesh-build's `resolveMorphParams` call, so per-instance morph overrides never
+reached the VISUAL body, only pose/hitbox-debug). See T-302's body for the
+humanoid_grammar porting note this reduces to — **T-302 landed**: the
+evaluator is unchanged (still the one body-volume evaluator) but is now
+reached through `humanoid_grammar.ts`'s `humanoidGrammarByBone`/
+`humanoidGrammar` on the ProcModel generator substrate instead of a direct
+`evaluateBodyRecipe()` call from `entity_mesh_registry.ts`. **Foot IK — done**
+(lane/t308-anim, commit 1625089, landed as part of T-308's "foot-on-terrain
+IK": T-308's and this ticket's foot-IK items were the same work, per the
+T-308 coordination note — `applyFootTerrainIK` in `swing_pose.ts` re-plants
+feet at the local terrain height via `aimLimb`, so limbs scaled far from
+authored proportions (or standing on a slope) still read as planted; see
+T-308's entry for the mechanism). NOT done: posture overlay, character-creator
+UI — ticket stays in-progress for that residual.
+
 Auxiliary work:
   - Posture-overlay layer: small additive AnimationLayer composed from
     slider values (backlean, slump, alert) — pure rotation offsets on
-    a few torso/neck bones, runs alongside whatever Mixamo clip plays
-    on the override layer. Mixamo motion stays intact; the base pose
-    nudges by the slider amount.
+    a few torso/neck bones. STALE PREMISE as originally worded: "runs
+    alongside whatever Mixamo clip plays on the override layer" describes
+    the pre-Action-primitive CSM (retired T-228) — there is no more
+    "override layer" concept in the current `AnimationLayer`/action-driven
+    pipeline (see T-308's `ActionAnimation`/fused pose pipeline). The
+    underlying idea (a few additive rotation-offset sliders on torso/neck,
+    composed on top of whatever pose is already playing) still fits the
+    current base-pose-catalogue architecture as one more producer — but
+    where the slider VALUES come from (a per-character stat? a stance
+    toggle? NPC archetype flavor?) is a design call this note doesn't
+    answer, left open rather than guessed.
   - Character-creator UI: live sliders mutate ModelRef.morphValues
     in-editor, baked to per-character permanent values on commit. Use
     only in the creator screen — for live characters morphs are
-    immutable identity.
-  - Foot IK pass when limbs scale far from authored proportions, so
-    feet stay planted on terrain at extreme heights. ik_solver.ts
-    exists; just needs wiring into the FK pipeline.
+    immutable identity. Its own scoped UI/UX arc (creator screen flow,
+    persistence, entry point) — not attempted here.
 
 Property of this design: hit detection self-consistent at any morph.
 blade.baseLocal/tipLocal are hand-bone-local; longer arms genuinely
@@ -1384,46 +2165,201 @@ shoulder width, hip width, head size); a saved character spawns into
 the world at exactly those proportions; Mixamo animations play on
 every body type without artifact; hits land at the new reach.
 
+## Core Mechanics Depth
+
+### T-341 · Build out the existing core mechanics (crafting · building · survival · NPCs/social)
+Effort: XL (arc)   Status: needs-design   (user, 2026-07-14)
+
+The core loops all EXIST but are thin — each is a skeleton that proves the mechanism without yet being a
+game: crafting (recipes + workstations + the crafting-queue Resource), building (blueprints + the hammer
+loop; note the OpenMask gap T-093 owns), survival (hunger/thirst/stamina as Resources; day/night; light),
+NPCs & social (BT-driven archetypes, traders, job boards, the dynasty/heritage substrate).
+This is the "make it a game" arc. It needs SORTING before building: for each of the four, decide what the
+loop actually IS end-to-end, what is missing versus what is merely thin, and what the smallest version is
+that makes it worth playing. Then it splits into real tickets.
+Do NOT start building until that pass is done — otherwise it becomes four half-deepened systems.
+
+### T-342 · Atlas rethink — a better mix of procedural generation and persistent world
+Effort: XL (arc)   Status: needs-design   (user, 2026-07-14)
+
+"Gute Ideen im Kern vorhanden, müssen sortiert und zu Ende gedacht werden." The atlas today bakes a whole
+world from a seed (deterministic, regenerable, disposable) while the tile-server persists what players do
+to it (terrain edits, POI state, saves). Those two truths pull against each other: what happens to a
+player's house when the world is re-baked? What is authored, what is generated, what is remembered?
+The arc: sort the existing ideas, decide the persistence model end-to-end (what survives a re-bake and
+why; how procedural content and player history compose; whether the world is regenerable-from-seed at all
+once it is lived in), and only then rework. This is the deepest architectural question left in the project
+and it wants a design pass, not a lane.
+
 ## Ops & Deployment
 
-### T-274 · Dev docker stack errors — devtools crash-loop, gateway WT rebind storm, coordinator crash
-Effort: S   Status: done   (three root-caused fixes from a bug-hunt; verified live)
+## Architecture & Housekeeping
 
-`deno task compose-fresh` surfaced three real errors (separate from the known GatewayLink dial
-noise). Found + fixed:
-- **devtools crash-loop**: `docker/devtools.Dockerfile` still ran the deleted `scripts/build_voxel_editor.ts`
-  (T-191z removed the script + `dev.ts`/`serve_devtools.ts` refs but missed the Dockerfile) → container
-  exited 1 → `restart: unless-stopped` looped it forever. Fix: drop it from the cache + CMD (studio only).
-- **gateway loses UDP/8080 WT listener for good**: every `deno run --watch=./packages` backend (gateway/
-  coordinator/atlas/tiles) restarted whenever the client-dev/devtools esbuild watchers rewrote their
-  `dist/` bundles (which live under the bind-mounted `./packages`). On that restart the gateway couldn't
-  rebind UDP/8080 (Address already in use) → fell back to HTTP-only permanently → killed every tile↔gateway
-  + coordinator↔gateway WT link (the permanent GatewayLink "timed out" flood was a *symptom* of this).
-  Fix: `--watch-exclude=./packages/client/dist/** --watch-exclude=./packages/devtools/dist/**` on every
-  watch service. NOTE: Deno's `--watch-exclude` does NOT comma-split — a single `a,b` value is one literal
-  pattern that never matches; you must pass REPEATED flags. Verified live: touching dist no longer restarts
-  the backends; the gateway keeps its WT listener.
-- **coordinator crash on WT timeout**: `packages/coordinator/main.ts` lacked the `unhandledrejection` guard
-  that `tile-server/main.ts` has, so a transient dial timeout (escaping the GatewayLink retry loop as an
-  un-awaited rejection) killed the process. Fix: mirror the tile-server guard. Also fixed a pre-existing
-  `coordinator.ts:162` TS error (`setInterval` → `ReturnType<typeof setInterval>`) so the package
-  type-checks.
+From the 2026-07-15 server/networking/client audit. Doctrine note that applies to
+every ticket here: prose documentation (file headers, architecture comments) is
+NOT maintained in this codebase — it always drifts. Stale doc gets DELETED, not
+refreshed; the code is the reference. Only comments stating a constraint the
+code cannot show survive.
 
-### T-261 · Place gates + arrivals at the carved corridor offset
-Effort: M   Status: todo
+### T-348 · Event wire path → per-event descriptor registry
+Effort: L   Status: done   Commit: b7ca638   (protocol/src/event_registry.ts: 18 descriptors — wire codec + relevance-as-data (always/player/known clause vocabulary) + fromTileEvent bus binding, mapped-type keyed by GameEvent["type"] for compile-time exhaustiveness; the four switches deleted; GateApproached handoff stays one named ordered exception; wire bytes + decoded shapes unchanged)
 
-Split from T-256 gap 4. Gates spawn at edge MIDPOINTS (`gatePositionForEdge` /
-`mirrorPosition` use `TILE_SIZE / 2`) while atlas carves the only walkable corridor at the
-shared `gate.offset` (`atlas_terrain.ts:192-205` reads `g.offset` then discards it; the
-`GatePosition` wire type is edge-only). So a gate trigger — and the mirrored arrival point —
-can land in a closed pixel: the gate is physically unreachable, or the handed-off player
-arrives stuck in a wall.
+The one subsystem the registry rebuild (T-279–284) never reached. Every GameEvent
+kind is hand-maintained at FOUR sites: the union in `protocol/src/messages.ts`,
+the internal→wire translation subscribes in `tile-server/src/event_router.ts`,
+the `encodeEvent`/`decodeEvent` switches in `protocol/src/state_binary.ts`, and
+the `isEventRelevant` AoI-filter switch in `tile-server/src/aoi.ts`. Collapse to
+one per-event descriptor keyed by EventType — wire codec + AoI relevance
+predicate registered once — mirroring `CODEC_BY_WIREID`. The relevance
+predicates are almost all one of three shapes (`=== playerId`,
+`knownEntities.has(x)`, `true`), so relevance can be data.
+Done when: adding a new game event touches exactly one registration site and the
+four switches are gone.
 
-Fix shape: carry the along-edge `offset` on `GatePosition` (scaled atlas-pixels → world units
-via `TILE_SIZE / tile.gridSize`); `gatePositionForEdge` + `mirrorPosition` place along the
-edge at that offset instead of the midpoint. Deferred from T-256 because it needs the live
-multi-process render + an open-pixel check to verify the offset scale — shipping it blind
-risks gates landing in walls (worse than the known-wrong-but-safe midpoint).
+### T-349 · Single-source networked-component registry + boot fail-fast
+Effort: M   Status: done   Commit: 944b5da   (ActorSlots/Inscribed/QualityStamped de-networked — wire ids 47/34/35 retired; CODEC_BY_WIREID is the single authoring site, networkedCodec() resolves defs, boot fail-fast at module load; PRESENCE_ONLY_WIRE_IDS documents the resource_node opt-out)
 
-Done when: a gate sits on its carved corridor and a handed-off player arrives on an open
-cell, verified against the atlas OpenMask.
+`NETWORKED_DEFS` (server encode) and `CODEC_BY_WIREID` (client decode) are two
+independently authored lists, plus a third hardcoded copy in
+`codec_registry.test.ts` that only asserts sizes and cannot catch divergence.
+The heritage (16) / parent (49) silent-decode bugs were symptoms. Author the
+wireId→codec pairing ONCE and derive both registries from it; add a boot
+cross-check (fail-fast, like the content registries) that every networked def
+has a client decoder or an explicit presence-marker opt-out (`resource_node`).
+Includes deciding the three components currently encoded but decoded nowhere:
+`ActorSlots` (47, its "client runs slot dispatch for prediction" justification
+is unrealized — predictor is position-only), `Inscribed` (34), `QualityStamped`
+(35) — either wire them into decode or drop `networked`; today they are pure
+spawn-size + delta bandwidth.
+
+### T-350 · Retire dead components: CraftingQueue, DarknessModifier
+Effort: S   Status: done   Commit: f3a09b8   (full retirement, wire ids 19/32 retired; getLightAt darkness loop deleted — provably behavior-preserving, darkness was always 0)
+
+`CraftingQueue` is written once at spawn on every player and read by nobody —
+crafting is entirely WorkstationBuffer-based; it occupies a wire ID and a
+per-player codec allocation. `DarknessModifier` is a networked component with
+zero writers — only queried in `getLightAt()`, but no entity ever carries it,
+so the darkness-subtraction loop is dead-on-arrival. Apply the retire-a-component
+checklist to both (spawner, registry, codec, client field, def; leave the numeric
+slots as retired comments) and simplify `getLightAt`.
+
+### T-351 · SwingPredictor: real chain state or delete the combo apparatus
+Effort: M   Status: done   Commit: 4b4bf26   (ActorSlots stayed server-only per T-349, so the predictor reduced to press/hold-only on chain[0]; chainIndex apparatus + SwingableLike/SwingChainEntryLike shapes deleted; zero runtime-behavior change)
+
+`client/src/prediction/swing_predictor.ts` is premised on a networked SwingChain
+that no longer exists (wire id 46 retired, component is server-only). The caller
+passes `chainIndex` as constant 0, so only combo step 0 is ever predicted —
+every combo continuation mispredicts. Either derive real chain state client-side
+(needs T-349's ActorSlots decision) or reduce the predictor to press/hold-only
+and delete the `chainIndex` apparatus.
+
+### T-352 · server.ts decomposition — composition root + HandoffCoordinator
+Effort: L   Status: done   Commit: 8b4968c0   (server.ts 2210→1232 lines; wiring.ts owns the composition root — wireGameSystems(deps): System[], all cross-checks at the same boot position; HandoffCoordinator owns the four state maps behind narrow accessors, teardown statement order preserved; verbatim moves, zero behavior change)
+
+`server.ts` is 2196 lines; `start()` alone spans ~1000 and interleaves cert
+hashing, content validation, the entire registry composition root (8 registries,
+~45 register() calls), ~15 boot cross-checks, and system construction. Extract
+the composition root into its own module (`wiring.ts`), and extract the
+handoff/gate/zone coordinator (~250 lines of private methods with their own
+state maps: `handingOff`, `handedOff`, `playerLastZone`, `playerHearthAnchors`)
+into a `HandoffCoordinator`, per the "large subsystems are extracted into
+separate modules" table.
+
+### T-353 · game.ts decomposition — connection wiring, panel mirrors, UIAction table, pose composer
+Effort: L   Status: done   Commit: 47c1abe   (game.ts 2216→1329 lines; new connection/wire_handlers.ts, ui/panel_bridge.ts, ui/ui_action_dispatch.ts (mapped-type exhaustive), state/state_mappers.ts, render/pose_composer.ts; modules import VoximGame type-only, zero behavior change)
+
+`game.ts` is 2220 lines with 200–370-line methods. Extraction seams:
+`_wireConnectionHandlers` (~370 lines); the panel-bridge family
+(`_open*`/`_mirror*ToUi`, a self-contained world-entity→UI-signal mirror
+module); `_handleUIAction`'s 30-case switch, mostly a mechanical
+UIAction→CommandType map that wants a `Record<type, handler>` dispatch table.
+Also extract the constraint-producer chain hand-sequenced inside the per-entity
+render loop (`renderer.ts` ~1222–1316) into a pose-composer module with a
+registered producer list — compliant on "no per-weapon branches" today but not
+on "producers → generic solver".
+
+### T-354 · Unify session teardown
+Effort: S   Status: done   Commit: b8fd5ae   (one teardownSession(playerId); sessions.delete first-synchronous makes both trigger points idempotent; fog-save-before-handedOff ordering preserved)
+
+Two teardown paths have drifted: the tick-loop dead-session sweep deletes
+`playerLastZone` but skips fog-save + account calls; the `handleSession` end
+path does the reverse — whichever fires first wins, so `playerLastZone` can
+leak. One `teardownSession(playerId)` method both paths call.
+
+### T-355 · AoI: hoist session-independent per-tick work
+Effort: M   Status: done   Commit: 77ef1c3   (computeAoiSharedInputs(world) once per tick, threaded into computeSessionUpdate; isEventRelevant untouched — T-348's territory)
+
+`computeSessionUpdate` re-runs `world.query(Heightmap)` (rebuilding
+`allChunkIds`), `WorldClock`, `GateLink`, and `Container` queries once per
+session per tick, though the results are identical across sessions; plus a full
+known-set copy and an `[...inAoI]` spread per session. Compute the shared
+always-visible set + chunk inputs once in the tick loop and pass them in.
+
+### T-356 · Renderer motion/lighting scalars → content
+Effort: S   Status: done   Commit: f512cac   (render.pose/supersample + prediction.remoteInterpDelayMs in game_config, mist.easeRate on AtmosphereDef; values frozen verbatim, no look change; HEIGHT_SHADE_* deleted as drifting duplicates; also fixed a real mouseSensitivity drift between camera_rig fallback and intent_translator)
+
+The graphics arc migrated the color pipeline to content (grade, bloom, god rays,
+mist, atmosphere) but not the motion/lighting scalars: `CROUCH_DROP`/
+`CROUCH_OMEGA`/`LOOK_AT_GAIN`/`SPRING_OMEGA`, the SSAA band
+`AAGFX_MIN_SS`/`AAGFX_MAX_SS`, `HEIGHT_SHADE_BELOW/ABOVE`, `INTERP_DELAY_MS`,
+and an inline mist ease rate, all literals in `renderer.ts`. Move to
+game_config/atmosphere content. Also fold in: `camera_rig.ts` pre-bootstrap
+fallbacks literally duplicate `game_config.json` values.
+
+### T-357 · Housekeeping sweep — delete stale doc, small pattern fixes
+Effort: M   Status: done   Commit: d1133b8a   (10 commits; every bullet re-verified against post-wave HEAD — swing_predictor CSM refs were already gone via T-351; the named lerp dupe didn't exist but a real lerpN dupe in renderer/environment_lighting did and was deduped; crumble handler now registers before the cross-check via ctor injection; CLAUDE.md datagram section thinned to pointers)
+
+Doc rot (DELETE, don't refresh — see section note):
+- `skeleton_evaluator.ts` header describes the retired CSM layer stack and
+  denies the live IK pipeline — delete the header.
+- Present-tense `ActionSystem` references (retired T-225–234) in
+  `hit_handler.ts`, `components/hitbox.ts`, `components/item_behaviours.ts`,
+  `systems/physics.ts`, `server.ts` — delete.
+- CSM references in `swing_predictor.ts`, `client_world_ref.ts`; rename
+  `CSMSection` in `DebugPanel.tsx` (reads AnimationState).
+- CLAUDE.md protocol section documents a 36-byte InputDatagram with
+  `interactSlot`; the wire is a 39-byte MovementDatagram with pitch+chargeMs.
+  Thin the section to what doesn't drift (pointers, not byte layouts); same for
+  the stale `state_binary.ts` layout header — delete it.
+- `render/ideas.md` scratch file — move out of the source tree or delete.
+
+Pattern fixes:
+- `poi/reward.ts` `switch (extra.kind)` on a content id → registry dispatch
+  (the one genuine violation left server-side).
+- `TrainingDummySystem` ticks ungated in production → gate behind `devMode`
+  like its sibling `DebugCommandSystem`.
+- Crumble double-registration in `death_style_registry.ts` (boot no-op
+  placeholder overwritten by the renderer) → register the real handler before
+  the cross-check.
+- Server-only codecs (`inputStateCodec`, `hitboxCodec`, `npcTagCodec`,
+  `npcJobQueueCodec`) live in `@voxim/codecs` and ship in the client bundle →
+  inline into their component files.
+- `readFrame` in `framing.ts` is a dead export — delete.
+- Scalar `clamp`/`lerp` duplicated in `camera_rig.ts`, `intent_translator.ts`,
+  `material_textures.ts` → add to `@voxim/engine` math and dedupe.
+- `camera_rig.update` keeps a vestigial `_dt` param for symmetry with the
+  deleted follow controller — drop it.
+- `TerrainDigSystem` hardcodes dig reach (`* 1.0`) → game_config.
+
+### T-358 · Client raw.has() presence checks are dead since T-284
+Effort: S   Status: done   Commit: 5e46a487   (named-field checks; EntityState gained typed poiInteractable; user-visible fix: POI world props (pedestal/brazier/lever) were completely inert, ground-item Use-pickup dead — both restored; bug class confined to the 3 sites, resource_node presence marker regression-fenced; live-verified itemData named-field decode + clean raw via testplay EVAL)
+
+`interactable_handlers.ts` checks `raw.has("itemData")` and `hover_outline.ts`
+checks `raw.has("poiInteractable")`, but both components HAVE client decoders
+and land as named `EntityState` fields — they never appear in `raw`, so both
+checks have been constantly false since the T-284 registry-dispatch decode
+rebuild (found during the T-349 work). Determine the intended behavior (item
+pickup interaction hint / POI hover outline presumably broken or silently
+degraded), switch the checks to the named fields, and live-verify via the
+testplay harness.
+
+### T-359 · tile_events.ts payload interfaces drifted from live event shapes
+Effort: S   Status: done   Commit: bad5258a   (15 wire-backed payloads now Omit<XEvent,"type"> — one type per event, event_registry translate params reference them; deleted dead ThirstCritical event + duplicate BuildingMaterial/EnclosedCell + unread DamageDealt.bodyPart; fixed NaN contact points on parry/life-drain/starvation publishers + npc_sensory self-damage aggro guard. Note: hunger has a critical wire signal, thirst no longer does — revisit if a thirst HUD cue is wanted)
+
+`HitSparkPayload` / `DamageDealtPayload` (and possibly siblings) in
+`tile-server/src/tile_events.ts` no longer match what publishers actually emit —
+the T-348 event-registry port deliberately copied the live inline types from
+the old event_router.ts translate params instead of these interfaces. Stale
+types on the bus boundary invite silently-wrong subscribers: reconcile each
+payload interface with its publishers, delete unused ones.
+

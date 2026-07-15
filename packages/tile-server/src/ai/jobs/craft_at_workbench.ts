@@ -167,37 +167,62 @@ function transferInputsToBuffer(
   const buffer = world.get(wbId, WorkstationBuffer);
   if (!inventory || !buffer) return false;
 
-  // Verify inventory has each required input across slots.
+  // Synchronous pre-checks against the once-per-call read — cheap early
+  // reject for the common (non-racy) case. The mutates below do the real,
+  // commit-time-accurate recheck; this function's boolean return can't
+  // reflect their eventual outcome (mutate is deferred, applied later at
+  // world.applyChangeset()), so in the narrow same-tick race this may
+  // report success for a transfer that later declines — the caller's
+  // existing job-replan-on-failure logic is the safety net, same as every
+  // other AGGREGATE-RECHECK site in this ticket that returns a synchronous
+  // optimistic result (see e.g. systems/container.ts's ContainerOpResult).
   for (const inp of inputs) {
     let have = 0;
     for (const s of inventory.slots) if (s.kind === "stack" && s.prefabId === inp.itemType) have += s.quantity;
     if (have < inp.quantity) return false;
   }
-
-  // Capacity check: we're appending one buffer slot per input.
   const nonNull = buffer.slots.filter((s) => s !== null).length;
   if (nonNull + inputs.length > buffer.capacity) return false;
 
-  // Deduct inputs from inventory (stack slots only; unique items are never crafting material)
-  const newInvSlots: InventorySlot[] = inventory.slots.map((s) => ({ ...s } as InventorySlot));
-  for (const inp of inputs) {
-    let remaining = inp.quantity;
-    for (let i = 0; i < newInvSlots.length && remaining > 0; i++) {
-      const slot = newInvSlots[i];
-      if (slot.kind !== "stack" || slot.prefabId !== inp.itemType) continue;
-      const take = Math.min(slot.quantity, remaining);
-      newInvSlots[i] = { kind: "stack", prefabId: slot.prefabId, quantity: slot.quantity - take };
-      remaining -= take;
+  // T-344: COUPLED-DECLINE — WorkstationBuffer (the destination) claims
+  // first, its own capacity recheck against commit-time state; Inventory's
+  // deduction (the source) is dependent on that claim AND does its own
+  // commit-time sufficiency recheck (two independent gating conditions,
+  // same shape as trader.ts's TradeBuy). An NPC crafting job and a
+  // player's LoadWorkstation command can target the SAME station's buffer
+  // in the same tick — no exclusivity gate between them — so leaving
+  // WorkstationBuffer on plain set() while Inventory alone went
+  // mutate-safe would have converted today's confusing duplication
+  // collision into a cleaner but WORSE deterministic loss.
+  let claimed = false;
+  world.mutate(wbId, WorkstationBuffer, (cur) => {
+    const curNonNull = cur.slots.filter((s) => s !== null).length;
+    if (curNonNull + inputs.length > cur.capacity) return cur;
+    claimed = true;
+    return {
+      ...cur,
+      slots: [...cur.slots, ...inputs.map((inp) => ({ kind: "stack" as const, itemType: inp.itemType, quantity: inp.quantity }))],
+    };
+  });
+  world.mutate(npcId, Inventory, (cur) => {
+    if (!claimed) return cur;
+    for (const inp of inputs) {
+      let have = 0;
+      for (const s of cur.slots) if (s.kind === "stack" && s.prefabId === inp.itemType) have += s.quantity;
+      if (have < inp.quantity) return cur;
     }
-  }
-  const filteredInv = newInvSlots.filter((s) => s.kind !== "stack" || s.quantity > 0);
-
-  const newBufSlots = [
-    ...buffer.slots,
-    ...inputs.map((inp) => ({ kind: "stack" as const, itemType: inp.itemType, quantity: inp.quantity })),
-  ];
-
-  world.set(npcId, Inventory, { ...inventory, slots: filteredInv });
-  world.set(wbId, WorkstationBuffer, { ...buffer, slots: newBufSlots });
+    const newSlots: InventorySlot[] = cur.slots.map((s) => ({ ...s } as InventorySlot));
+    for (const inp of inputs) {
+      let remaining = inp.quantity;
+      for (let i = 0; i < newSlots.length && remaining > 0; i++) {
+        const slot = newSlots[i];
+        if (slot.kind !== "stack" || slot.prefabId !== inp.itemType) continue;
+        const take = Math.min(slot.quantity, remaining);
+        newSlots[i] = { kind: "stack", prefabId: slot.prefabId, quantity: slot.quantity - take };
+        remaining -= take;
+      }
+    }
+    return { ...cur, slots: newSlots.filter((s) => s.kind !== "stack" || s.quantity > 0) };
+  });
   return true;
 }

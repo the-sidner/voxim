@@ -85,7 +85,6 @@ a migration debt you've signed yourself up for. Take the big diff instead.
 deno task demo          # bundle client + start tile server
 deno task tile          # server only
 deno task bundle        # client bundle only
-deno task gen-terrain   # regenerate terrain_tile_0.bin
 # content auto-loads from packages/content/data/ at server boot — no aggregation step needed
 deno check packages/tile-server/mod.ts packages/client/src/game.ts packages/codecs/mod.ts packages/content/mod.ts
 ```
@@ -98,7 +97,7 @@ deno check packages/tile-server/mod.ts packages/client/src/game.ts packages/code
 |---------|-------------|---------|
 | `packages/engine` | `@voxim/engine` | ECS core — World, ComponentDef, EventBus, physics math. Zero game dependencies. |
 | `packages/codecs` | `@voxim/codecs` | Binary codecs for every **networked** component. Shared by server and client. |
-| `packages/protocol` | `@voxim/protocol` | Wire message types, ComponentType enum, InputDatagram codec, action bitflags, length-prefixed framing. |
+| `packages/protocol` | `@voxim/protocol` | Wire message types, ComponentType enum, MovementDatagram codec, action bitflags, length-prefixed framing. |
 | `packages/content` | `@voxim/content` | Data-driven game definitions. ContentStore loads from per-item JSON files in `packages/content/data/`. |
 | `packages/world` | `@voxim/world` | Terrain generation, heightmaps, biome zones. |
 | `packages/tile-server` | — | Authoritative game server — systems, components, save/load, NPC AI. |
@@ -171,7 +170,7 @@ and `world.remove()`; the tick loop commits them all at once after all systems h
 
 ### Server tick sequence (20 Hz)
 
-1. **Drain input** — latest InputDatagram per player written to InputState via `world.write()`
+1. **Drain input** — latest MovementDatagram per player written to InputState via `world.write()`
 2. **Run systems** — in declared order; deferred writes accumulate in the changeset
 3. **Apply changeset** — `world.applyChangeset()` commits all deferred writes and removals
 4. **Fire events** — deferred EventBus queue flushed; subscribers see committed state
@@ -203,25 +202,33 @@ late so it derives `AnimationState` from the tick's final `ActiveActions` + tags
 
 ## Adding or reworking a component
 
-### Adding a networked component (3 steps)
+### Adding a networked component
 
-1. **Define** the component in the appropriate file under `packages/tile-server/src/components/`,
-   adding both `wireId: ComponentType.X` and a codec from `@voxim/codecs`:
+1. **Add the codec** in `packages/codecs/src/components.ts`.
+2. **Reserve a wire ID** — add a new entry to the `ComponentType` const object in
+   `packages/protocol/src/component_types.ts`. Never reuse a retired numeric ID.
+3. **Register the pair once** — add `[ComponentType.foo, fooCodec]` to `CODEC_BY_WIREID`
+   in `packages/protocol/src/codec_registry.ts`. This is the ONLY place wire ID and codec
+   are paired (T-349): the client decode loop dispatches on it, and the server def pulls
+   its codec back out of it.
+4. **Define** the component in the appropriate file under `packages/tile-server/src/components/`,
+   resolving the codec via `networkedCodec` from `@voxim/protocol`:
    ```typescript
    export const Foo = defineComponent({
      name: "foo" as const,
      wireId: ComponentType.foo,
-     codec: fooCodec,
+     codec: networkedCodec<FooData>(ComponentType.foo),
      default: (): FooData => ({ ... }),
    });
    ```
-2. **Reserve a wire ID** — add a new entry to the `ComponentType` const object in
-   `packages/protocol/src/component_types.ts`. Never reuse a retired numeric ID.
-3. **Register** — add `Foo` to the `NETWORKED_DEFS` array in
+   A wireId missing from `CODEC_BY_WIREID` throws at import time.
+5. **Register** — add `Foo` to the `NETWORKED_DEFS` array in
    `packages/tile-server/src/component_registry.ts`. The `DEF_BY_TYPE_ID` map is derived
-   automatically from `def.wireId`. No separate `typeId` field in the registry.
-4. **Add the codec** in `packages/codecs/src/components.ts` so the client can decode it.
-5. **Write at spawn** in `spawner.ts` if all entities need it.
+   automatically from `def.wireId`. A boot cross-check there fails fast for any networked
+   def with no `CODEC_BY_WIREID` entry and no `PRESENCE_ONLY_WIRE_IDS` opt-out (the
+   `resource_node`-style presence marker: client checks `raw.has(name)`, never decodes —
+   such a def imports its codec straight from `@voxim/codecs`).
+6. **Write at spawn** in `spawner.ts` if all entities need it.
 
 ### Adding a server-only component (1 step)
 
@@ -238,7 +245,9 @@ messages, and the registry automatically. The codec may be defined inline in the
 ### Codec rules
 
 - **Networked codecs belong in `@voxim/codecs`** — the client and server must share them.
-  Never define a networked codec inline in a component file.
+  Never define a networked codec inline in a component file, and never import one directly
+  at a `defineComponent` call site — resolve it via `networkedCodec()` (T-349) so the
+  pairing stays single-sourced in `CODEC_BY_WIREID`.
 - **Server-only codecs** may be inline (the client never sees them).
 - Use `buildCodec<T>({ field: { type: "f32" } })` for flat structs with primitives.
 - Use `WireWriter` / `WireReader` for variable-length data (strings, arrays, nested objects).
@@ -261,26 +270,23 @@ writer.write(encodeFrame({ type: "join", ... }));   // JSON objects
 writer.write(encodeFrame(binaryBytes));              // Uint8Array pass-through
 
 // Receiver
-const { readJson, readFrame, readPayload } = makeFrameReader(reader);
+const { readJson, readPayload } = makeFrameReader(reader);
 const msg = await readJson();      // reads one length-prefixed JSON message
 const raw = await readPayload();   // reads one length-prefixed binary payload
 ```
 
 Never roll a custom length-prefix implementation — always use these helpers.
 
-### InputDatagram (client → server, unreliable datagrams, ~60 Hz)
+### MovementDatagram (client → server, unreliable datagrams, ~60 Hz)
 
-36-byte fixed binary: `seq` (u32, monotonic), `timestamp` (f64, wall-clock ms for RTT),
-`facing` (f32 radians), `movementX/Y` (f32 normalised), `actions` (u32 bitfield),
-`interactSlot` (u32).
-
-Action bitflags (defined in `packages/protocol/src/messages.ts`):
-```
-ACTION_USE_SKILL = 1 << 0    ACTION_BLOCK  = 1 << 1    ACTION_JUMP     = 1 << 2
-ACTION_INTERACT  = 1 << 3    ACTION_DODGE  = 1 << 4    ACTION_CROUCH   = 1 << 5
-ACTION_CONSUME   = 1 << 6    ACTION_SKILL_1 = 1 << 7   ACTION_SKILL_2  = 1 << 8
-ACTION_SKILL_3   = 1 << 9    ACTION_SKILL_4 = 1 << 10
-```
+Fixed-size little-endian binary carrying the client's continuous intent:
+seq/tick/timestamp (reconciliation + lag comp), facing + aim pitch, movement
+axes, an `actions` bitfield, and the weapon-charge hold duration. Field-by-field
+doc comments live on the `MovementDatagram` interface and the `ACTION_*`
+bitflag consts in `packages/protocol/src/messages.ts`; the byte layout lives in
+`packages/protocol/src/codecs.ts` (`movementDatagramCodec`). Read those, not
+this file, for the schema — a prose copy of the byte layout is exactly what
+drifts. Retired action bits are left as comments and never reused.
 
 ### BinaryStateMessage (server → client, reliable stream, 20 Hz)
 
@@ -330,7 +336,6 @@ data/
   materials/        {name}.json  — MaterialDef (numeric id in file, name is filename)
 
   game_config.json              — singleton: combat ratios, physics constants, AI defaults
-  terrain_config.json           — terrain generation parameters
   tile_layout.json              — optional: NPC/prop placement overrides for a specific tile
 ```
 
@@ -606,7 +611,9 @@ extracted into separate modules:
 
 | File | Responsibility |
 |------|---------------|
-| `server.ts` | TileServer class, tick loop, system wiring, delta build, state send |
+| `server.ts` | TileServer class, tick loop, delta build, state send |
+| `wiring.ts` | `wireGameSystems()` — registry composition root: every content registry, ~45 register() calls, ~15 boot fail-fast cross-checks, the EventBus subscriber wiring, the final dependency-sorted `System[]` |
+| `handoff_coordinator.ts` | `HandoffCoordinator` — gate-proximity + zone-transition polling, cross-tile handoff fetch, GateCrossing send; owns the in-flight/handed-off/zone/hearth-anchor per-player caches |
 | `admin_server.ts` | HTTP admin endpoint (`/status`, `/save`), gateway registration |
 | `quic_server.ts` | `listenQuic()` — opens Deno.QuicEndpoint, upgrades to WebTransport |
 | `session.ts` | `ClientSession` — per-player input ring buffer, reliable stream writer |

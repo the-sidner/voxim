@@ -1,9 +1,8 @@
 /**
  * Tilemap layer types.
  *
- * One TileInit per tile. The shape is intentionally narrow for phase 2A —
- * holds only what the noise→rooms→portals backbone produces. Boundaries,
- * features, and full terrain buffers come in subsequent phases (2B+).
+ * One TileInit per tile: the noise→rooms→portals backbone, terrain
+ * buffers (heightmap/materialGrid), and T-311's render-field planes.
  *
  * Each pipeline stage is a pure function with typed inputs and outputs;
  * the orchestrator threads them. There is no shared mutable GenState.
@@ -11,12 +10,25 @@
 
 import type { Edge } from "../worldmap/types.ts";
 import type { LevelDef } from "./level/types.ts";
+import type { FieldPlanes } from "./pipeline/fields.ts";
+import type { CliffPlanes } from "./pipeline/cliff.ts";
+
+/** Default side length of the playable tile in world units. */
+export const DEFAULT_TILE_SIZE = 512;
+/**
+ * Default sample-grid resolution. One cell = one world unit; atlas runs
+ * the pipeline at the same resolution the tile-server's runtime terrain
+ * grid samples (no upsample seam) — the CLIENT later voxelizes each
+ * terrain cell into a stacked column of render voxels (terrain_voxels.ts),
+ * a separate downstream step this package has no awareness of.
+ */
+export const DEFAULT_GRID_SIZE = 512;
 
 /**
- * One connected open-pixel component at sample-grid resolution.
+ * One connected open-cell component at sample-grid resolution.
  *
- * `cx` / `cy` are world-unit centroids; `pixelCount` × pixelArea ≈ world area.
- * The pixel set itself is recoverable from `roomOf` (in TileInit) — we keep
+ * `cx` / `cy` are world-unit centroids; `cellCount` × cellArea ≈ world area.
+ * The cell set itself is recoverable from `roomOf` (in TileInit) — we keep
  * the room record small so it round-trips through JSON cheaply.
  */
 export interface Room {
@@ -25,23 +37,23 @@ export interface Room {
   /** Centroid in world units. */
   cx: number;
   cy: number;
-  /** Number of sample-grid pixels owned by this room. */
-  pixelCount: number;
+  /** Number of sample-grid cells owned by this room. */
+  cellCount: number;
 }
 
 /**
  * One portal: where a worldmap gate enters this tile + which room it lands in.
  *
- * `pixelX` / `pixelY` are sample-grid coords (the carved entry point).
- * `roomId` is the room the entry pixel belongs to after portal placement
+ * `cellX` / `cellY` are sample-grid coords (the carved entry point).
+ * `roomId` is the room the entry cell belongs to after portal placement
  * has carved a small clearing (always non-null for placed portals).
  */
 export interface Portal {
   edge: Edge;
   /** World-unit position along the edge. Mirror-matched on shared borders. */
   offset: number;
-  pixelX: number;
-  pixelY: number;
+  cellX: number;
+  cellY: number;
   roomId: number;
 }
 
@@ -50,8 +62,8 @@ export interface Portal {
  * spline (each segment becomes a cubic bezier with C1 continuity at the
  * joints). The brush half-width is uniform along the spline.
  *
- * Coordinates are sample-grid pixel space (Float — waypoints can sit
- * between pixel centres). `kind` distinguishes the carving source so
+ * Coordinates are sample-grid cell space (Float — waypoints can sit
+ * between cell centres). `kind` distinguishes the carving source so
  * the inspector can colour them differently:
  *   - "network" — chamber↔chamber, planned by the Delaunay+MST+braid pass
  *   - "portal"  — gate→nearest-chamber, one per present gate
@@ -69,9 +81,6 @@ export interface Corridor {
 /**
  * One tile's pre-computed initial state. What atlas writes; what
  * tile-server reads at boot before applying player edits.
- *
- * Phase 2A populates: tileSize, gridSize, openMask, rooms, roomOf, portals.
- * Phase 2B+ adds: boundaries, features, heightmap, materialGrid.
  */
 export interface TileInit {
   /** Worldmap cell this tile belongs to. */
@@ -80,13 +89,13 @@ export interface TileInit {
 
   /** Side length of the playable tile in world units. */
   tileSize: number;
-  /** Sample-grid resolution. tileSize / gridSize = world units per pixel. */
+  /** Sample-grid resolution. tileSize / gridSize = world units per cell. */
   gridSize: number;
 
   /** 1 = open, 0 = closed. Length = gridSize². Row-major. */
   openMask: Uint8Array;
   /**
-   * Per-pixel room id, or 0xFFFF for closed/un-roomed pixels.
+   * Per-cell room id, or 0xFFFF for closed/un-roomed cells.
    * Length = gridSize². Row-major.
    *
    * `rooms[]` are the POST-network connected components — after the
@@ -99,12 +108,12 @@ export interface TileInit {
   rooms: Room[];
 
   /**
-   * Per-pixel chamber id, or 0xFFFF for closed pixels AND for corridor
-   * pixels carved by the network / portal stages. Length = gridSize².
+   * Per-cell chamber id, or 0xFFFF for closed cells AND for corridor
+   * cells carved by the network / portal stages. Length = gridSize².
    *
    * `chambers[]` are the PRE-network rooms — the discrete chambers grown
    * by the chambers stage, before any corridors merged them. Use this to
-   * see the actual chamber layout. Pixels open in `openMask` but with
+   * see the actual chamber layout. Cells open in `openMask` but with
    * `0xFFFF` here are corridors (the network's connective tissue).
    */
   chamberOf: Uint16Array;
@@ -125,44 +134,53 @@ export interface TileInit {
 
   /**
    * World-unit heights at sample-grid resolution, row-major. Length
-   * gridSize². Wall pixels carry an added WALL_HEIGHT step so they
-   * read as non-traversable boundaries; open pixels carry only the
+   * gridSize². Wall cells carry an added WALL_HEIGHT step so they
+   * read as non-traversable boundaries; open cells carry only the
    * biome's smooth floor modulation.
    */
   heightMap: Float32Array;
 
   /**
-   * Per-pixel material ids from atlas's canonical set (MATERIAL_* in
+   * Per-cell material ids from atlas's canonical set (MATERIAL_* in
    * pipeline/materials.ts). Length gridSize², row-major. Wall and floor
-   * pixels both carry the underlying ground material — boundary kinds
+   * cells both carry the underlying ground material — boundary kinds
    * (tree, rock, …) layer on top in a later phase.
    */
   materials: Uint16Array;
 
   /**
-   * Per-pixel boundary-kind ids (BOUNDARY_KIND_* in
-   * pipeline/boundary_kinds.ts). Length gridSize², row-major. Open
-   * pixels are tagged BOUNDARY_KIND_OPEN (= 0); closed pixels carry
-   * the kind that decides their visual + transform verbs.
+   * Per-cell boundary-kind ids (@voxim/protocol's BoundaryKind, T-315
+   * C4). Length gridSize², row-major. Open cells are tagged
+   * BoundaryKind.open (= 0); closed cells carry the kind that decides
+   * their visual + transform verbs.
    */
   kindOf: Uint16Array;
 
   /**
    * LevelDef (T-214) — semantic graph of the tile: regions (path /
-   * plateau / river) each carrying their pixel set + procedural name
+   * plateau / river) each carrying their cell set + procedural name
    * + topology role, edges (stairs, portals), and the narrative
-   * overlay (POIs + trinkets + DAG). Regions own their pixels; the
-   * per-pixel `zoneOf` index is derived on the consumer side via
-   * `levelToZoneOf(level)` when O(1) "which region is at pixel P?"
+   * overlay (POIs + trinkets + DAG). Regions own their cells; the
+   * per-cell `zoneOf` index is derived on the consumer side via
+   * `levelToZoneOf(level)` when O(1) "which region is at cell P?"
    * lookups are needed (tile-server boot, inspector overlays).
    */
   level: LevelDef;
 
-  // ---- placeholders for later phases ------------------------------
-  /** Will be populated by phase 4 (boundary kinds, e.g. tree patches). */
-  boundaries: unknown[];
-  /** Will be populated by phase 4 (feature kinds, e.g. hearth slot). */
-  features: unknown[];
+  /**
+   * T-311 P3 — per-cell render-field planes (canopyLight/corruption/fertility/
+   * wetness/overgrowth/wear/variantIndex/ruinAge/traffic + water surfaceLevel),
+   * length gridSize² each. Upsampled + sliced into the VegFieldGrid/
+   * SurfaceStateGrid/WaterGrid chunk components by the tile-server. Render-only.
+   */
+  fields: FieldPlanes;
+
+  /**
+   * T-311 P6 — per-cell terraced-cliff planes (profileId/erosion/tier/edge),
+   * length gridSize² each. Upsampled + sliced into the CliffGrid chunk
+   * component by the tile-server. Render-only, never collision.
+   */
+  cliff: CliffPlanes;
 }
 
 /**
@@ -191,6 +209,8 @@ export interface TileInitWire {
   gateSummary: number;
   /** LevelDef (T-214) — semantic graph; JSON-friendly already. */
   level: LevelDef;
-  boundaries: unknown[];
-  features: unknown[];
+  /** T-311 P3 — render-field planes, base64-encoded raw bytes per plane name. */
+  fieldsB64: Record<string, string>;
+  /** T-311 P6 — cliff planes, base64-encoded raw bytes per plane name. */
+  cliffB64: Record<string, string>;
 }

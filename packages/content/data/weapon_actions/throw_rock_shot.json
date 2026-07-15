@@ -1,0 +1,16 @@
+{
+  "id": "throw_rock_shot",
+  "actionType": "ranged",
+  "windupTicks": 1,
+  "activeTicks": 1,
+  "winddownTicks": 1,
+  "staminaCost": 0,
+  "projectile": {
+    "speed": 16,
+    "gravityScale": 1.0,
+    "radius": 0.12,
+    "maxHits": 1,
+    "lifetimeTicks": 50,
+    "modelId": "model_rock_small"
+  }
+}

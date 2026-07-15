@@ -5,8 +5,8 @@
  * and the client import from the same source.  A format change is a compile
  * error on both ends simultaneously.
  *
- * MovementDatagram — fixed 35-byte little-endian binary (type byte included):
- *   u8  type=1 | u32 seq | u32 tick | f64 timestamp | f32 facing | f32 movX | f32 movY | u32 actions | u16 chargeMs
+ * MovementDatagram — fixed 39-byte little-endian binary (type byte included):
+ *   u8  type=1 | u32 seq | u32 tick | f64 timestamp | f32 facing | f32 movX | f32 movY | u32 actions | u16 chargeMs | f32 pitch
  *
  * CommandDatagram — variable-length TLV binary:
  *   u8  type=2 | u32 seq | u8 cmdType | u16 payloadLen | [payloadLen bytes]
@@ -26,7 +26,7 @@ export const DATAGRAM_TYPE_COMMAND  = 2;
 // ---- MovementDatagram codec ----
 
 /** Wire size in bytes, including the leading type byte. */
-const MOVEMENT_SIZE = 35;
+const MOVEMENT_SIZE = 39;
 
 export const movementDatagramCodec: Serialiser<MovementDatagram> = {
   encode(data: MovementDatagram): Uint8Array {
@@ -41,6 +41,7 @@ export const movementDatagramCodec: Serialiser<MovementDatagram> = {
     v.setFloat32(25, data.movementY,       true);
     v.setUint32(29, data.actions   >>> 0, true);
     v.setUint16(33, Math.min(0xFFFF, Math.max(0, data.chargeMs | 0)), true);
+    v.setFloat32(35, data.pitch,           true);
     return new Uint8Array(buf);
   },
 
@@ -59,6 +60,7 @@ export const movementDatagramCodec: Serialiser<MovementDatagram> = {
       movementY: v.getFloat32(25, true),
       actions:   v.getUint32(29, true),
       chargeMs:  v.getUint16(33, true),
+      pitch:     v.getFloat32(35, true),
     };
   },
 };
@@ -169,6 +171,15 @@ function encodeCommandPayload(cmd: CommandPayload): Uint8Array {
       return u8;
     }
 
+    case CommandType.UseEntity: {
+      const strBytes = new TextEncoder().encode(cmd.entityId);
+      const buf = new ArrayBuffer(1 + strBytes.byteLength);
+      const u8 = new Uint8Array(buf);
+      u8[0] = strBytes.byteLength;
+      u8.set(strBytes, 1);
+      return u8;
+    }
+
     case CommandType.ContainerDeposit: {
       const strBytes = new TextEncoder().encode(cmd.containerId);
       const u8 = new Uint8Array(1 + strBytes.byteLength + 1);
@@ -228,6 +239,42 @@ function encodeCommandPayload(cmd: CommandPayload): Uint8Array {
       u8[0] = strBytes.byteLength;
       u8.set(strBytes, 1);
       new DataView(buf).setFloat32(1 + strBytes.byteLength, cmd.value, true);
+      return u8;
+    }
+
+    case CommandType.DebugGiveTrinket: {
+      const strBytes = new TextEncoder().encode(cmd.stairId);
+      const buf = new ArrayBuffer(1 + strBytes.byteLength);
+      const u8 = new Uint8Array(buf);
+      u8[0] = strBytes.byteLength;
+      u8.set(strBytes, 1);
+      return u8;
+    }
+
+    case CommandType.DebugKillEntity: {
+      const strBytes = new TextEncoder().encode(cmd.entityId);
+      const buf = new ArrayBuffer(1 + strBytes.byteLength);
+      const u8 = new Uint8Array(buf);
+      u8[0] = strBytes.byteLength;
+      u8.set(strBytes, 1);
+      return u8;
+    }
+
+    case CommandType.DebugSpawnDummy:
+      return new Uint8Array([cmd.attackLoop ? 1 : 0]);
+
+    case CommandType.DebugSetActionParam: {
+      const idBytes = new TextEncoder().encode(cmd.actionId);
+      const fieldBytes = new TextEncoder().encode(cmd.field);
+      const buf = new ArrayBuffer(1 + idBytes.byteLength + 1 + fieldBytes.byteLength + 4);
+      const u8 = new Uint8Array(buf);
+      const dv = new DataView(buf);
+      let off = 0;
+      u8[off] = idBytes.byteLength; off += 1;
+      u8.set(idBytes, off); off += idBytes.byteLength;
+      u8[off] = fieldBytes.byteLength; off += 1;
+      u8.set(fieldBytes, off); off += fieldBytes.byteLength;
+      dv.setFloat32(off, cmd.value, true);
       return u8;
     }
 
@@ -316,6 +363,12 @@ function decodeCommandPayload(cmdType: number, bytes: Uint8Array): CommandPayloa
       return { cmd: CommandType.PickUp, entityId };
     }
 
+    case CommandType.UseEntity: {
+      const strLen = bytes[0];
+      const entityId = new TextDecoder().decode(bytes.slice(1, 1 + strLen));
+      return { cmd: CommandType.UseEntity, entityId };
+    }
+
     case CommandType.ContainerDeposit: {
       const strLen = bytes[0];
       const containerId = new TextDecoder().decode(bytes.slice(1, 1 + strLen));
@@ -360,6 +413,31 @@ function decodeCommandPayload(cmdType: number, bytes: Uint8Array): CommandPayloa
       const stat = new TextDecoder().decode(bytes.slice(1, 1 + strLen));
       const value = new DataView(bytes.buffer, bytes.byteOffset + 1 + strLen, 4).getFloat32(0, true);
       return { cmd: CommandType.DebugSetStat, stat, value };
+    }
+
+    case CommandType.DebugGiveTrinket: {
+      const strLen = bytes[0];
+      const stairId = new TextDecoder().decode(bytes.slice(1, 1 + strLen));
+      return { cmd: CommandType.DebugGiveTrinket, stairId };
+    }
+
+    case CommandType.DebugKillEntity: {
+      const strLen = bytes[0];
+      const entityId = new TextDecoder().decode(bytes.slice(1, 1 + strLen));
+      return { cmd: CommandType.DebugKillEntity, entityId };
+    }
+
+    case CommandType.DebugSpawnDummy:
+      return { cmd: CommandType.DebugSpawnDummy, attackLoop: bytes[0] === 1 };
+
+    case CommandType.DebugSetActionParam: {
+      let off = 0;
+      const idLen = bytes[off]; off += 1;
+      const actionId = new TextDecoder().decode(bytes.slice(off, off + idLen)); off += idLen;
+      const fieldLen = bytes[off]; off += 1;
+      const field = new TextDecoder().decode(bytes.slice(off, off + fieldLen)); off += fieldLen;
+      const value = new DataView(bytes.buffer, bytes.byteOffset + off, 4).getFloat32(0, true);
+      return { cmd: CommandType.DebugSetActionParam, actionId, field, value };
     }
 
     case CommandType.Respawn:

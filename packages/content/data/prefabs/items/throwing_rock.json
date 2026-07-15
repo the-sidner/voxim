@@ -1,0 +1,11 @@
+{
+  "id": "throwing_rock",
+  "modelId": "model_rock_small",
+  "modelScale": 0.3,
+  "components": {
+    "stackable": {},
+    "weight": {
+      "baseWeight": 0.2
+    }
+  }
+}

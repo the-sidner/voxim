@@ -18,5 +18,26 @@
     "ground",
     "soil",
     "wet"
-  ]
+  ],
+  "render": {
+    "textureStyle": "dirt",
+    "wetness": {
+      "gloss": 10.0,
+      "darken": 0.35,
+      "reflectGain": 0
+    },
+    "relief": {
+      "warp": 0.3,
+      "surfaceWarp": 0.16,
+      "disturbanceField": [
+        {
+          "field": "traffic",
+          "curve": "smoothstep",
+          "min": 0.55,
+          "max": 0.05,
+          "weight": 1.0
+        }
+      ]
+    }
+  }
 }

@@ -53,13 +53,29 @@ Deno.test("instrumented runner: trace has one entry per stage with monotonic inp
   const r = runInstrumented({
     worldCell: cell, tileSeed: 1234, params: PRESETS.forest_maze.params,
   });
-  assertEquals(r.trace.length, 11);
+  assertEquals(r.trace.length, 13); // +1: T-311 P6 cliff-terrace stage
   // First stage's inputHash is 0 (no upstream).
   assertEquals(r.trace[0].inputHash, 0);
   // Each subsequent stage's inputHash equals the prior stage's outputHash.
   for (let i = 1; i < r.trace.length; i++) {
     assertEquals(r.trace[i].inputHash, r.trace[i - 1].outputHash);
   }
+});
+
+Deno.test("T-311: encodeState/decodeState round-trips a typed-array plane bundle (state.fields)", () => {
+  const fields = {
+    canopyLight: new Uint8Array([1, 2, 250]),
+    surfaceLevel: new Float32Array([NaN, 1.5, 3.25]),
+  };
+  const dec = decodeState(encodeState({ fields, chunkX: 5 })) as {
+    fields: Record<string, ArrayBufferView>; chunkX: number;
+  };
+  assertEquals(dec.chunkX, 5);
+  assertEquals(Array.from(dec.fields.canopyLight as Uint8Array), [1, 2, 250]);
+  const sl = dec.fields.surfaceLevel as Float32Array;
+  assert(Number.isNaN(sl[0]));
+  assertEquals(sl[1], 1.5);
+  assertEquals(sl[2], 3.25);
 });
 
 Deno.test("instrumented runner: full re-run with shared cache hits every stage", () => {
@@ -92,7 +108,7 @@ Deno.test("instrumented runner: late-stage param tweak only invalidates from tha
   // share the same prefix and hit; materials itself misses; every stage
   // downstream also misses because its prefix now includes the tweaked
   // materials params. This is the strict prefix-cache guarantee.
-  const downstreamOfMaterials = new Set(["materials", "zoneGraph", "poiNetwork"]);
+  const downstreamOfMaterials = new Set(["materials", "zoneGraph", "cliff", "poiNetwork", "fields"]);
   for (const t of r.trace) {
     if (downstreamOfMaterials.has(t.stageId)) {
       assert(!t.cacheHit, `${t.stageId} should have missed (downstream of materials tweak)`);

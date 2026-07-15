@@ -13,6 +13,19 @@
 export type {
   MaterialId,
   MaterialDef,
+  MaterialRenderDef,
+  MaterialVariant,
+  GradeDef,
+  LightDef,
+  AtmosphereDef,
+  WaterStyleDef,
+  DecalDef,
+  ParticleEmitterDef,
+  DissolveProfileDef,
+  DeathStyleDef,
+  CrumbleStyleParams,
+  CliffProfileDef,
+  CliffErosionState,
   MaterialProperties,
   VoxelNode,
   SubObjectRef,
@@ -22,6 +35,8 @@ export type {
   ModelRefData,
   BoneDef,
   SkeletonDef,
+  BodyRecipeDef,
+  BodyPartRecipeDef,
   AnimationKeyframe,
   AnimationClip,
   AnimationLibrary,
@@ -87,7 +102,13 @@ export type {
   PoiActivityExploration,
   BehaviorTreeSpec,
   WeaponActionDef,
+  ProjectileActionConfig,
   WeaponBladeDef,
+  SwingPathDef,
+  SwingKeyframe,
+  GripDef,
+  GaitDef,
+  GaitKeyframe,
   IKChainDef,
   BodyPartVolume,
   ActionDef,
@@ -100,6 +121,7 @@ export type {
   ResourceDef,
   ResourceRateModifierRef,
   ResourceThreshold,
+  PuzzleDef,
   ProcModelDef,
   ScatterDef,
   GameConfig,
@@ -110,11 +132,32 @@ export type {
   TileTraderListing,
 } from "./src/types.ts";
 export { snapColorToRamp, hexStrToNum } from "./src/palette_snap.ts";
+export { resolveMaterialVariant, materialVariantIndex, materialVariantIds } from "./src/material_variant.ts";
+export { evaluateFieldExpr, crossCheckFieldExpr, FIELD_NAMES } from "./src/field_expr.ts";
+export type { FieldExpr, FieldTerm, FieldCurve } from "./src/field_expr.ts";
+export { sunArc, timeOfDay01 } from "./src/sun_arc.ts";
+export type { SunArcParams, SunArcResult } from "./src/sun_arc.ts";
+export { mergeMorphTierParams, morphTierParams } from "./src/procmodel_morph.ts";
 export type { VoxelAtom } from "./src/voxel.ts";
 
 // ---- hitbox derivation and application ----
 export type { HitboxPartTemplate, HitboxContentAdapter } from "./src/hitbox_derive.ts";
 export { deriveHitboxTemplate, applyHitboxTemplate } from "./src/hitbox_derive.ts";
+
+// ---- body-recipe voxelizer (T-186 Layer 2) ----
+export type { ResolvedBodyPartDims, BodyPartCapsule } from "./src/body_recipe.ts";
+export { evaluateBodyRecipe, resolveBodyPartDims, bodyPartCapsule, crossCheckBodyRecipe } from "./src/body_recipe.ts";
+
+// ---- blade_grammar / armor_grammar shared cores (T-306) ----
+// THREE-free geometry evaluators the client's registered ProcModel
+// generators AND (blade_grammar only) the server's weapon_trace resolver
+// both call — the same "one evaluator, two consumers" pattern as
+// body_recipe.ts, so a generated weapon's visual blade and its swept hitbox
+// can never drift apart.
+export type { BladeStyle, BladeGrammarParams, BladeGeometry } from "./src/blade_grammar.ts";
+export { deriveBladeGeometry, bladeGrammarAtoms } from "./src/blade_grammar.ts";
+export type { ArmorPlateSpec, ArmorGrammarParams } from "./src/armor_grammar.ts";
+export { armorGrammarAtoms } from "./src/armor_grammar.ts";
 
 // ---- sweep math (shared server + client) ----
 export type { Vec3 } from "./src/sweep_math.ts";
@@ -139,8 +182,8 @@ export type { BoneTransform } from "./src/skeleton_solver.ts";
 export { solveSkeleton, REST_POSE } from "./src/skeleton_solver.ts";
 
 // ---- Procedural pose catalogue: locomotion + swing (inspector + client) ----
-export type { SwingSample, SwingPoseParams, LocoState, LocoPoseParams, CrouchPoseParams } from "./src/swing_pose.ts";
-export { sampleSwingPath, solveSwingPose, applyLocomotionPose, applyCrouchPose } from "./src/swing_pose.ts";
+export type { SwingSample, SwingPoseParams, LocoState, LocoPoseParams, CrouchPoseParams, FootTerrainParams, GaitPoseParams } from "./src/swing_pose.ts";
+export { sampleSwingPath, solveSwingPose, applyLocomotionPose, applyCrouchPose, applyFootTerrainIK, applyLookAtPose, applyGaitPose } from "./src/swing_pose.ts";
 
 // ---- ModelRef ECS component ----
 export { ModelRef } from "./src/component.ts";

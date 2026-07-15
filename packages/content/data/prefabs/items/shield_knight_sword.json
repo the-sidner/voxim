@@ -1,0 +1,13 @@
+{
+  "id": "shield_knight_sword",
+  "category": "natural_weapon",
+  "components": {
+    "swingable": {
+      "chain": [
+        { "light": "slash_horizontal", "heavy": "heavy_overhead" }
+      ],
+      "heavyChargeMs": 0,
+      "damage": 18
+    }
+  }
+}

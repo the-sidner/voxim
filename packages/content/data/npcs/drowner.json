@@ -12,5 +12,6 @@
   "fleeTicks": 100,
   "seekFoodTicks": 200,
   "speedMultiplier": 1.3,
-  "weaponItemType": "drowner_claws"
+  "weaponItemType": "drowner_claws",
+  "deathStyleId": "dissolve"
 }

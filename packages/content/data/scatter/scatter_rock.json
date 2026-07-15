@@ -1,0 +1,18 @@
+{
+  "id": "scatter_rock",
+  "material": [
+    "dirt",
+    "moss",
+    "path"
+  ],
+  "density": 0.05,
+  "procModel": "forest_rock",
+  "pool": 3,
+  "stride": 7,
+  "baseScale": 0.6,
+  "scaleJitter": [
+    0.7,
+    1.5
+  ],
+  "rotate": true
+}

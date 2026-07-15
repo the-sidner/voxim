@@ -10,7 +10,7 @@
 
 import { TileEvents } from "@voxim/protocol";
 import type { ResourceEffect } from "../effect.ts";
-import { Health } from "../../components/game.ts";
+import { Health, Position } from "../../components/game.ts";
 import type { DeathCause } from "../../events/death.ts";
 
 export const modifyHealthEffect: ResourceEffect = {
@@ -31,11 +31,17 @@ export const modifyHealthEffect: ResourceEffect = {
     }));
 
     if (delta < 0) {
+      // Non-spatial damage: the entity's own position is the contact point
+      // (where the client's damage number appears).
+      const pos = ctx.world.get(ctx.entityId, Position);
       ctx.events.publish(TileEvents.DamageDealt, {
         targetId: ctx.entityId,
         sourceId: ctx.entityId,
         amount: -delta,
         blocked: false,
+        hitX: pos?.x ?? 0,
+        hitY: pos?.y ?? 0,
+        hitZ: pos?.z ?? 0,
       });
     }
     if (next <= 0) {

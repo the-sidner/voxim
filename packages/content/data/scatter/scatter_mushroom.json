@@ -1,0 +1,39 @@
+{
+  "id": "scatter_mushroom",
+  "material": [
+    "dirt",
+    "moss"
+  ],
+  "procModel": "mushroom",
+  "pool": 3,
+  "stride": 6,
+  "baseScale": 0.42,
+  "scaleJitter": [
+    0.75,
+    1.45
+  ],
+  "rotate": true,
+  "densityField": [
+    {
+      "field": "canopyLight",
+      "curve": "linear",
+      "min": 0.25,
+      "max": 0.02,
+      "weight": 0.12
+    },
+    {
+      "field": "fertility",
+      "curve": "smoothstep",
+      "min": 0.2,
+      "max": 0.4,
+      "weight": 0.1
+    }
+  ],
+  "cluster": {
+    "count": [
+      0,
+      2
+    ],
+    "radius": 1.0
+  }
+}

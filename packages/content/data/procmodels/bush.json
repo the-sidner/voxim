@@ -1,0 +1,10 @@
+{
+  "id": "bush",
+  "generator": "boulder_grammar",
+  "params": {
+    "radiusRange": [2, 3],
+    "flatten": 0.9,
+    "lumpiness": 0.55,
+    "material": "grass"
+  }
+}

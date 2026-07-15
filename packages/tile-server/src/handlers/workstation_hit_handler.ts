@@ -15,6 +15,9 @@ import { WorkstationTag, WorkstationBuffer } from "../components/building.ts";
 import type { RecipeStepHandler } from "../crafting/step_handler.ts";
 
 export class WorkstationHitHandler implements HitHandler {
+  // T-333: dispatch bubbles to the nearest ancestor carrying WorkstationTag.
+  readonly requiredComponent = WorkstationTag;
+
   constructor(
     private readonly content: ContentService,
     private readonly steps: Registry<RecipeStepHandler>,

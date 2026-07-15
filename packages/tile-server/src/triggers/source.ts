@@ -12,6 +12,7 @@ import { Registry as RegistryImpl } from "@voxim/engine";
 import type { ContentService } from "@voxim/content";
 import { Equipment } from "../components/equipment.ts";
 import { NpcTag } from "../components/npcs.ts";
+import { BossArenaLink } from "../components/boss_arena.ts";
 
 export interface TriggerSourceContext {
   readonly world: World;
@@ -58,5 +59,33 @@ export const npcTemplateTriggerSource: TriggerSource = {
     const tag = world.get(entityId, NpcTag);
     if (!tag) return [];
     return [...(content.npcTemplates.get(tag.npcType)?.triggers ?? [])];
+  },
+};
+
+/**
+ * Bossfight phase-adds (T-212 v2) — `BossArenaLink`-presence grants
+ * `{poiDefId}_phase_add_{i}` for every index of that POI's
+ * `arenaRules.phaseTriggers`. A live-read source, not a per-boss
+ * npcTemplate trigger list: the bossfight activity's `bossNpcId`s resolve
+ * through the SAME spawn-table stub `wave`/`encounter` use (e.g.
+ * `stone_construct` → the real `rotten_knight` template), so granting
+ * phase-adds via `npcTemplateTriggerSource` would proc them on every
+ * ordinary rotten_knight, not just the one playing the boss role.
+ * Component presence (`BossArenaLink`, written only by
+ * `poi/activities/bossfight.ts`) scopes it correctly without an
+ * `isBoss` branch anywhere. Trigger ids are DERIVED from content
+ * (`phaseTriggers.length`), not hardcoded — one authored trigger file per
+ * boss × phase (`data/triggers/{poiDefId}_phase_add_{i}.json`), boot-
+ * cross-checked like every other content id.
+ */
+export const bossArenaLinkTriggerSource: TriggerSource = {
+  id: "boss_arena_link",
+  collect({ world, content, entityId }): string[] {
+    const link = world.get(entityId, BossArenaLink);
+    if (!link) return [];
+    const def = content.pois.get(link.poiDefId);
+    if (!def || def.type !== "bossfight") return [];
+    const count = def.activity.arenaRules.phaseTriggers.length;
+    return Array.from({ length: count }, (_, i) => `${link.poiDefId}_phase_add_${i}`);
   },
 };

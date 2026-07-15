@@ -1,0 +1,9 @@
+{
+  "id": "signal_pyre",
+  "family": "warm",
+  "baseColor": 16740384,
+  "radius": 18.0,
+  "intensity": 1.4,
+  "castsPool": true,
+  "flickerCurveId": "torch"
+}

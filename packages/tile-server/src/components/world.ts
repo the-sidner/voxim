@@ -1,28 +1,28 @@
 import { defineComponent } from "@voxim/engine";
-import { ComponentType } from "@voxim/protocol";
-import { buildCodec } from "@voxim/codecs";
+import { ComponentType, networkedCodec } from "@voxim/protocol";
+import type { WorldClockData } from "@voxim/codecs";
+import { timeOfDay01 } from "@voxim/content";
 
 // ---- WorldClock ----
 // Singleton: exactly one entity per tile carries this component.
 // Replicated to clients so they can render time-of-day visuals.
+//
+// Codec lives in @voxim/codecs (networked-component rule) — worldClockCodec
+// is a hand-rolled WireWriter/WireReader Serialiser (biomeTag is a string;
+// buildCodec has no string field support).
 
-export interface WorldClockData {
-  /** Total ticks elapsed since tile startup. Monotonically increasing. */
-  ticksElapsed: number;
-  /** Full day/night cycle length in ticks. Default 14400 = 12 real-time minutes at 20 Hz. */
-  dayLengthTicks: number;
-}
+export type { WorldClockData };
 
 export const WorldClock = defineComponent({
   name: "worldClock" as const,
   wireId: ComponentType.worldClock,
-  codec: buildCodec<WorldClockData>({ ticksElapsed: { type: "i32" }, dayLengthTicks: { type: "i32" } }),
-  default: (): WorldClockData => ({ ticksElapsed: 0, dayLengthTicks: 14400 }),
+  codec: networkedCodec<WorldClockData>(ComponentType.worldClock),
+  default: (): WorldClockData => ({ ticksElapsed: 0, dayLengthTicks: 14400, biomeTag: "plains" }),
 });
 
 /** Time of day as a 0–1 fraction. 0.25 = dawn, 0.5 = noon, 0.75 = dusk, 0/1 = midnight. */
 export function timeOfDay(clock: WorldClockData): number {
-  return (clock.ticksElapsed % clock.dayLengthTicks) / clock.dayLengthTicks;
+  return timeOfDay01(clock.ticksElapsed, clock.dayLengthTicks);
 }
 
 /** True during day phase (0.25–0.75). */

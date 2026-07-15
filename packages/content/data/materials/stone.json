@@ -17,5 +17,59 @@
   "tags": [
     "stone",
     "mineral"
+  ],
+  "generatorPreferences": {
+    "density_range": [0.05, 0.3],
+    "layerable": true
+  },
+  "render": {
+    "textureStyle": "stone",
+    "mossBlend": {
+      "material": "moss",
+      "floorBias": 0.85,
+      "wallBias": 0.55,
+      "jointBoost": 0.6,
+      "tintShift": [
+        -0.04,
+        0.06,
+        -0.05
+      ]
+    },
+    "wetness": {
+      "gloss": 6.0,
+      "darken": 0.25,
+      "reflectGain": 0
+    },
+    "relief": {
+      "warp": 0.5,
+      "surfaceWarp": 0.12,
+      "disturbanceField": [
+        {
+          "field": "traffic",
+          "curve": "smoothstep",
+          "min": 0.55,
+          "max": 0.05,
+          "weight": 1.0
+        }
+      ]
+    }
+  },
+  "variants": [
+    {
+      "id": "corrupted",
+      "colorShift": {
+        "h": -0.02,
+        "s": 0.35,
+        "l": -0.22
+      },
+      "emissiveCracks": 0.28,
+      "addsTags": [
+        "corrupted"
+      ]
+    },
+    {
+      "id": "mossy",
+      "colorOverride": 5069354
+    }
   ]
 }

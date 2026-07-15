@@ -124,10 +124,15 @@ export class WeaponTrailRenderer {
     const colors: number[] = [];
     const indices: number[] = [];
 
-    // Trail color from the single palette (T-280). Hilt darkens slightly toward
-    // the base for the swept-flame gradient; tip is the full token color.
+    // Trail color from the single palette (T-280). The leading (tip) edge is
+    // whitened and pushed into the HDR headroom so it blooms into a glowing arc;
+    // the trailing (hilt) base is a dim ember. Additive blend = the arc ADDS
+    // light to the scene (T-310, phase E).
     const tc = new THREE.Color(paletteToken("trail"));
-    const hr = tc.r * 0.85, hg = tc.g * 0.85, hb = tc.b * 0.85;
+    const tipR = (tc.r * 0.55 + 0.45) * 1.9;
+    const tipG = (tc.g * 0.55 + 0.45) * 1.9;
+    const tipB = (tc.b * 0.55 + 0.45) * 1.9;
+    const hr = tc.r * 0.7, hg = tc.g * 0.7, hb = tc.b * 0.7;
 
     // 4 verts per slice: hiltL, hiltR, tipR, tipL.
     for (let i = 0; i < slices.length; i++) {
@@ -138,9 +143,9 @@ export class WeaponTrailRenderer {
       positions.push(s.hiltX + s.perpX * s.halfW, s.hiltY, s.hiltZ + s.perpZ * s.halfW);
       colors.push(hr, hg, hb, a * 0.6);
       positions.push(s.tipX + s.perpX * s.halfW, s.tipY, s.tipZ + s.perpZ * s.halfW);
-      colors.push(tc.r, tc.g, tc.b, a);
+      colors.push(tipR, tipG, tipB, a);
       positions.push(s.tipX - s.perpX * s.halfW, s.tipY, s.tipZ - s.perpZ * s.halfW);
-      colors.push(tc.r, tc.g, tc.b, a);
+      colors.push(tipR, tipG, tipB, a);
     }
 
     // Between consecutive slices: 4 faces forming a closed tube.
@@ -162,6 +167,7 @@ export class WeaponTrailRenderer {
         transparent: true,
         depthWrite: false,
         side: THREE.DoubleSide,
+        blending: THREE.AdditiveBlending,
       });
       trailMesh = new THREE.Mesh(geo, mat);
       this.scene.add(trailMesh);

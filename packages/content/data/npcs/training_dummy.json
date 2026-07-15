@@ -1,0 +1,10 @@
+{
+  "id": "training_dummy",
+  "displayName": "Training Dummy",
+  "maxHealth": 200,
+  "fleeHealthRatio": 0.0,
+  "behaviorTreeId": "training_dummy",
+  "wanderRadius": 0,
+  "wanderTicks": 9999,
+  "idleTicks": 9999
+}

@@ -259,7 +259,9 @@ for (const w of weaponActions) {
 waSel.value = curWA.id;
 let t = 0, playing = false, speed = 1;
 let strafe = 0, turn = 0, crouch = 0;
-const CROUCH_DROP = 0.9; // pelvis drop (solver units) at full crouch
+// Pelvis drop (solver units) at full crouch — same content knob the game
+// renderer uses (game_config render.pose, T-356), not a second hardcode.
+const CROUCH_DROP = content.getGameConfig().render.pose.crouchDropAmount;
 const tSlider = q("#t") as HTMLInputElement;
 const STEP = 1 / 30;
 

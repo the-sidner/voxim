@@ -3,7 +3,7 @@
 // actual schema validation lives in @voxim/content's prefab loader.
 
 export type { Vec2, Vec3, EntityId } from "./src/math.ts";
-export { vec2, vec3, vec2Add, vec2Scale, vec2Length, vec2LengthSq, vec2Normalize, vec3Add, vec3Scale, vec3Length, vec3LengthSq, newEntityId } from "./src/math.ts";
+export { clamp, lerp, vec2, vec3, vec2Add, vec2Scale, vec2Length, vec2LengthSq, vec2Normalize, vec3Add, vec3Scale, vec3Length, vec3LengthSq, newEntityId } from "./src/math.ts";
 
 export type { Serialiser, ComponentDef, ComponentSchema, NetworkedComponentDef, ServerOnlyComponentDef } from "./src/component.ts";
 export { defineComponent } from "./src/component.ts";
@@ -21,5 +21,8 @@ export { EventBus } from "./src/events.ts";
 
 export { Registry } from "./src/registry.ts";
 
-export type { PhysicsBody, PhysicsInput, PhysicsConfig } from "./src/physics.ts";
-export { DEFAULT_PHYSICS, applyImpulse, stepPhysics } from "./src/physics.ts";
+export type { PhysicsBody, PhysicsInput, PhysicsConfig, BallisticBody } from "./src/physics.ts";
+export { DEFAULT_PHYSICS, applyImpulse, stepPhysics, ballisticStep, launchVelocity } from "./src/physics.ts";
+
+export { mulberry32, mix32, resolveSeededPick } from "./src/rand.ts";
+export type { SeededPoolEntry } from "./src/rand.ts";

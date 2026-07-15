@@ -31,14 +31,15 @@
     }
   },
   "movement": {
-    "windup": "slowed",
+    "windup": 0.62,
     "active": "locked",
-    "winddown": "slowed"
+    "winddown": 0.62
   },
   "costs": {
     "stamina": 10
   },
   "priority": 5,
+  "hitStopTicks": 2,
   "effects": [
     {
       "phase": "active:enter",

@@ -13,5 +13,12 @@
     "flexibility": 0.2,
     "flammability": 0.1,
     "toughness": 0.5
+  },
+  "generatorPreferences": {
+    "emission": 0.2,
+    "layerable": true
+  },
+  "render": {
+    "textureStyle": "organic"
   }
 }

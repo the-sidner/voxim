@@ -25,4 +25,5 @@ export const EventType = {
   GateCrossing:                15,
   ZoneEntered:                 16,
   Healed:                      17,
+  EnclosureChanged:            18,
 } as const;

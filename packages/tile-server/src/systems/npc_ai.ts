@@ -55,6 +55,12 @@ export class NpcAiSystem implements System {
     for (const { entityId, npcTag, npcJobQueue, inputState, health } of world.query(
       NpcTag, NpcJobQueue, InputState, Health,
     )) {
+      // T-311 P5c: a dissolving corpse (health<=0, kept alive by the
+      // shed_dissolve DeathHook's {linger:true} vote) must not keep
+      // wandering/attacking during its dissolve window — previously moot
+      // since DeathSystem always destroyed same-tick.
+      if (health.current <= 0) continue;
+
       const resVals = world.get(entityId, Resource)?.values;
       const hunger = resVals?.hunger?.value ?? 0;
       const thirst = resVals?.thirst?.value ?? 0;

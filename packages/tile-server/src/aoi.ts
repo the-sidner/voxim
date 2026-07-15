@@ -6,12 +6,17 @@
  *   2. Diff against session.knownEntities to find spawns and despawns
  *   3. Return a BinaryStateMessage ready to encode and send
  *
- * Terrain chunks (Heightmap/MaterialGrid entities) are always visible and never despawn.
+ * Terrain chunks (Heightmap/MaterialGrid entities) currently loaded in the world
+ * are always in this session's AoI — no distance culling within AoI itself.
+ * ChunkLifecycleSystem (T-064) unloads/reloads chunk entities by proximity
+ * independently; when a chunk is unloaded its entity is destroyed and flows
+ * through the normal destroy diff below like any other entity leaving AoI.
  * Positioned entities are filtered by GameConfig.network.aoiRadius.
  */
 
 import type { World, EntityId } from "@voxim/engine";
 import { Heightmap, CHUNK_SIZE } from "@voxim/world";
+import { isEventRelevant } from "@voxim/protocol";
 import type { GameEvent } from "@voxim/protocol";
 import type {
   BinaryStateMessage,
@@ -22,10 +27,11 @@ import type {
 } from "@voxim/protocol";
 import type { ClientSession } from "./session.ts";
 import type { SpatialGrid } from "./spatial_grid.ts";
+import { WorldClock } from "./components/world.ts";
 import { Position } from "./components/game.ts";
 import { Inventory } from "./components/items.ts";
 import { Equipment } from "./components/equipment.ts";
-import { Container } from "./components/container.ts";
+import { Container, type ContainerData } from "./components/container.ts";
 import { Heritage } from "./components/heritage.ts";
 import { GateLink } from "./components/gate.ts";
 import { FogState } from "./components/fog_state.ts";
@@ -33,10 +39,14 @@ import { NETWORKED_DEFS } from "./component_registry.ts";
 
 /**
  * Max number of NEW terrain chunk spawns per state message.
- * Each 32×32 chunk is ~6 KB; 20 chunks ≈ 120 KB — well within the QUIC
- * flow-control window.  256 total chunks load over ~13 ticks (≈650 ms).
+ * Re-derived for T-311 P3: a chunk now carries the 3 render-field grids on top
+ * of height/material/open/kind. RLE-packed those add typically <1 KB (the fields
+ * are spatially coherent — long runs), so a chunk is ~7 KB packed; 12 chunks
+ * ≈ 84 KB stays within the QUIC flow window. 256 chunks load over ~22 ticks
+ * (≈1.1 s). (If real packed sizes measure smaller after the atlas derivation
+ * lands, this can rise back toward 20.)
  */
-const MAX_CHUNK_SPAWNS_PER_TICK = 20;
+const MAX_CHUNK_SPAWNS_PER_TICK = 12;
 
 function buildSpawnComponents(world: World, entityId: EntityId): BinaryComponentEntry[] {
   const components: BinaryComponentEntry[] = [];
@@ -54,55 +64,49 @@ function buildSpawnComponents(world: World, entityId: EntityId): BinaryComponent
   return components;
 }
 
-function isEventRelevant(
-  ev: GameEvent,
-  playerId: EntityId,
-  knownEntities: ReadonlySet<EntityId>,
-): boolean {
-  switch (ev.type) {
-    case "DamageDealt":
-      return knownEntities.has(ev.targetId) || knownEntities.has(ev.sourceId);
-    case "EntityDied":
-      return knownEntities.has(ev.entityId);
-    case "CraftingCompleted":
-      return ev.crafterId === playerId;
-    case "BuildingCompleted":
-      return ev.builderId === playerId || knownEntities.has(ev.blueprintId);
-    case "HungerCritical":
-      return ev.entityId === playerId;
-    case "Healed":
-      return knownEntities.has(ev.entityId);
-    case "GateApproached":
-      return ev.entityId === playerId;
-    case "GateCrossing":
-      return ev.entityId === playerId;
-    case "NodeDepleted":
-      return knownEntities.has(ev.nodeId) || knownEntities.has(ev.harvesterId);
-    case "DayPhaseChanged":
-      return true;
-    case "TradeCompleted":
-      return ev.buyerId === playerId || knownEntities.has(ev.traderId);
-    case "LoreExternalised":
-      return ev.entityId === playerId;
-    case "LoreInternalised":
-      return ev.entityId === playerId;
-    case "HitSpark":
-      return true;
-    case "BuildingMaterialsConsumed":
-      return ev.builderId === playerId;
-    case "BuildingMissingMaterials":
-      return ev.builderId === playerId;
-    case "ZoneEntered":
-      // Each client only cares about its own player's zone transitions
-      // (other players' zone changes don't drive its HUD). Server still
-      // emits to AoI so spectator UIs / observability tools can listen.
-      return ev.playerId === playerId;
-    default:
-      // TypeScript enforces exhaustiveness: adding a new GameEvent type without
-      // a matching case here will produce a compile error.
-      ev satisfies never;
-      return false;
+export interface AoiSharedInputs {
+  /** Every currently-loaded terrain chunk entity id (Heightmap query), in query order. */
+  readonly allChunkIds: readonly EntityId[];
+  /** Entities visible to every session regardless of position: chunks ∪ WorldClock ∪ GateLink. */
+  readonly alwaysVisible: ReadonlySet<EntityId>;
+  /** Raw Container query results this tick; computeSessionUpdate filters by the viewer's dynastyId. */
+  readonly containers: ReadonlyArray<{ entityId: EntityId; container: ContainerData }>;
+}
+
+/**
+ * Query results identical for every connected session this tick. Computed
+ * once in the tick loop (and once more, fresh, for the join-handshake's
+ * immediate first message) and threaded into computeSessionUpdate per
+ * session — replaces four world.query() calls per session per tick (T-355).
+ */
+export function computeAoiSharedInputs(world: World): AoiSharedInputs {
+  const allChunkIds: EntityId[] = [];
+  const alwaysVisible = new Set<EntityId>();
+
+  // Terrain chunks are always visible — they never leave AoI
+  for (const { entityId } of world.query(Heightmap)) {
+    allChunkIds.push(entityId);
+    alwaysVisible.add(entityId);
   }
+
+  // The WorldClock is a POSITIONLESS SINGLETON (T-347). It has no Position, no
+  // Heightmap and no GateLink, so not one of the rules around it would ever admit
+  // it — and the client therefore never received it at all. Everything
+  // time-of-day is keyed off this one entity: the sun arc, the atmosphere
+  // selection (and with it mist, god rays and the T-340 ambient drift), and the
+  // day/night cycle itself. Without it the renderer's `if (clock)` never fires and
+  // the whole T-311 atmosphere layer silently falls back to constructor defaults —
+  // which looks like "the lighting is a bit off", not like a replication hole, and
+  // is why it survived this long.
+  for (const { entityId } of world.query(WorldClock)) alwaysVisible.add(entityId);
+
+  // Gates are always visible — there's at most one per edge (≤4 per tile),
+  // and they're navigational landmarks. Streaming them only on proximity
+  // (T-145 visual rendered them invisible until ~128 units away) hid the
+  // tile-edge structure from the player.
+  for (const { entityId } of world.query(GateLink)) alwaysVisible.add(entityId);
+
+  return { allChunkIds, alwaysVisible, containers: world.query(Container) };
 }
 
 /**
@@ -112,6 +116,7 @@ function isEventRelevant(
  */
 export function computeSessionUpdate(
   world: World,
+  shared: AoiSharedInputs,
   session: ClientSession,
   spatial: SpatialGrid,
   playerId: EntityId,
@@ -125,14 +130,11 @@ export function computeSessionUpdate(
   onlineCount: number,
 ): BinaryStateMessage {
   // ── 1. Build visible entity set ─────────────────────────────────────────────
-  const inAoI = new Set<EntityId>();
-
-  // Terrain chunks are always visible — they never leave AoI
-  const allChunkIds: EntityId[] = [];
-  for (const { entityId } of world.query(Heightmap)) {
-    inAoI.add(entityId);
-    allChunkIds.push(entityId);
-  }
+  // Chunks ∪ WorldClock ∪ GateLink are identical for every session this tick
+  // (T-355) — seed from the precomputed always-visible set instead of
+  // re-running three world.query() calls per session. Copy, don't alias:
+  // inAoI is mutated per-session below.
+  const inAoI = new Set<EntityId>(shared.alwaysVisible);
 
   // Positioned entities within radius
   const pos = world.get(playerId, Position);
@@ -144,14 +146,6 @@ export function computeSessionUpdate(
 
   // The player's own entity is always visible
   inAoI.add(playerId);
-
-  // Gates are always visible — there's at most one per edge (≤4 per tile),
-  // and they're navigational landmarks. Streaming them only on proximity
-  // (T-145 visual rendered them invisible until ~128 units away) hid the
-  // tile-edge structure from the player.
-  for (const { entityId } of world.query(GateLink)) {
-    inAoI.add(entityId);
-  }
 
   // Unique item entities the player carries have no Position (they don't sit
   // in the spatial grid) yet the holder's client must see them — their prefab
@@ -180,10 +174,33 @@ export function computeSessionUpdate(
   // dynasty so a player can't snoop a rival chest's contents over the wire.
   const myDynasty = world.get(playerId, Heritage)?.dynastyId;
   if (myDynasty) {
-    for (const { entityId, container } of world.query(Container)) {
+    for (const { entityId, container } of shared.containers) {
       if (container.dynastyId !== myDynasty || !inAoI.has(entityId)) continue;
       for (const slot of container.slots) inAoI.add(slot.entityId as EntityId);
     }
+  }
+
+  // Scene-graph subtrees (T-219/T-220): every entity already in AoI pulls
+  // its FULL descendant set in too — a skeletal creature's bone entities,
+  // and any item scene-graph-parented onto one of ITS bones (equipped gear
+  // on any nearby creature, not just the viewer's own). Bones/equipped
+  // items carry no Position, so without this they'd never enter AoI at
+  // all — the existing rules above only special-case the viewer's OWN
+  // carried items. `world.descendants()` walks the WHOLE subtree in one
+  // call (bones-of-bones, items-on-bones), not just direct children, so
+  // one pass over a snapshot of the current set is enough — no need to
+  // recurse into newly-added descendants themselves.
+  //
+  // Ordering hazard (named per the T-315 E2 precedent — a child entity
+  // must not be usable before its parent arrives): `descendants()` is a
+  // DFS that only pushes a node's children onto its walk stack AFTER that
+  // node itself has been popped, so its output — and therefore this Set's
+  // insertion order — always places a parent before its children. The
+  // spawns loop below (§2) iterates `inAoI` in that same insertion order,
+  // so a bone and its equipped item always ship no later than the tick
+  // their root does, in topological order within that tick's message.
+  for (const id of [...inAoI]) {
+    for (const d of world.descendants(id)) inAoI.add(d);
   }
 
   // ── 2. Spawns: entities newly visible this tick ──────────────────────────────
@@ -196,7 +213,7 @@ export function computeSessionUpdate(
   // processed in subsequent ticks until all 256 are delivered.
   const px = pos?.x ?? 256;
   const py = pos?.y ?? 256;
-  const pendingChunks = allChunkIds.filter((id) => !session.knownEntities.has(id));
+  const pendingChunks = shared.allChunkIds.filter((id) => !session.knownEntities.has(id));
   pendingChunks.sort((a, b) => {
     const ha = world.get(a, Heightmap)!;
     const hb = world.get(b, Heightmap)!;

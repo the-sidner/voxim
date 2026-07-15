@@ -11,23 +11,5 @@
       "tectonicMin": 0.6
     }
   ],
-  "dangerLevel": 4,
-  "npcSpawnDensity": 0.16,
-  "nodeSpawnDensity": 0.5,
-  "propSpawnDensity": 1.5,
-  "npcWeights": {
-    "wolf": 3,
-    "bandit": 2,
-    "archer": 2
-  },
-  "entityWeights": {
-    "iron_ore_vein": 3,
-    "tree": 2,
-    "rock_large": 3,
-    "fiber_bush": 2,
-    "yew_tree": 1
-  },
-  "propWeights": {
-    "model_dead_tree": 2
-  }
+  "dangerLevel": 4
 }

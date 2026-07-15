@@ -64,16 +64,36 @@ export class TraderSystem implements System {
             continue;
           }
 
-          const newSlots = deductItem(inv.slots, cfg.currencyItemType, listing.buyPrice);
-          addItem(newSlots, listing.itemType, 1);
-          world.set(entityId, Inventory, { ...inv, slots: newSlots });
-
-          if (listing.stock > 0) {
-            const newListings = traderInv.listings.map((l, i) =>
-              i === slot ? { ...l, stock: l.stock - 1 } : l,
-            );
-            world.set(traderId, TraderInventory, { listings: newListings });
-          }
+          // T-344: COUPLED-DECLINE — TraderInventory (a shared, limited
+          // resource: the stock unit) is claimed first, its own recheck
+          // against commit-time state; Inventory's coin deduction + item
+          // grant is dependent on that claim AND does its own commit-time
+          // coin-sufficiency recheck (two independent gating conditions —
+          // see systems/container.ts's header for why one closure can't
+          // fully protect both directions). The atomicity that actually
+          // matters — a player never pays without receiving, never
+          // receives without paying — is enforced by deduct+grant sharing
+          // ONE Inventory closure. Residual, documented not papered over:
+          // in the compound rare case where stock runs out exactly when a
+          // DIFFERENT same-tick buyer's own coins are also short, stock
+          // can end up one unit lower than units actually sold — a minor
+          // bookkeeping drift on the trader's ledger, never a case of a
+          // player paying without receiving or receiving without paying.
+          let stockClaimed = false;
+          world.mutate(traderId, TraderInventory, (cur) => {
+            const l = cur.listings[slot];
+            if (!l || l.stock === 0) return cur;
+            stockClaimed = true;
+            if (l.stock < 0) return cur; // -1 sentinel — unlimited, never decremented
+            return { listings: cur.listings.map((x, i) => (i === slot ? { ...x, stock: x.stock - 1 } : x)) };
+          });
+          world.mutate(entityId, Inventory, (cur) => {
+            if (!stockClaimed) return cur;
+            if (countItem(cur.slots, cfg.currencyItemType) < listing.buyPrice) return cur;
+            const newSlots = deductItem(cur.slots, cfg.currencyItemType, listing.buyPrice);
+            addItem(newSlots, listing.itemType, 1);
+            return { ...cur, slots: newSlots };
+          });
 
           log.info("buy: buyer=%s item=%s price=%d coins remaining=%d",
             entityId, listing.itemType, listing.buyPrice, coinCount - listing.buyPrice);
@@ -94,9 +114,16 @@ export class TraderSystem implements System {
             continue;
           }
 
-          const newSlots = deductItem(inv.slots, listing.itemType, 1);
-          addItem(newSlots, cfg.currencyItemType, listing.sellPrice);
-          world.set(entityId, Inventory, { ...inv, slots: newSlots });
+          // T-344: single component, AGGREGATE-RECHECK — deduct+grant is
+          // one atomic closure, recomputed against commit-time state, so a
+          // same-tick buy/sell pair (or a concurrent unrelated Inventory
+          // writer) composes instead of clobbering.
+          world.mutate(entityId, Inventory, (cur) => {
+            if (countItem(cur.slots, listing.itemType) < 1) return cur;
+            const newSlots = deductItem(cur.slots, listing.itemType, 1);
+            addItem(newSlots, cfg.currencyItemType, listing.sellPrice);
+            return { ...cur, slots: newSlots };
+          });
 
           log.info("sell: seller=%s item=%s price=%d", entityId, listing.itemType, listing.sellPrice);
           events.publish(TileEvents.TradeCompleted, {

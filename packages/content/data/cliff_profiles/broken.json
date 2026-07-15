@@ -1,0 +1,21 @@
+{
+  "id": "broken",
+  "wallKind": "stone",
+  "erosionStates": {
+    "crisp": {
+      "tierCount": 4,
+      "jitterAmp": 0.28,
+      "edgeChinkiness": 0.38
+    },
+    "weathered": {
+      "tierCount": 5,
+      "jitterAmp": 0.4,
+      "edgeChinkiness": 0.5
+    },
+    "broken": {
+      "tierCount": 5,
+      "jitterAmp": 0.55,
+      "edgeChinkiness": 0.65
+    }
+  }
+}

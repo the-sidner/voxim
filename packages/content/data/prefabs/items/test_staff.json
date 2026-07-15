@@ -1,0 +1,27 @@
+{
+  "id": "test_staff",
+  "modelId": "model_handle",
+  "modelScale": 0.9,
+  "components": {
+    "equippable": {
+      "slots": [
+        "weapon",
+        "offHand"
+      ]
+    },
+    "swingable": {
+      "chain": [
+        {
+          "light": "test_bolt",
+          "heavy": "test_bolt"
+        }
+      ],
+      "heavyChargeMs": 350,
+      "swingActionId": "spell_draw",
+      "damage": 15
+    },
+    "weight": {
+      "baseWeight": 1
+    }
+  }
+}

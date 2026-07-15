@@ -1,0 +1,45 @@
+{
+  "id": "spell_release",
+  "kind": "active",
+  "slot": "primary",
+  "limbs": [
+    "right_hand"
+  ],
+  "phases": {
+    "active": {
+      "ticks": 1
+    },
+    "winddown": {
+      "ticks": 10
+    }
+  },
+  "cancel": {
+    "active": {
+      "into": []
+    },
+    "winddown": {
+      "into": []
+    }
+  },
+  "movement": {
+    "active": "locked",
+    "winddown": 0.5
+  },
+  "priority": 5,
+  "effects": [
+    {
+      "phase": "active:enter",
+      "kind": "projectile_spawn"
+    }
+  ],
+  "animation": {
+    "active": {
+      "clipId": "standing_aim_recoil",
+      "loop": false
+    },
+    "winddown": {
+      "clipId": "standing_aim_recoil",
+      "loop": false
+    }
+  }
+}

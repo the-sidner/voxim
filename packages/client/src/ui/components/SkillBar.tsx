@@ -39,12 +39,9 @@ export function SkillBar() {
   // and key hints are stable.
   const slots = lo?.slots ?? [0, 1, 2, 3].map((index) => ({ index, actionId: null as string | null }));
 
+  // Bottommost row of the shared `.action-frame` dock (ui_manager.tsx, T-314).
   return (
-    <div class="skillbar interactive" style={{
-      position: "fixed", bottom: "36px", left: "50%",
-      transform: "translateX(-50%)",
-      zIndex: "var(--z-hud)",
-    }}>
+    <div class="skillbar interactive">
       {slots.map((slot) => {
         const actionId = slot.actionId;
         const label = actionId ? skillLabel(actionId) : "";

@@ -16,20 +16,17 @@
 import { World, EventBus, newEntityId } from "@voxim/engine";
 import type { EntityId, ChangesetSet, ChangesetRemoval } from "@voxim/engine";
 import type { AtlasTileInitRepo, AtlasWorldRepo, TileSaveRepo, WorldsRepo } from "@voxim/db";
-import { GateLink } from "./components/gate.ts";
-import { spawnGates, mirrorPosition } from "./gate.ts";
-import { chunksFromBuffers, TILE_SIZE } from "@voxim/world";
-import type { ZoneGridData } from "@voxim/world";
+import { spawnGates } from "./gate.ts";
+import { applyFieldsToChunks, chunksFromBuffers, TILE_SIZE } from "@voxim/world";
 import { loadTerrainFromAtlas } from "./atlas_terrain.ts";
 import { placePois, spawnMobPois } from "./poi_placer.ts";
-import { binaryStateMessageCodec, ACTION_BLOCK, ACTION_CROUCH, encodeFrame, makeFrameReader, SERVICE_SECRET_HEADER, TileEvents } from "@voxim/protocol";
-import type { EntityDeployedPayload } from "@voxim/protocol";
+import { binaryStateMessageCodec, ACTION_BLOCK, ACTION_CROUCH, encodeFrame, makeFrameReader } from "@voxim/protocol";
 import { startAdminServer, registerWithGateway } from "./admin_server.ts";
 import { listenQuic } from "./quic_server.ts";
 import { GatewayLink } from "./gateway_link.ts";
 import { CommandType } from "@voxim/protocol";
-import type { BinaryComponentDelta, BinaryStateMessage, BootstrapHeader, CommandPayload, TileJoinRequest, TileJoinAck, WorldSnapshot } from "@voxim/protocol";
-import { computeSessionUpdate } from "./aoi.ts";
+import type { BinaryComponentDelta, BootstrapHeader, CommandPayload, TileJoinRequest, TileJoinAck, WorldSnapshot } from "@voxim/protocol";
+import { computeAoiSharedInputs, computeSessionUpdate } from "./aoi.ts";
 import { JsonSource, validateRecipeGraph, encodeBootstrap, type ContentService } from "@voxim/content";
 import { ClientSession } from "./session.ts";
 import { sanitizeAndMergeInputs } from "./input_merge.ts";
@@ -37,92 +34,44 @@ import { TickLoop } from "./tick_loop.ts";
 import { DeferredEventQueue } from "./deferred_events.ts";
 import { StateHistoryBuffer } from "./state_history.ts";
 import { AccountClient } from "./account_client.ts";
-import type { SessionInfo, HearthAnchor } from "./account_client.ts";
+import type { SessionInfo } from "./account_client.ts";
 import { resolveHeirSpawn } from "./heir_spawn.ts";
 import { spawnPrefab, destroyCarriedItemEntities } from "./spawner.ts";
-import { stampOwnershipAndCapture, stampContainerOwner } from "./ownership.ts";
 import { resolveCharacterSelections, type ResolvedCharacter } from "./character_creation.ts";
 import { validatePrefabs } from "./prefab_validator.ts";
 import type { System } from "./system.ts";
 import { Position, Velocity, Facing, InputState, Name } from "./components/game.ts";
 import { Heritage } from "./components/heritage.ts";
 import { Hitbox } from "./components/hitbox.ts";
-import { NpcAiSystem } from "./systems/npc_ai.ts";
-import { NpcSensorySystem } from "./systems/npc_sensory.ts";
-import { PhysicsSystem } from "./systems/physics.ts";
-import { NoiseSystem } from "./systems/noise.ts";
-import { FogOfWarSystem } from "./systems/fog_of_war.ts";
 import { FogState } from "./components/fog_state.ts";
-import { ItemPhysicsSystem } from "./systems/item_physics.ts";
-import { equipmentStatModifier } from "./resources/modifiers/equipment_stat.ts";
-import { ActionDispatcher, newGateRegistry, newEffectRegistry, WeaponTraceResolver, ProjectileSpawnResolver, ProjectileTraceResolver } from "./actions/index.ts";
-import { PostureIntentResolver, CompositeIntentResolver, PrimaryIntentResolver, SkillIntentResolver, ReactionIntentResolver, RequestedActionIntentResolver } from "./actions/intent.ts";
-import { LocomotionIntentResolver } from "./actions/locomotion_intent.ts";
-import { setTagResolver, clearTagResolver } from "./actions/resolvers/tags.ts";
-import { dodgeImpulseResolver } from "./actions/resolvers/movement.ts";
-import { notStaggeredGate, notExhaustedGate, healthBelowGate } from "./actions/resolvers/gates.ts";
-import { StaminaCostHandler } from "./actions/cost.ts";
-import { EquipmentSystem } from "./systems/equipment.ts";
-import { ContainerSystem } from "./systems/container.ts";
-import { PlacementSystem } from "./systems/placement.ts";
-import { EnclosureSystem } from "./systems/enclosure.ts";
-import { CraftingSystem } from "./systems/crafting.ts";
-import { slotHasUsableGate, ApplyItemEffectsResolver, adjustResourceResolver, spendItemResolver } from "./actions/resolvers/item_use.ts";
-import { HealthHitHandler } from "./handlers/health_hit_handler.ts";
-import { ResourceNodeHitHandler } from "./handlers/resource_node_hit_handler.ts";
-import { BlueprintHitHandler } from "./handlers/blueprint_hit_handler.ts";
-import { WorkstationHitHandler } from "./handlers/workstation_hit_handler.ts";
-import { TerrainDigSystem } from "./handlers/terrain_hit_handler.ts";
-import { DayNightSystem } from "./systems/day_night.ts";
-import { PoiSystem } from "./systems/poi.ts";
-import { newPoiActivityRegistry } from "./poi/mod.ts";
-import { TriggerSystem } from "./systems/trigger.ts";
-import { newTriggerCatalog } from "./triggers/catalog.ts";
-import { newTriggerSourceRegistry, equipmentTriggerSource, npcTemplateTriggerSource } from "./triggers/source.ts";
 import { placePoiTriggers } from "./poi_spawner.ts";
 import { placeStairs } from "./stair_spawner.ts";
-import { DeathSystem } from "./systems/death.ts";
-import type { DeathHook } from "./systems/death.ts";
-import { speedSkillEffect, damageBoostSkillEffect, shieldSkillEffect, fleeSkillEffect, HealthSkillResolver } from "./actions/resolvers/skill_effects.ts";
-import { ResourceSystem } from "./systems/resource.ts";
-import { newResourceEffectRegistry } from "./resources/effect.ts";
-import { newResourceModifierRegistry } from "./resources/modifier.ts";
-import { newModifierSourceRegistry } from "./modifiers/modifier.ts";
-import { equipmentSource } from "./modifiers/sources/equipment.ts";
-import { encumbranceSource } from "./modifiers/sources/encumbrance.ts";
-import { speciesSource } from "./modifiers/sources/species.ts";
-import { injurySource } from "./modifiers/sources/injury.ts";
-import { buffsSource } from "./modifiers/sources/buffs.ts";
-import { modifyHealthEffect } from "./resources/effects/modify_health.ts";
-import { emitEventEffect } from "./resources/effects/emit_event.ts";
-import { resolveRecipeEffect } from "./resources/effects/resolve_recipe.ts";
-import { expireBuffEffect } from "./resources/effects/expire_buff.ts";
-import { destroySelfEffect } from "./resources/effects/destroy_self.ts";
-import { respawnNodeEffect } from "./resources/effects/respawn_node.ts";
-import { clearCounterReadyEffect } from "./resources/effects/clear_counter_ready.ts";
-import { startBuffResolver, buffTickResolver } from "./actions/resolvers/buff.ts";
-import { createJobRegistry, registerBuiltinJobs } from "./ai/mod.ts";
-import { createBTNodeRegistry, registerBuiltinBTNodes, buildAllBehaviorTrees } from "./ai/bt/mod.ts";
-import { createRecipeStepRegistry, registerBuiltinSteps } from "./crafting/mod.ts";
-import { Registry } from "@voxim/engine";
-import { TraderSystem } from "./systems/trader.ts";
-import { DynastySystem } from "./systems/dynasty.ts";
-import { StaleSlotCleanupSystem } from "./systems/stale_slot_cleanup.ts";
-import { AnimationSystem } from "./systems/animation.ts";
-import { HitboxSystem } from "./systems/hitbox.ts";
-import { ChunkLifecycleSystem } from "./systems/chunk_lifecycle.ts";
-import { DebugCommandSystem } from "./systems/debug_commands.ts";
 import { WorldClock } from "./components/world.ts";
 import { SaveManager } from "./save_manager.ts";
-import { serializePlayer } from "./handoff.ts";
 import { SpatialGrid } from "./spatial_grid.ts";
 import { ProceduralSpawner } from "./procedural_spawner.ts";
 import { EventRouter } from "./event_router.ts";
-import { sortSystemsByDependencies } from "./system_order.ts";
 import type { TickContext } from "./system.ts";
+import { wireGameSystems } from "./wiring.ts";
+import { HandoffCoordinator, type ZoneMeta } from "./handoff_coordinator.ts";
 
 // Action bits that represent *held* keys (block, crouch) — merged
 // latest-wins across a tick rather than OR-accumulated like one-shots.
+//
+// ACTION_USE_SKILL deliberately does NOT join this mask, even though T-337's
+// hold-to-aim mechanic also reads it as a held signal (IntentTranslator.
+// isAiming, gated on aimWeaponActive) while charging. Reasoning: melee's
+// existing tap-on-release semantics NEED the OR-across-batch treatment (a
+// brief click within one server tick must never be missed just because a
+// later datagram in the same batch — e.g. a subsequent mouse-move — doesn't
+// carry the bit); moving ACTION_USE_SKILL to latest-only would risk
+// silently dropping that click. The cost of leaving it out: during a
+// hold-to-aim release, the OR-across-batch merge can show the bit "still
+// held" for one extra server tick if an earlier datagram in that tick's
+// batch was sent before the release — a ~50ms release-detection fuzz, not a
+// correctness bug (PrimaryIntentResolver still resolves to releaseActionId
+// the very next tick once the batch is clean). Accepted trade: a harmless
+// timing fuzz on release beats a real risk of dropping a melee tap.
 const HELD_ACTION_MASK = ACTION_BLOCK | ACTION_CROUCH;
 
 export interface TileServerConfig {
@@ -239,8 +188,12 @@ export class TileServer {
   private contentBlob!: Uint8Array;
   // Initialised in start() — subscribes to the event bus and drained each tick.
   private events!: EventRouter;
+  // Initialised in start() (post-atlas-load) — gate proximity, zone
+  // transitions, cross-tile handoff, and the per-player handoff/zone/hearth
+  // caches (T-352).
+  private handoffCoordinator!: HandoffCoordinator;
 
-  // Initialised in start() — ActionSystem needs tickRateHz and stateHistory
+  // Initialised in start() via wireGameSystems() (T-352).
   private systems: System[] = [];
 
   private saveManager: SaveManager | null = null;
@@ -267,14 +220,7 @@ export class TileServer {
    */
   private zoneBuffer: Uint16Array | null = null;
   /** Zone metadata indexed by `zoneBuffer` ids. */
-  private zoneById = new Map<number, {
-    id: number;
-    name: string;
-    topologyRole: string;
-    traversal: "path" | "wilderness";
-  }>();
-  /** Last zone id reported per player, to detect transitions. */
-  private playerLastZone = new Map<EntityId, number>();
+  private zoneById = new Map<number, ZoneMeta>();
   /**
    * Active world this tile-server is serving. Set on atlas terrain load;
    * the bake-poll loop watches `activeWorldBaked` to detect a newer bake
@@ -282,18 +228,6 @@ export class TileServer {
    */
   private activeWorldId = "";
   private activeWorldBaked: Date = new Date(0);
-  /**
-   * Players for whom a handoff fetch is in flight. Prevents a second
-   * GateApproached event (or rapidly-repeated collisions) from initiating a
-   * duplicate handoff while the first is still pending its gateway round-trip.
-   */
-  private handingOff = new Set<EntityId>();
-  /**
-   * Players whose entity was destroyed by a handoff (not by death). The
-   * disconnect-cleanup path checks this set so it skips recordDeath when the
-   * session unwinds for a moved-away player. Cleared on disconnect cleanup.
-   */
-  private handedOff = new Set<EntityId>();
   /** Display name per connected player — cached so a respawn (no join msg) keeps the name. */
   private playerDisplayNames = new Map<EntityId, string>();
   /**
@@ -301,12 +235,6 @@ export class TileServer {
    * cached at join so a respawn (no join msg) keeps the chosen species + lore.
    */
   private playerCharacters = new Map<EntityId, ResolvedCharacter>();
-  /**
-   * Hearth anchor per connected player (T-079) — cached at join so a respawn
-   * (no join msg) can spawn the heir at the family hearth, or detect that the
-   * hearth was destroyed and spawn the heir displaced + weakened.
-   */
-  private playerHearthAnchors = new Map<EntityId, HearthAnchor | null>();
   /** Players with a respawn in flight — guards the async recordDeath→spawn from re-entry. */
   private respawning = new Set<EntityId>();
 
@@ -350,492 +278,23 @@ export class TileServer {
     this.contentBlob = await encodeBootstrap(content);
     console.log(`[TileServer] content bootstrap blob: ${(this.contentBlob.length / 1024).toFixed(1)} KB (gzipped)`);
 
-    // Resource substrate (T-238) — the one tick loop for every bounded
-    // scalar (stamina/hunger/thirst/poise + the crafting countdown).
-    // Thresholds dispatch through resourceEffects; rateModifiers through
-    // resourceModifiers — same Registry<H> doctrine as the action arc.
-    const resourceEffects = newResourceEffectRegistry();
-    resourceEffects.register(modifyHealthEffect);
-    resourceEffects.register(emitEventEffect);
-    resourceEffects.register(resolveRecipeEffect);
-    // expire_buff: a buff child's buff_timer Resource hits 0 → destroySubtree.
-    resourceEffects.register(expireBuffEffect);
-    resourceEffects.register(destroySelfEffect);
-    resourceEffects.register(respawnNodeEffect);
-    resourceEffects.register(clearCounterReadyEffect);
-    const resourceModifiers = newResourceModifierRegistry();
-    resourceModifiers.register(equipmentStatModifier);
-
-    // Status/Modifier query (T-239) — the one place "what changes this
-    // entity's stats?" composes: equipment (live), buffs (scene-graph
-    // children), encumbrance (live). effective() over this replaces
-    // BuffSystem's compose pass, SpeedModifier, EncumbrancePenalty, and
-    // the per-consumer deriveItemStats scans.
-    const modifierSources = newModifierSourceRegistry();
-    modifierSources.register(equipmentSource);
-    modifierSources.register(encumbranceSource);
-    modifierSources.register(buffsSource);
-    modifierSources.register(speciesSource);
-    modifierSources.register(injurySource);
-
-    // T-084: the default player species must exist in content.species, else a
-    // fresh player would spawn with a Species id no source can resolve.
-    const defaultSpecies = content.getGameConfig().player.species ?? "human";
-    if (!content.getGameConfig().species[defaultSpecies]) {
-      throw new Error(
-        `game_config.player.species "${defaultSpecies}" is not defined in game_config.species`,
-      );
-    }
-
-    // T-238g: ResourceDef content cross-check — every threshold `effect`
-    // and rateModifier `kind` referenced from data/resources/*.json must
-    // resolve to a registered handler, or the runtime can't dispatch it.
-    // Fail fast at boot (mirrors the buff / recipe-step / BT checks).
-    for (const def of content.resources.values()) {
-      for (const t of def.thresholds ?? []) {
-        if (!resourceEffects.has(t.effect)) {
-          throw new Error(
-            `ResourceDef "${def.id}" references threshold effect "${t.effect}" ` +
-            `but no resource-effect handler is registered. ` +
-            `Registered: [${resourceEffects.ids().join(", ")}]`,
-          );
-        }
-      }
-      for (const m of def.rateModifiers ?? []) {
-        if (!resourceModifiers.has(m.kind)) {
-          throw new Error(
-            `ResourceDef "${def.id}" references rateModifier kind "${m.kind}" ` +
-            `but no resource-modifier handler is registered. ` +
-            `Registered: [${resourceModifiers.ids().join(", ")}]`,
-          );
-        }
-      }
-    }
-
-
-    // DeathSystem owns the single RequestDeath queue — systems with health-loss
-    // kill paths publish here instead of calling world.destroy directly.
-    // Hook registry is empty for now; later populated with drop-table, heir-spawn,
-    // corpse-spawn hooks — additive, no system-file edits required.
-    const deathHooks = new Registry<DeathHook>();
-    // T-252: dying holders take their carried item ENTITIES with them
-    // (equipment + unique inventory slots) — drop-tables become a sibling
-    // hook later; until then a kill must not leak entities.
-    deathHooks.register({
-      id: "equip_cleanup",
-      onDeath: (ctx) => destroyCarriedItemEntities(ctx.world, ctx.entityId),
+    // Registry composition root (T-352): every content-driven registry,
+    // register() call, boot fail-fast content cross-check, EventBus
+    // subscriber, and the dependency-sorted system list live in wiring.ts —
+    // invoked at the exact point in boot the inline block occupied.
+    this.systems = wireGameSystems({
+      content,
+      world: this.world,
+      eventBus: this.eventBus,
+      stateHistory: this.stateHistory,
+      tickRateHz,
+      devMode: config.devMode ?? false,
+      tileId: config.tileId,
+      accountClient: this.accountClient,
+      getZoneBuffer: () => this.zoneBuffer,
+      getSessionPlayerIds: () => this.sessions.keys(),
+      onHearthAnchorUpdate: (placerId, anchor) => this.handoffCoordinator.setHearthAnchor(placerId, anchor),
     });
-    const deathSystem = new DeathSystem(deathHooks);
-
-    // Job handler registry — NpcAiSystem dispatches each NPC's current Job
-    // through this. Built-in handlers: idle, wander, flee, seekFood, seekWater,
-    // attackTarget. Adding a job type is a new handler file + one register call.
-    const jobs = createJobRegistry();
-    registerBuiltinJobs(jobs);
-
-    // Behavior tree node registry + compiled trees. Every NpcTemplate
-    // references a behaviorTreeId; trees are built from data/behavior_trees/
-    // JSON at startup using the node registry. Unknown node types or missing
-    // tree references fail fast here.
-    const btNodes = createBTNodeRegistry();
-    registerBuiltinBTNodes(btNodes);
-    const behaviorTrees = buildAllBehaviorTrees(content, btNodes);
-    for (const tmpl of content.npcTemplates.values()) {
-      if (!behaviorTrees.has(tmpl.behaviorTreeId)) {
-        throw new Error(
-          `NpcTemplate "${tmpl.id}" references behaviorTreeId "${tmpl.behaviorTreeId}" ` +
-          `but no such tree was loaded. Available: [${[...behaviorTrees.keys()].join(", ")}]`,
-        );
-      }
-    }
-
-    // Recipe step handler registry — WorkstationHitHandler + CraftingSystem
-    // both dispatch through this. Built-ins: assembly (first, so explicit
-    // selection wins), attack, time. Adding a step type is one handler file
-    // + one register call.
-    const recipeSteps = createRecipeStepRegistry();
-    registerBuiltinSteps(recipeSteps);
-    for (const recipe of content.recipes.values()) {
-      const stepType = recipe.stepType ?? "time";
-      if (!recipeSteps.has(stepType)) {
-        throw new Error(
-          `Recipe "${recipe.id}" references stepType "${stepType}" but no step ` +
-          `handler is registered. Registered: [${recipeSteps.ids().join(", ")}]`,
-        );
-      }
-    }
-
-    // Action runtime (T-226). Gate registry is empty until an action
-    // references a gate (T-227 swings); the effect registry carries the
-    // posture tag resolvers. Posture (T-226b) + locomotion (T-226c)
-    // intent are merged via CompositeIntentResolver — more slots compose
-    // here as further layers migrate. No cost handler yet (both slots
-    // are free).
-    const actionGates = newGateRegistry();
-    actionGates.register(notStaggeredGate);
-    actionGates.register(notExhaustedGate);
-    actionGates.register(slotHasUsableGate);
-    // health_below: the low-health proc condition (T-259c) — usable by
-    // trigger conditions and action preconditions alike.
-    actionGates.register(healthBelowGate);
-    const actionEffects = newEffectRegistry();
-    actionEffects.register(setTagResolver);
-    actionEffects.register(clearTagResolver);
-    actionEffects.register(dodgeImpulseResolver);
-    // T-240: `use_item`'s apply_item_effects fans an item's EffectSpec[]
-    // back through this same registry (adjust_resource etc.).
-    actionEffects.register(adjustResourceResolver);
-    actionEffects.register(spendItemResolver);
-    actionEffects.register(new ApplyItemEffectsResolver(actionEffects));
-    // Buffs: start_buff spawns a buff scene-graph child; the child's
-    // `buff` ambient action fires buff_tick (DoT/HoT) each tick.
-    actionEffects.register(startBuffResolver);
-    actionEffects.register(buffTickResolver);
-    // T-246: the five skill effects fold onto this one substrate (the
-    // parallel `effects/` apply registry is gone). speed/damage_boost/shield
-    // are buff children; health is the targeted heal/drain (needs the death
-    // port); flee forces NPC job queues. SkillSystem fires them through this
-    // registry; an action's effect spec can name them too.
-    actionEffects.register(speedSkillEffect);
-    actionEffects.register(damageBoostSkillEffect);
-    actionEffects.register(shieldSkillEffect);
-    actionEffects.register(fleeSkillEffect);
-    actionEffects.register(new HealthSkillResolver(deathSystem));
-
-    // T-260b: every configured starting-skill slot must be a loaded
-    // ActionDef (the slots ARE action ids now; matrix + verbs are gone).
-    for (const sk of content.getGameConfig().player.startingSkills ?? []) {
-      if (sk !== null && !content.actions.get(sk)) {
-        throw new Error(
-          `player.startingSkills names action "${sk}" but no such ActionDef ` +
-          `is loaded.`,
-        );
-      }
-    }
-
-    // Trigger primitive (T-259) — the single event→effect bridge. Catalog
-    // (closed event-kind vocabulary) + sources (live "who owns which
-    // triggers" reads; v1: equipment) + the buffered TriggerSystem.
-    const triggerCatalog = newTriggerCatalog();
-    const triggerSources = newTriggerSourceRegistry();
-    triggerSources.register(equipmentTriggerSource);
-    triggerSources.register(npcTemplateTriggerSource);
-    const triggerSystem = new TriggerSystem(content, triggerCatalog, triggerSources, actionGates, actionEffects);
-
-    // NPC sensory system (T-040) — the event-driven half of NPC awareness,
-    // alongside the spatial detection scan in set_job_attack_nearest. Buffers
-    // perceived combat/noise events on the bus, then aggros nearby NPCs
-    // toward the threat at the top of its next run (the TriggerSystem shape).
-    const npcSensorySystem = new NpcSensorySystem(content);
-
-    // Enclosure detection (T-065, server core) — caches which world cells are
-    // sealed inside walls, recomputing only on a wall-change signal
-    // (BuildingCompleted). The protocol EnclosureChanged event + client roof
-    // rendering are T-066; this stays server-local for now.
-    const enclosureSystem = new EnclosureSystem();
-
-    // T-259 content cross-checks — every TriggerDef's `on` must be a
-    // catalog kind, every condition gate and effect kind registered, and
-    // every prefab `triggers[]` ref must resolve. Fail fast at boot, same
-    // stance as the ResourceDef / action-effect / POI checks.
-    for (const trig of content.triggers.values()) {
-      if (!triggerCatalog.has(trig.on)) {
-        throw new Error(
-          `Trigger "${trig.id}" listens to "${trig.on}" but no such event ` +
-          `kind is in the catalog. Known: [${triggerCatalog.ids().join(", ")}]`,
-        );
-      }
-      for (const c of trig.conditions ?? []) {
-        if (!actionGates.has(c.gate)) {
-          throw new Error(
-            `Trigger "${trig.id}" condition gate "${c.gate}" is not ` +
-            `registered. Registered: [${actionGates.ids().join(", ")}]`,
-          );
-        }
-      }
-      for (const eff of trig.effects) {
-        if (!actionEffects.has(eff.kind)) {
-          throw new Error(
-            `Trigger "${trig.id}" lists effect "${eff.kind}" but no ` +
-            `action-effect resolver is registered. ` +
-            `Registered: [${actionEffects.ids().join(", ")}]`,
-          );
-        }
-      }
-    }
-    for (const prefab of content.prefabs.values()) {
-      for (const t of prefab.triggers ?? []) {
-        if (!content.triggers.get(t)) {
-          throw new Error(
-            `Prefab "${prefab.id}" grants trigger "${t}" but no such ` +
-            `TriggerDef is loaded. Loaded: [${[...content.triggers.ids()].join(", ")}]`,
-          );
-        }
-      }
-    }
-    for (const tmpl of content.npcTemplates.values()) {
-      for (const t of tmpl.triggers ?? []) {
-        if (!content.triggers.get(t)) {
-          throw new Error(
-            `NpcTemplate "${tmpl.id}" grants trigger "${t}" but no such ` +
-            `TriggerDef is loaded. Loaded: [${[...content.triggers.ids()].join(", ")}]`,
-          );
-        }
-      }
-    }
-
-    const actionDispatcher = new ActionDispatcher(
-      content, actionGates, actionEffects,
-      new CompositeIntentResolver([
-        PostureIntentResolver,
-        LocomotionIntentResolver,
-        new PrimaryIntentResolver(content),
-        // T-260b: a SKILL_N press overrides the bit-derived primary intent —
-        // the skill bar IS the action system now (SkillSystem is gone).
-        SkillIntentResolver,
-        ReactionIntentResolver,
-        // Last: a BT-named action request overrides the bit-derived intent.
-        RequestedActionIntentResolver,
-      ]),
-      StaminaCostHandler,
-    );
-    // Trigger collectors run during the (notify-only) post-changeset flush
-    // and only buffer; the TriggerSystem drains at the top of its next run.
-    triggerSystem.registerSubscribers(this.eventBus);
-    // Same shape for the NPC sensory collectors (T-040): they buffer perceived
-    // combat/noise events during the flush; NpcSensorySystem drains next run.
-    npcSensorySystem.registerSubscribers(this.eventBus);
-    // Enclosure recompute trigger (T-065): a finished wall blueprint closes a
-    // cell. The collector only flips a dirty flag at flush time; the recompute
-    // runs at the top of EnclosureSystem's next run.
-    enclosureSystem.registerSubscribers(this.eventBus);
-
-    // Hearth anchor subscriber — when a prefab carrying the `hearth` component
-    // is placed, tell the account service so the heir spawns at the new
-    // location on next login. Fire-and-forget; a failed write leaves the
-    // previous anchor in place and is logged. Runs during the post-changeset
-    // flush; requires no world mutation, so a 1-tick latency is irrelevant.
-    if (this.accountClient && config.tileId) {
-      const accountClient = this.accountClient;
-      const tileId = config.tileId;
-      this.eventBus.subscribe(TileEvents.EntityDeployed, (p: EntityDeployedPayload) => {
-        const prefab = content.prefabs.get(p.prefabId);
-        if (!prefab?.components.hearth) return;
-        const anchor = { tileId, position: { x: p.worldX, y: p.worldY, z: p.worldZ } };
-        accountClient.updateHearth(p.placerId, anchor).catch((err: unknown) =>
-          console.warn(`[hearth] updateHearth failed for ${p.placerId.slice(0, 8)}:`, err)
-        );
-        // Keep the in-session anchor cache (T-079) in sync with what was just
-        // persisted, so an in-session respawn spawns at a hearth built THIS
-        // session — not only one carried in via the join-time SessionInfo.
-        this.playerHearthAnchors.set(p.placerId, anchor);
-        console.log(
-          `[hearth] anchored player=${p.placerId.slice(0, 8)} entity=${p.entityId.slice(0, 8)} ` +
-          `at (${p.worldX.toFixed(1)}, ${p.worldY.toFixed(1)}) on ${tileId}`,
-        );
-      });
-    }
-
-    // Workstation ownership + base capture (T-082, generalises T-038's
-    // job_board-only stamp) — when a player deploys any workstation, stamp it
-    // with their dynasty and re-stamp nearby enemy-owned workstations to them.
-    // Runs in the post-changeset flush, so the freshly spawned entity and every
-    // existing owner are committed and queryable. job_board carries a
-    // WorkstationTag, so hiring-board ownership is covered by this one path.
-    const captureRadius = content.getGameConfig().building.capture.radiusWorldUnits;
-    this.eventBus.subscribe(TileEvents.EntityDeployed, (p: EntityDeployedPayload) => {
-      const result = stampOwnershipAndCapture(this.world, p, captureRadius);
-      if (!result) return;
-      console.log(
-        `[ownership] dynasty=${result.dynastyId.slice(0, 8)} claimed ` +
-        `workstation=${p.entityId.slice(0, 8)} (${p.prefabId})` +
-        (result.captured.length
-          ? ` — captured ${result.captured.length} structure(s) from ` +
-            result.captured.map((c) => c.previousDynastyId.slice(0, 8)).join(", ")
-          : ""),
-      );
-    });
-
-    // T-077/T-078: stamp a freshly deployed family chest (library/treasury) with
-    // the placer's dynasty so only that dynasty's heir can store/withdraw. Chests
-    // carry a Container, not a WorkstationTag, so the ownership stamp above skips
-    // them — this parallel subscriber handles them.
-    this.eventBus.subscribe(TileEvents.EntityDeployed, (p: EntityDeployedPayload) => {
-      const dynastyId = stampContainerOwner(this.world, p);
-      if (!dynastyId) return;
-      console.log(`[container] dynasty=${dynastyId.slice(0, 8)} claimed chest=${p.entityId.slice(0, 8)} (${p.prefabId})`);
-    });
-
-    // One-tick event channel from gameplay systems → CSM. Cleared at the end
-    // of CharacterStateMachineSystem.run each tick.
-
-    const hitHandlers = [
-      new HealthHitHandler(content, deathSystem, modifierSources),
-      new ResourceNodeHitHandler(content),
-      new BlueprintHitHandler(),
-      new WorkstationHitHandler(content, recipeSteps),
-    ];
-
-    // T-227: the swing's active phase fires these through the dispatcher's
-    // effect registry (registered after hitHandlers since weapon_trace
-    // dispatches to them). Replaces ActionSystem.resolveHits / spawnProjectile.
-    actionEffects.register(new WeaponTraceResolver(this.stateHistory, tickRateHz, hitHandlers));
-    actionEffects.register(new ProjectileSpawnResolver());
-    // T-243: projectile flight is an ambient action (`projectile_flight`)
-    // whose `hold:tick` fires this — motion + collision + hit dispatch over
-    // the shared hitHandlers. Replaces the bespoke ProjectileSystem.
-    actionEffects.register(new ProjectileTraceResolver(hitHandlers));
-
-    // T-240 Ph3: item effect content cross-check — every `effects[].id` on
-    // every prefab must resolve to a registered action-effect resolver, or
-    // `use_item` can't dispatch it. Fail fast at boot (mirrors the
-    // ResourceDef / buff / recipe-step / BT checks). Unique items' runtime
-    // `ItemEffects` (procedural) can't be boot-checked; the prefab payload
-    // is the static surface generation targets.
-    for (const prefab of content.prefabs.values()) {
-      for (const spec of prefab.effects ?? []) {
-        if (!actionEffects.has(spec.id)) {
-          throw new Error(
-            `Prefab "${prefab.id}" lists item effect "${spec.id}" but no ` +
-            `action-effect resolver is registered. ` +
-            `Registered: [${actionEffects.ids().join(", ")}]`,
-          );
-        }
-      }
-    }
-
-    // T-077/T-078 content cross-checks (fail-fast, mirrors the checks above):
-    //  1. the lore tome prefabs referenced by game_config exist (this also
-    //     catches the long-latent missing tome/blank_tome prefab bug);
-    //  2. every prefab with a `container` declares a valid kind + capacity;
-    //  3. every `deployable` names a prefab that actually loads (covers the
-    //     chest kits + the pre-existing workbench/job_board kits).
-    const lore = content.getGameConfig().lore;
-    for (const id of [lore.tomeItemType, lore.blankTomeItemType]) {
-      if (!content.prefabs.get(id)) {
-        throw new Error(`game_config.lore references item prefab "${id}" but no such prefab is loaded.`);
-      }
-    }
-    for (const prefab of content.prefabs.values()) {
-      const container = (prefab.components as Record<string, unknown> | undefined)?.container as
-        | { kind?: string; capacity?: number } | undefined;
-      if (container) {
-        if (container.kind !== "tome" && container.kind !== "equipment") {
-          throw new Error(`Prefab "${prefab.id}" container.kind must be "tome" or "equipment", got "${container.kind}".`);
-        }
-        if (!(typeof container.capacity === "number" && container.capacity > 0)) {
-          throw new Error(`Prefab "${prefab.id}" container.capacity must be a positive number.`);
-        }
-      }
-      const deployable = (prefab.components as Record<string, unknown> | undefined)?.deployable as
-        | { prefabId?: string } | undefined;
-      if (deployable?.prefabId && !content.prefabs.get(deployable.prefabId)) {
-        throw new Error(`Prefab "${prefab.id}" deployable.prefabId "${deployable.prefabId}" resolves to no prefab.`);
-      }
-    }
-
-    // T-243: action-effect content cross-check — every `effects[].kind` on
-    // every ActionDef must resolve to a registered resolver, or the
-    // dispatcher throws mid-tick the first time that phase edge fires.
-    // Closes the doctrine gap (weapon_trace / buff_tick / projectile_trace
-    // were dispatch-time-only); same fail-fast stance as the checks above.
-    for (const action of content.actions.values()) {
-      for (const eff of action.effects) {
-        if (!actionEffects.has(eff.kind)) {
-          throw new Error(
-            `Action "${action.id}" phase "${eff.phase}" lists effect ` +
-            `"${eff.kind}" but no action-effect resolver is registered. ` +
-            `Registered: [${actionEffects.ids().join(", ")}]`,
-          );
-        }
-      }
-      // T-254: gate ids too (preconditions + cancel-rule gates) — an
-      // unknown gate previously threw mid-tick on first arbitration
-      // (sword_overhead shipped with an unregistered `tag_absent` for
-      // months and nothing noticed).
-      const gateRefs = [
-        ...(action.preconditions ?? []),
-        ...Object.values(action.cancel).flatMap((r) => r.gates ?? []),
-      ];
-      for (const g of gateRefs) {
-        if (!actionGates.has(g.gate)) {
-          throw new Error(
-            `Action "${action.id}" references gate "${g.gate}" but no gate ` +
-            `handler is registered. Registered: [${actionGates.ids().join(", ")}]`,
-          );
-        }
-      }
-    }
-
-    // T-245: POI activity registry + content cross-check — every PoiDef's
-    // `type` must resolve to a registered PoiActivityHandler, or PoiSystem
-    // throws when that POI first fires. Replaces the per-type switch; same
-    // fail-fast stance as the checks above.
-    const poiActivities = newPoiActivityRegistry();
-    for (const poi of content.pois.values()) {
-      if (!poiActivities.has(poi.type)) {
-        throw new Error(
-          `POI "${poi.id}" has activity type "${poi.type}" but no ` +
-          `PoiActivityHandler is registered. ` +
-          `Registered: [${poiActivities.ids().join(", ")}]`,
-        );
-      }
-    }
-
-    // System pipeline, declared in reading order. Real ordering constraints
-    // live on each system as `dependsOn` (e.g. PhysicsSystem.dependsOn =
-    // ["NpcAiSystem"] because NpcAi writes InputState via world.write() that
-    // Physics must see this tick). sortSystemsByDependencies computes the
-    // final order: it honours dependsOn and preserves this reading order for
-    // any pair whose relative ordering isn't load-bearing.
-    //
-    // DeathSystem stays last so it drains RequestDeath calls accumulated
-    // this tick; its position is implicit in the declaration order since no
-    // other system depends on it.
-    const declared: System[] = [
-      // Runs first so any Inventory/Equipment slot referencing an item entity
-      // destroyed last tick (durability broken, consumed, traded away) is
-      // scrubbed before downstream systems read slots or a stale ref is sent
-      // on the wire.
-      new StaleSlotCleanupSystem(),
-      // TriggerSystem drains last tick's buffered events early so its
-      // effects (procs, buffs, damage) land in this tick's changeset
-      // alongside everything else (T-259).
-      triggerSystem,
-      // NpcSensorySystem (T-040) drains last tick's perceived combat/noise
-      // events before NpcAiSystem runs, so the attackTarget jobs it sets are
-      // committed for the BT to honour next tick (gated like its own aggro).
-      npcSensorySystem,
-      new NpcAiSystem(content, jobs, behaviorTrees),
-      new EquipmentSystem(content),
-      new ContainerSystem(content),
-      new PlacementSystem(content),
-      // Recomputes the enclosed-cell cache on wall-change (dependsOn
-      // PlacementSystem so a wall deployed this tick is committed first). T-065.
-      enclosureSystem,
-      new CraftingSystem(content, recipeSteps),
-      new DayNightSystem(content),
-      new ResourceSystem(content, resourceEffects, resourceModifiers, deathSystem, modifierSources),
-      new PhysicsSystem(content, modifierSources),
-      new NoiseSystem(content),
-      new FogOfWarSystem(),
-      // ActionDispatcher advances every actor's slots (posture, locomotion,
-      // primary, reaction) from intent + events. The CSM is gone (T-228).
-      actionDispatcher,
-      new ItemPhysicsSystem(content),
-      new TerrainDigSystem(content),
-      new TraderSystem(content),
-      new DynastySystem(content),
-      new AnimationSystem(content),
-      new HitboxSystem(content),
-      new PoiSystem(content, poiActivities, () => this.sessions.keys()),
-      // Streams terrain in/out by entity proximity (T-064). Late so it reads
-      // this tick's committed positions; dependsOn PhysicsSystem pins that.
-      new ChunkLifecycleSystem(content),
-      new DebugCommandSystem(content, config.devMode ?? false),
-      deathSystem,
-    ];
-    this.systems = sortSystemsByDependencies(declared);
 
     // Atlas is the source of truth for initial terrain, the gate-summary
     // we publish to coordinator, AND the gate positions (cell metadata).
@@ -888,7 +347,7 @@ export class TileServer {
     // standing at the path/wilderness boundary.
     if (atlas.level.edges.stairs.length) {
       placeStairs(
-        this.world, content, atlas.level, atlas.heightBuffer, TILE_SIZE,
+        this.world, content, atlas.level, atlas.heightBuffer, TILE_SIZE, atlas.wallHeight,
       );
     }
     console.log(
@@ -926,9 +385,6 @@ export class TileServer {
     }, 5000);
 
     const loaded = this.saveManager ? await this.saveManager.load(this.world) : false;
-    // zoneGrid is null for now — atlas doesn't produce zones; ProceduralSpawner
-    // already no-ops every zone-driven method when this is null.
-    const zoneGrid: ZoneGridData | null = null;
     const tileSeed = atlas.tileSeed;
     // POIs (T-160): mob list filled before chunks commit; room-POI walls
     // get stamped into the buffers in place by `placePois`.  Always re-derived
@@ -946,9 +402,11 @@ export class TileServer {
         atlas.openBuffer,
         atlas.kindBuffer,
         atlas.materialBuffer,
+        atlas.fields,
         atlas.chambers,
         tileSeed,
         woodMat.id,
+        atlas.wallHeight,
       );
       chunksFromBuffers(
         this.world,
@@ -956,20 +414,33 @@ export class TileServer {
         atlas.materialBuffer,
         atlas.openBuffer,
         atlas.kindBuffer,
+        atlas.fields, // T-311 P3 render-field planes → VegFieldGrid/SurfaceStateGrid/WaterGrid
+        atlas.cliff,  // T-311 P6 cliff planes → CliffGrid
       );
-      this.spawnWorldState(content);
+      this.spawnWorldState(content, atlas.biomeTag);
 
       // Boundary decoration (forest trees, stone debris, …) is purely
       // visual and lives client-side now: KindGrid is networked so the
       // client decorates closed pixels itself. Server keeps no per-tree
       // entities — collision is handled by OpenMask in stepPhysics.
+    } else {
+      // Save-loaded chunks carry only Heightmap/MaterialGrid/OpenMask/KindGrid
+      // (save_manager's CHUNK_DEFS). The render-field grids are deterministic
+      // atlas output, deliberately excluded from the save, so overlay them onto
+      // the loaded chunks now — else scatter/moss/wetness see neutral fields
+      // until the next from-scratch gen (T-312b).
+      applyFieldsToChunks(this.world, atlas.fields, atlas.cliff);
+      // T-311 P5a: same bucket as the fields overlay above — biomeTag is
+      // atlas-derived, not gameplay state, so always refresh it from this
+      // boot's atlas classification (also self-heals old saves whose
+      // WorldClock predates the biomeTag field).
+      this.refreshWorldClockBiomeTag(atlas.biomeTag);
     }
 
-    const procedural = new ProceduralSpawner(this.world, content, zoneGrid, tileSeed);
+    const procedural = new ProceduralSpawner(this.world, content, tileSeed);
     if (!loaded) procedural.spawnInitialEntities();
-    // NPCs and props are always re-spawned from layout (not persisted across restarts).
+    // NPCs are always re-spawned from layout (not persisted across restarts).
     procedural.spawnInitialNpcs();
-    procedural.spawnProceduralProps();
 
     // Mob POIs run AFTER procedural NPCs / props so they ride on top of the
     // base population.  Skipped on loaded saves — mob entities aren't
@@ -988,9 +459,29 @@ export class TileServer {
       }
     }
 
+    // Handoff/gate/zone coordinator (T-352). Constructed after atlas load so
+    // zoneBuffer/zoneById are final; gatewayUrl/gatewayLink are assigned by
+    // the self-registration blocks below and `events` on the very next line,
+    // so those three are lazy getters — nothing invokes the coordinator
+    // before the tick loop starts.
+    this.handoffCoordinator = new HandoffCoordinator({
+      world: this.world,
+      eventBus: this.eventBus,
+      sessions: this.sessions,
+      tickLoop: this.tickLoop,
+      tileId: config.tileId,
+      serviceSecret: this.serviceSecret,
+      zoneBuffer: this.zoneBuffer,
+      zoneById: this.zoneById,
+      getGatewayUrl: () => this.gatewayUrl,
+      getGatewayLink: () => this.gatewayLink,
+      getEvents: () => this.events,
+    });
+
     // Subscribe to tile events that need to reach clients as GameEvents.
-    // The router is responsible for translation; handoff side-effects stay here.
-    this.events = new EventRouter(this.eventBus, (p) => this.initiateHandoff(p));
+    // The router is responsible for translation; the handoff side-effect
+    // lives on the coordinator.
+    this.events = new EventRouter(this.eventBus, (p) => this.handoffCoordinator.initiateHandoff(p));
 
     // Start the WebTransport QUIC server (Deno.QuicEndpoint, requires --unstable-net)
     listenQuic(config, (session) => this.handleSession(session));
@@ -1006,6 +497,10 @@ export class TileServer {
         serviceSecret: config.serviceSecret ?? "",
         getCertHashHex: () => this.certHashHex,
         getWtPort: () => this.wtPort,
+        // Gates /debug/save-action (T-327) — same devMode flag DebugCommandSystem
+        // uses, so the save-back endpoint is dev-only symmetrically with the
+        // live-tuning commands that feed it.
+        devMode: config.devMode ?? false,
       });
     }
 
@@ -1117,6 +612,7 @@ export class TileServer {
 
         this.world.write(playerId, InputState, {
           facing: latest.facing,
+          pitch: latest.pitch,
           movementX: latest.movementX,
           movementY: latest.movementY,
           actions: mergedActions,
@@ -1156,6 +652,25 @@ export class TileServer {
     const changeset = this.world.applyChangeset();
     _sysMs.push(["[changeset]", performance.now() - _tChangeset]);
 
+    // Re-index the spatial grid on the COMMITTED world (T-343).
+    //
+    // The rebuild in step 2 reflects last tick's state — which is right for the
+    // systems, who must all see one consistent snapshot. But AoI (step 6) reads
+    // this same grid, and an entity BORN during step 2 (a projectile, a dropped
+    // item, a spawned NPC) is not in it. So on its first tick it is replicated to
+    // nobody.
+    //
+    // For a projectile that is not a rounding error, it is the whole feature: a
+    // bow arrow lives ~3 ticks, so a third of its flight is never sent, and it
+    // appears to the client already downrange. Anything faster — dying inside one
+    // tick — is NEVER rendered at all, while the server happily reports the hit.
+    // That is exactly what "the arrow doesn't show up but the damage lands" looks
+    // like, and it would have been chased as a render bug forever.
+    //
+    // O(entities with Position) and allocation-free, so a second pass is cheap
+    // next to shipping an invisible projectile.
+    this.spatial.rebuild(this.world);
+
     // ── 4. FIRE EVENTS ──────────────────────────────────────────────────────
     // Subscribers see the already-committed world state.
     deferredEvents.flush(this.eventBus);
@@ -1163,13 +678,13 @@ export class TileServer {
     // Gate proximity check (T-140) — runs after systems so positions are
     // committed. Publishes GateApproached for any player within a gate's
     // trigger radius; the EventRouter routes it to initiateHandoff.
-    this.checkGateProximity();
+    this.handoffCoordinator.checkGateProximity();
 
     // Zone transition check (T-211) — also after-systems / post-changeset.
     // Walks every active session, looks up the zone under the player's
     // current voxel, and fires ZoneEntered when it differs from the last
     // recorded zone for that player.
-    this.checkZoneTransitions();
+    this.handoffCoordinator.checkZoneTransitions();
 
     // ── 5. BUILD DELTA ──────────────────────────────────────────────────────
     const events = this.events.drain();
@@ -1185,20 +700,20 @@ export class TileServer {
       const removedComponents = this.buildRemovalMap(changeset.removals);
       const worldDestroys = new Set(changeset.destroys);
       const aoiRadius = this.content.getGameConfig().network.aoiRadius;
+      // Session-independent AoI inputs (chunk ids, always-visible set, container
+      // list) are computed once per tick, not once per session (T-355).
+      const sharedAoi = computeAoiSharedInputs(this.world);
       for (const [playerId, session] of this.sessions) {
         if (!session.isOpen) { console.warn(`[TileServer] tick ${serverTick}: session ${playerId.slice(-8)} is closed, skipping`); continue; }
         const inputState = this.world.get(playerId, InputState);
         const ackInputSeq = inputState?.seq ?? 0;
         const msg = computeSessionUpdate(
-          this.world, session, this.spatial, playerId,
+          this.world, sharedAoi, session, this.spatial, playerId,
           changedComponents, removedComponents, worldDestroys, events, serverTick, ackInputSeq,
           aoiRadius, this.sessions.size,
         );
         const payload = binaryStateMessageCodec.encode(msg);
-        const framed = new Uint8Array(4 + payload.byteLength);
-        new DataView(framed.buffer).setUint32(0, payload.byteLength, true);
-        framed.set(payload, 4);
-        session.sendStateRaw(framed);
+        session.sendStateRaw(encodeFrame(payload));
       }
     }
     _sysMs.push(["[send]", performance.now() - _tSend]);
@@ -1259,25 +774,20 @@ export class TileServer {
       }
     }
 
-    // Remove disconnected sessions
+    // Remove disconnected sessions — teardownSession (T-354) is the single
+    // cleanup path shared with handleSession's end-of-session continuation.
     for (const [playerId, session] of this.sessions) {
       if (!session.isOpen) {
         // T-256: an in-flight handoff owns this entity's fate — don't destroy
         // it out from under the fetch (that ghosts it on the destination).
         // initiateHandoff destroys + deletes on success; the tile-sweep cleans
         // it up after the handoff resolves and clears handingOff.
-        if (this.handingOff.has(playerId)) continue;
-        this.sessions.delete(playerId);
-        this.playerLastZone.delete(playerId);
-        this.playerDisplayNames.delete(playerId);
-        this.playerCharacters.delete(playerId);
-        this.playerHearthAnchors.delete(playerId);
-        if (this.world.isAlive(playerId)) {
-          // T-252: take the carried item entities along — players respawn
-          // fresh (save doctrine), so leaving them would leak forever.
-          destroyCarriedItemEntities(this.world, playerId);
-          this.world.destroy(playerId);
-        }
+        if (this.handoffCoordinator.isHandingOff(playerId)) continue;
+        // Fire-and-forget — the tick loop must not block on the account
+        // service's HTTP calls; the map deletes run synchronously regardless.
+        this.teardownSession(playerId).catch((err: unknown) => {
+          console.error("[TileServer] teardownSession failed:", err);
+        });
       }
     }
 
@@ -1332,169 +842,7 @@ export class TileServer {
     return map;
   }
 
-  // ---- handoff side-effect ----
-
-  /**
-   * Per-tick proximity check: any player whose Position is within a
-   * GateLink's radius gets a GateApproached event published. The
-   * EventRouter forwards to initiateHandoff. The handingOff guard +
-   * destination tile's handoffId dedup prevent re-firing while a
-   * handoff is in flight.
-   */
-  private checkGateProximity(): void {
-    if (!this.gatewayUrl || this.sessions.size === 0) return;
-    const gates = this.world.query(Position, GateLink);
-    if (gates.length === 0) return;
-
-    for (const playerId of this.sessions.keys()) {
-      if (this.handingOff.has(playerId)) continue;
-      const pos = this.world.get(playerId, Position);
-      if (!pos) continue;
-      for (const { entityId: gateId, position: gp, gateLink } of gates) {
-        const dx = pos.x - gp.x;
-        const dy = pos.y - gp.y;
-        const r = gateLink.radius;
-        if (dx * dx + dy * dy <= r * r) {
-          this.eventBus.publish(TileEvents.GateApproached, {
-            entityId: playerId,
-            gateId,
-            destinationTileId: gateLink.destinationTileId,
-          });
-          break; // one gate per player per tick is plenty
-        }
-      }
-    }
-  }
-
-  /**
-   * T-211 zone tracker. For each active session, look up the zone id
-   * under the player's current voxel and fire a ZoneEntered game event
-   * when the zone has changed. The map is cleared on disconnect.
-   */
-  private checkZoneTransitions(): void {
-    const buf = this.zoneBuffer;
-    if (!buf || this.sessions.size === 0) return;
-    const stride = TILE_SIZE;
-    for (const playerId of this.sessions.keys()) {
-      const pos = this.world.get(playerId, Position);
-      if (!pos) continue;
-      const vx = pos.x | 0;
-      const vy = pos.y | 0;
-      if (vx < 0 || vy < 0 || vx >= stride || vy >= stride) continue;
-      const zoneId = buf[vy * stride + vx];
-      const lastZone = this.playerLastZone.get(playerId) ?? -1;
-      if (zoneId === lastZone) continue;
-      this.playerLastZone.set(playerId, zoneId);
-
-      // Sub-threshold / unzoned (0xFFFF for closed-pixel sentinel + water
-      // blobs) — emit anyway with an empty name so the client can clear
-      // its caption when the player walks across a no-zone band.
-      const meta = this.zoneById.get(zoneId);
-      this.events.push({
-        type: "ZoneEntered",
-        playerId,
-        zoneId,
-        zoneName:     meta?.name ?? "",
-        topologyRole: meta?.topologyRole ?? "",
-        traversal:    meta?.traversal ?? "path",
-      });
-    }
-  }
-
-  /**
-   * Fire-and-forget handoff to the destination tile via the gateway. The
-   * re-entry guard prevents a second GateApproached event from starting a
-   * parallel handoff while the first is still pending its round-trip; the
-   * destination tile deduplicates retries on handoffId.
-   *
-   * Position is mirrored to the destination's matching edge so the player
-   * lands just inside the new tile's gate (away from its own trigger
-   * radius — otherwise we'd bounce straight back).
-   */
-  private initiateHandoff(payload: { entityId: EntityId; gateId: string; destinationTileId: string }): void {
-    if (!this.gatewayUrl || this.handingOff.has(payload.entityId)) return;
-    this.handingOff.add(payload.entityId);
-
-    const gateLink = this.world.get(payload.gateId as EntityId, GateLink);
-    const dynastyId = this.world.get(payload.entityId, Heritage)?.dynastyId ?? payload.entityId;
-    const handoffId = crypto.randomUUID();
-    const body = serializePlayer(this.world, payload.entityId, dynastyId, payload.destinationTileId, handoffId);
-
-    // Land the player just inside the destination's matching gate. Mirror both
-    // the re-spawn coordinates and the Position overlay so spawnPrefab and the
-    // overlay agree.
-    if (gateLink) {
-      const arrival = mirrorPosition(body.z, gateLink.edge);
-      body.x = arrival.x; body.y = arrival.y; body.z = arrival.z;
-      body.player.position = arrival;
-    }
-
-    // Inform the coordinator (T-139 channel). Best-effort — gateway may
-    // be down or the link may not be open yet.
-    this.gatewayLink?.publish({
-      type: "world_event",
-      sourceTileId: this.tileId,
-      event: {
-        kind: "gate_approached",
-        playerId: payload.entityId,
-        destinationTileId: payload.destinationTileId,
-        edge: gateLink?.edge ?? "north",
-      },
-    }).catch(() => {/* best-effort */});
-
-    fetch(`${this.gatewayUrl}/handoff`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        [SERVICE_SECRET_HEADER]: this.serviceSecret,
-      },
-      body: JSON.stringify(body),
-    }).then(async (r) => {
-      if (r.ok) {
-        const ack = await r.json().catch(() => null) as
-          | { destinationTileAddress?: string; destinationTileCertHashHex?: string }
-          | null;
-        const session = this.sessions.get(payload.entityId);
-        // Send a final GateCrossing event on the reliable stream and AWAIT
-        // the flush — sendStateRaw queues writes via a Promise chain, and
-        // session.close() trips the queue's _closed guard if it runs before
-        // the queued microtask. Without the await the GateCrossing bytes
-        // never hit the wire and the client just sees the disconnect.
-        if (session && ack?.destinationTileAddress) {
-          this.sendGateCrossing(
-            session,
-            payload.entityId,
-            ack.destinationTileAddress,
-            ack.destinationTileCertHashHex ?? "",
-          );
-          await session.flush();
-        }
-        // Mark the player as handed-off BEFORE destroy/close so the
-        // disconnect-cleanup path in handleSession knows to skip the
-        // recordDeath branch — the entity is destroyed because we moved
-        // them, not because they died.
-        this.handedOff.add(payload.entityId);
-        if (this.world.isAlive(payload.entityId)) this.world.destroy(payload.entityId);
-        session?.close();
-        this.sessions.delete(payload.entityId);
-        console.log(
-          `[TileServer] handoff complete: ${payload.entityId.slice(0, 8)} → ${payload.destinationTileId}`,
-        );
-      } else {
-        console.error(`[TileServer] handoff failed for ${payload.entityId}: ${r.status}`);
-      }
-    }).catch((err: unknown) => {
-      console.error("[TileServer] handoff fetch error:", err);
-    }).finally(() => {
-      this.handingOff.delete(payload.entityId);
-      // T-256: don't let a handedOff marker outlive the operation. The success
-      // path's own cleanup (destroy + sessions.delete) makes the subsequent
-      // disconnect-cleanup superseded-return before it consumes the marker, so
-      // a leaked entry would later swallow a real death's recordDeath for a
-      // player who returned to this tile.
-      this.handedOff.delete(payload.entityId);
-    });
-  }
+  // ---- player spawn / respawn ----
 
   /**
    * Spawn a fresh player entity for `playerId` — the join-time spawn pipeline,
@@ -1563,55 +911,34 @@ export class TileServer {
           console.error("[TileServer] respawn recordDeath failed:", err);
         });
       }
-      await this.spawnFreshPlayer(playerId, this.playerHearthAnchors.get(playerId) ?? null);
+      await this.spawnFreshPlayer(playerId, this.handoffCoordinator.getHearthAnchor(playerId));
       console.log(`[TileServer] player ${playerId.slice(0, 8)} respawned (heir)`);
     } finally {
       this.respawning.delete(playerId);
     }
   }
 
-  /**
-   * Encode a one-off BinaryStateMessage carrying a single GateCrossing event
-   * and push it to the player's reliable stream. Sequenced through the
-   * session's write queue so it is delivered before the subsequent close().
-   */
-  private sendGateCrossing(
-    session: ClientSession,
-    entityId: EntityId,
-    destinationTileAddress: string,
-    destinationTileCertHashHex: string,
-  ): void {
-    const msg: BinaryStateMessage = {
-      serverTick: this.tickLoop.currentTick,
-      ackInputSeq: this.world.get(entityId, InputState)?.seq ?? 0,
-      spawns: [],
-      deltas: [],
-      removals: [],
-      destroys: [],
-      events: [{
-        type: "GateCrossing" as const,
-        entityId,
-        destinationTileAddress,
-        destinationTileCertHashHex,
-      }],
-      fogSnapshot: null,
-      fogReveals: new Uint16Array(0),
-      onlineCount: this.sessions.size,
-    };
-    const payload = binaryStateMessageCodec.encode(msg);
-    const framed = new Uint8Array(4 + payload.byteLength);
-    new DataView(framed.buffer).setUint32(0, payload.byteLength, true);
-    framed.set(payload, 4);
-    session.sendStateRaw(framed);
-  }
-
-  private spawnWorldState(content: ContentService): void {
+  private spawnWorldState(content: ContentService, biomeTag: string): void {
     const dayLengthTicks = content.getGameConfig().dayNight.dayLengthTicks;
     const id = newEntityId();
     this.world.create(id);
-    this.world.write(id, WorldClock, { ticksElapsed: 0, dayLengthTicks });
+    this.world.write(id, WorldClock, { ticksElapsed: 0, dayLengthTicks, biomeTag });
     console.log("[TileServer] world-state entity created");
     // Starter entities (workstations, nodes) are declared in tile_layout.json.
+  }
+
+  /**
+   * T-311 P5a: refresh the WorldClock singleton's `biomeTag` from this boot's
+   * atlas-derived value. biomeTag is atlas-derived metadata (not gameplay
+   * state) — same bucket as the render-field grids `applyFieldsToChunks`
+   * overlays onto save-loaded chunks, so a save-loaded tile's biomeTag always
+   * reflects the CURRENT atlas classification, not whatever (or nothing) an
+   * older save encoded.
+   */
+  private refreshWorldClockBiomeTag(biomeTag: string): void {
+    for (const { entityId, worldClock } of this.world.query(WorldClock)) {
+      this.world.write(entityId, WorldClock, { ...worldClock, biomeTag });
+    }
   }
 
   /**
@@ -1636,6 +963,66 @@ export class TileServer {
       },
     });
     this.lastPushedGateSummary = this.currentGateSummary;
+  }
+
+  /**
+   * Single disconnect-teardown path (T-354) — called by both the tick loop's
+   * dead-session sweep and handleSession's end-of-session continuation.
+   * Whichever notices the disconnect first wins the race: the map deletes run
+   * synchronously before the first await, so handleSession's stale-session
+   * guard (and the sweep's own map iteration) sees the entry already gone and
+   * no-ops. Callers own the handingOff guard — an in-flight handoff owns the
+   * entity's fate, so neither caller invokes this for one.
+   */
+  private async teardownSession(playerId: EntityId): Promise<void> {
+    this.sessions.delete(playerId);
+    this.handoffCoordinator.clearZone(playerId);
+    this.playerDisplayNames.delete(playerId);
+    this.playerCharacters.delete(playerId);
+    this.handoffCoordinator.clearHearthAnchor(playerId);
+    // Persist fog of war (T-161) before the entity (and its FogState) is
+    // dropped.  Ordered BEFORE the handed-off early-return (T-256: it used to
+    // run after, so fog was dropped on the rare crossing that reaches here).
+    // Best-effort: errors log but never block disconnect cleanup.
+    if (this.accountClient) {
+      const fog = this.world.get(playerId, FogState);
+      if (fog) {
+        await this.accountClient.saveFog(playerId, this.tileId, fog.seenEver).catch((err: unknown) => {
+          console.error("[TileServer] fog save failed:", err);
+        });
+      }
+    }
+    // Handoff already destroyed the entity + closed the session intentionally
+    // (player moved to another tile). Don't treat that as a death or rewrite
+    // the last_tile_id back to ours; the destination tile owns both now.
+    const wasHandedOff = this.handoffCoordinator.consumeHandedOff(playerId);
+    if (wasHandedOff) {
+      console.log(`[TileServer] player ${playerId.slice(0, 8)} handed off (no death recorded)`);
+      return;
+    }
+    if (this.world.isAlive(playerId)) {
+      // Entity still alive → clean disconnect, destroy locally.
+      // T-252: take the carried item entities along — players respawn fresh
+      // (save doctrine), so leaving them would leak forever.
+      // T-219: destroySubtree also takes the bone-entity subtree (and any
+      // scene-graph-parented equipment on it) along.
+      destroyCarriedItemEntities(this.world, playerId);
+      this.world.destroySubtree(playerId);
+      if (this.accountClient) {
+        // Tell the account service which tile the player last occupied so
+        // the next login routes back here.
+        await this.accountClient.updateLocation(playerId, this.tileId).catch((err: unknown) => {
+          console.error("[TileServer] updateLocation failed:", err);
+        });
+      }
+    } else if (this.accountClient) {
+      // Entity gone → combat death already destroyed it; inform the account
+      // service so heritage advances a generation.
+      await this.accountClient.recordDeath(playerId, "damage").catch((err: unknown) => {
+        console.error("[TileServer] recordDeath failed:", err);
+      });
+    }
+    console.log(`[TileServer] player ${playerId.slice(0, 8)} disconnected`);
   }
 
   private async handleSession(session: WebTransportSession): Promise<void> {
@@ -1711,7 +1098,7 @@ export class TileServer {
     this.playerDisplayNames.set(playerId, displayName);
     // Cache the hearth anchor (T-079) so an in-session respawn can spawn the
     // heir at the hearth (or detect its destruction) — respawn has no join msg.
-    this.playerHearthAnchors.set(playerId, info?.hearthAnchor ?? null);
+    this.handoffCoordinator.setHearthAnchor(playerId, info?.hearthAnchor ?? null);
 
     // Character-creation selections (T-071): validate the client's join-time
     // species/lore picks against bootstrapped content and cache the resolved
@@ -1730,7 +1117,7 @@ export class TileServer {
     if (this.world.isAlive(playerId)) {
       console.log(`[TileServer] player ${playerId.slice(0, 8)} rejoining (post-handoff)`);
     } else {
-      await this.spawnFreshPlayer(playerId, this.playerHearthAnchors.get(playerId) ?? null);
+      await this.spawnFreshPlayer(playerId, this.handoffCoordinator.getHearthAnchor(playerId));
     }
 
     // Send ack with canonical playerId
@@ -1788,32 +1175,20 @@ export class TileServer {
     // while we were awaiting createUnidirectionalStream() above.
     {
       const initialMsg = computeSessionUpdate(
-        this.world, clientSession, this.spatial, playerId,
+        this.world, computeAoiSharedInputs(this.world), clientSession, this.spatial, playerId,
         new Map(), new Map(), new Set(), [], this.tickLoop.currentTick, 0,
         this.content.getGameConfig().network.aoiRadius,
         this.sessions.size,
       );
       const initialPayload = binaryStateMessageCodec.encode(initialMsg);
-      const initialFramed = new Uint8Array(4 + initialPayload.byteLength);
-      new DataView(initialFramed.buffer).setUint32(0, initialPayload.byteLength, true);
-      initialFramed.set(initialPayload, 4);
-      clientSession.sendStateRaw(initialFramed);
+      clientSession.sendStateRaw(encodeFrame(initialPayload));
     }
 
     // Subsequent ticks will send deltas via the normal AoI loop.
-    // Background: accept the two further client-opened bidi streams in open order —
-    // the content stream (2nd) then the command stream (3rd, T-273) — and serve
-    // each for the lifetime of the session. The client opens them in this order
-    // (tile_connection.ts connect()), so a single reader hands them out in turn.
+    // Background: accept the one further client-opened bidi stream — the
+    // command stream (T-273) — and serve it for the lifetime of the session.
     const bidiReader = (session.incomingBidirectionalStreams as ReadableStream).getReader();
     (async () => {
-      const content = await bidiReader.read();
-      if (!content.done && content.value) {
-        clientSession.serveContent(
-          content.value as { readable: ReadableStream<Uint8Array>; writable: WritableStream<Uint8Array> },
-          this.content,
-        ).catch(() => {});
-      }
       const command = await bidiReader.read();
       if (!command.done && command.value) {
         clientSession.serveCommands(
@@ -1831,18 +1206,15 @@ export class TileServer {
     // Input receiver runs concurrently — returns when the session closes
     await clientSession.receiveInputs(session);
 
-    // Session ended. Two paths:
-    //   - entity still alive → clean disconnect, destroy locally. Also tell
-    //     the account service which tile the player last occupied so the
-    //     next login routes back here.
-    //   - entity gone → combat death already destroyed it; inform the
-    //     account service so heritage advances a generation.
+    // Session ended — teardownSession (T-354) is the single cleanup path,
+    // shared with the tick loop's dead-session sweep.
     clientSession.close();
     // T-253: a reconnect may have replaced the map entry with a NEW session —
     // this (old) session's cleanup must not delete it or destroy the
-    // player the new session is serving.
+    // player the new session is serving. Also dedups against the tick-loop
+    // sweep, which deletes the entry synchronously when it wins the race.
     if (this.sessions.get(playerId) !== clientSession) {
-      console.log(`[TileServer] player ${playerId.slice(0, 8)}: stale session ended (superseded by reconnect)`);
+      console.log(`[TileServer] player ${playerId.slice(0, 8)}: stale session ended (superseded or already torn down)`);
       return;
     }
     // T-256: a handoff fetch is in flight — it owns the entity. A disconnect
@@ -1850,49 +1222,11 @@ export class TileServer {
     // last_tile_id back to ours / ghosts the entity on the destination). The
     // handoff's success path (destroy + delete) or the tile-sweep (on failure)
     // cleans up once handingOff clears.
-    if (this.handingOff.has(playerId)) {
+    if (this.handoffCoordinator.isHandingOff(playerId)) {
       console.log(`[TileServer] player ${playerId.slice(0, 8)}: session ended mid-handoff — handoff owns the entity`);
       return;
     }
-    this.sessions.delete(playerId);
-    this.playerDisplayNames.delete(playerId);
-    this.playerCharacters.delete(playerId);
-    this.playerHearthAnchors.delete(playerId);
-    // Persist fog of war (T-161) before the entity (and its FogState) is
-    // dropped.  Ordered BEFORE the handed-off early-return (T-256: it used to
-    // run after, so fog was dropped on the rare crossing that reaches here).
-    // Best-effort: errors log but never block disconnect cleanup.
-    if (this.accountClient) {
-      const fog = this.world.get(playerId, FogState);
-      if (fog) {
-        await this.accountClient.saveFog(playerId, this.tileId, fog.seenEver).catch((err: unknown) => {
-          console.error("[TileServer] fog save failed:", err);
-        });
-      }
-    }
-    // Handoff already destroyed the entity + closed the session intentionally
-    // (player moved to another tile). Don't treat that as a death or rewrite
-    // the last_tile_id back to ours; the destination tile owns both now.
-    const wasHandedOff = this.handedOff.delete(playerId);
-    if (wasHandedOff) {
-      console.log(`[TileServer] player ${playerId.slice(0, 8)} handed off (no death recorded)`);
-      return;
-    }
-    if (this.world.isAlive(playerId)) {
-      // T-252: take the carried item entities along (players respawn fresh).
-      destroyCarriedItemEntities(this.world, playerId);
-      this.world.destroy(playerId);
-      if (this.accountClient) {
-        await this.accountClient.updateLocation(playerId, this.tileId).catch((err: unknown) => {
-          console.error("[TileServer] updateLocation failed:", err);
-        });
-      }
-    } else if (this.accountClient) {
-      await this.accountClient.recordDeath(playerId, "damage").catch((err: unknown) => {
-        console.error("[TileServer] recordDeath failed:", err);
-      });
-    }
-    console.log(`[TileServer] player ${playerId.slice(0, 8)} disconnected`);
+    await this.teardownSession(playerId);
   }
 }
 

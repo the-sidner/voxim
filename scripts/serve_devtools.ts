@@ -110,6 +110,10 @@ const WRITABLE_PREFIXES = [
   "clip_overrides/",
   "generators/",
   "skeletons/",
+  "materials/",   // T-311 Phase 1b — the Studio Material editor writes render blocks
+  "procmodels/",  // T-311 Phase 1a — the Studio ProcModel editor writes tuned params
+  "dissolve_profiles/", // T-311 P5c — the Studio Dissolve editor writes fray/cap tuning
+  "cliff_profiles/", // T-311 P6 — the Studio Cliff editor writes CliffProfileDefs
 ];
 
 function isWritablePath(file: string): boolean {

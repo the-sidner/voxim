@@ -17,5 +17,13 @@
   "tags": [
     "metal",
     "copper"
-  ]
+  ],
+  "generatorPreferences": {
+    "density_range": [0, 0.02],
+    "thickness_range": [0.05, 0.2],
+    "layerable": false
+  },
+  "render": {
+    "textureStyle": "metal"
+  }
 }

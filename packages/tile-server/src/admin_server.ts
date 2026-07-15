@@ -26,6 +26,14 @@ export interface AdminServerDeps {
   getCertHashHex: () => string;
   /** Returns the current WebTransport port. Called per-request. */
   getWtPort: () => number;
+  /**
+   * Gates `/debug/save-action` (T-327) — the combat-feel tuning panel's
+   * save-back button writes a live-patched ActionDef to
+   * `packages/content/data/actions/{id}.json` through this endpoint. Same
+   * flag `DebugCommandSystem` gates on, so a prod deploy can't be told to
+   * rewrite its own content files.
+   */
+  devMode: boolean;
 }
 
 /** Control-plane endpoints requiring the shared service secret (T-258). */
@@ -138,6 +146,30 @@ async function handleAdminRequest(
     }
   }
 
+  // Save-back for the combat-feel tuning panel (T-327): writes the CURRENT
+  // in-memory ActionDef (including any live DebugSetActionParam patches this
+  // session made) to its content file, so a good feel found via live tuning
+  // survives a restart instead of evaporating. Dev-only — same devMode flag
+  // DebugCommandSystem gates the patch commands themselves on.
+  if (req.method === "POST" && url.pathname === "/debug/save-action") {
+    if (!deps.devMode) return new Response("dev mode disabled", { status: 403 });
+    try {
+      const body = await req.json() as { actionId?: string };
+      const actionId = body.actionId;
+      if (typeof actionId !== "string" || !/^[a-z0-9_]+$/.test(actionId)) {
+        return new Response("bad request: actionId must be a non-empty snake_case id", { status: 400 });
+      }
+      const def = deps.content.actions.get(actionId);
+      if (!def) return new Response(`unknown action "${actionId}"`, { status: 404 });
+      const target = new URL(`../../content/data/actions/${actionId}.json`, import.meta.url).pathname;
+      await Deno.writeTextFile(target, JSON.stringify(def, null, 2) + "\n");
+      console.log(`[TileServer] debug: saved live-tuned action "${actionId}" -> ${target}`);
+      return Response.json({ ok: true, path: target });
+    } catch (err) {
+      return new Response(`save failed: ${(err as Error).message}`, { status: 400 });
+    }
+  }
+
   if (req.method === "GET" && url.pathname === "/cert-hash") {
     return Response.json(
       { sha256: deps.getCertHashHex() },
@@ -153,10 +185,22 @@ async function handleAdminRequest(
   }
 
   // Serve all other client assets (index.html, dist/game.js, src/ui/theme.css, etc.)
-  return serveDir(req, {
+  //
+  // `Cache-Control: no-cache` is REQUIRED, not a nicety (T-332): without it the
+  // browser applies HEURISTIC freshness (roughly a fraction of the file's age)
+  // and will happily serve a stale asset without revalidating. That silently
+  // desynchronises the bundle from its stylesheet — a rebuild ships new markup
+  // (new class names) while the browser keeps the OLD theme.css, so the new
+  // elements have no styles and collapse into document flow, stacking at the
+  // top of the page. `no-cache` does NOT mean "don't cache": it means "always
+  // revalidate", and the ETag serveDir already emits makes that a cheap 304.
+  const res = await serveDir(req, {
     fsRoot: new URL("../../client", import.meta.url).pathname,
     quiet: true,
   });
+  const headers = new Headers(res.headers);
+  headers.set("cache-control", "no-cache");
+  return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
 }
 
 /**

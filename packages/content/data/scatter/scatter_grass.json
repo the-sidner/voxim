@@ -1,0 +1,42 @@
+{
+  "id": "scatter_grass",
+  "material": [
+    "dirt",
+    "grass",
+    "moss"
+  ],
+  "procModel": "grass_tuft",
+  "pool": 4,
+  "stride": 3,
+  "baseScale": 0.42,
+  "scaleJitter": [
+    0.7,
+    1.4
+  ],
+  "rotate": true,
+  "densityField": [
+    {
+      "field": "fertility",
+      "curve": "smoothstep",
+      "min": 0.2,
+      "max": 0.45,
+      "weight": 0.8
+    }
+  ],
+  "cluster": {
+    "count": [
+      0,
+      3
+    ],
+    "radius": 1.4
+  },
+  "morphField": [
+    {
+      "field": "corruption",
+      "curve": "linear",
+      "min": 0.35,
+      "max": 0.6,
+      "weight": 1.0
+    }
+  ]
+}

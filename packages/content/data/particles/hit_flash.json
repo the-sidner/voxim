@@ -1,0 +1,23 @@
+{
+  "id": "hit_flash",
+  "source": "hit_impact",
+  "material": "torch_mat",
+  "count": [
+    1,
+    1
+  ],
+  "speed": [
+    0,
+    0
+  ],
+  "spreadDeg": 0,
+  "lifetime": [
+    0.16,
+    0.16
+  ],
+  "gravityScale": 0,
+  "size": {
+    "start": 0.55,
+    "end": 0
+  }
+}

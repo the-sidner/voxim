@@ -1,0 +1,31 @@
+{
+  "id": "heavy_thrower",
+  "extends": "_playable_character",
+  "modelId": "biped_skeletal",
+  "modelScale": 1.7,
+  "animationSlots": {
+    "idle": "great_sword_idle",
+    "walk_forward": "great_sword_walk",
+    "walk_backward": "great_sword_walk",
+    "strafe_left": "great_sword_strafe",
+    "strafe_right": "great_sword_strafe",
+    "combat_idle": "great_sword_idle",
+    "weapon.swing_clip": "great_sword_attack",
+    "hit_front": "standing_react_large_from_front",
+    "hit_back": "standing_react_large_from_back",
+    "death": "two_handed_sword_death"
+  },
+  "morphValues": {
+    "torsoHeight": 1.3,
+    "shoulderWidth": 1.4,
+    "hipWidth": 1.1,
+    "rightArmScale": 1.5,
+    "leftArmScale": 1.5,
+    "legLength": 1.05
+  },
+  "components": {
+    "npc": {
+      "npcType": "heavy_thrower"
+    }
+  }
+}

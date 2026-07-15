@@ -1,0 +1,60 @@
+{
+  "id": "throw_release",
+  "kind": "active",
+  "slot": "primary",
+  "limbs": [
+    "right_hand"
+  ],
+  "phases": {
+    "active": {
+      "ticks": 1
+    },
+    "winddown": {
+      "ticks": 6
+    }
+  },
+  "cancel": {
+    "active": {
+      "into": []
+    },
+    "winddown": {
+      "into": []
+    }
+  },
+  "movement": {
+    "active": "locked",
+    "winddown": 0.55
+  },
+  "priority": 5,
+  "preconditions": [
+    {
+      "gate": "has_item",
+      "params": {
+        "prefabId": "throwing_rock"
+      }
+    }
+  ],
+  "effects": [
+    {
+      "phase": "active:enter",
+      "kind": "projectile_spawn"
+    },
+    {
+      "phase": "active:enter",
+      "kind": "consume_item",
+      "params": {
+        "prefabId": "throwing_rock"
+      }
+    }
+  ],
+  "animation": {
+    "active": {
+      "clipId": "standing_aim_recoil",
+      "loop": false
+    },
+    "winddown": {
+      "clipId": "standing_aim_recoil",
+      "loop": false
+    }
+  }
+}

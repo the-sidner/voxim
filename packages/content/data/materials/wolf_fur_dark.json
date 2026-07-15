@@ -17,5 +17,13 @@
   "tags": [
     "organic",
     "fur"
-  ]
+  ],
+  "generatorPreferences": {
+    "density_range": [0.5, 0.9],
+    "thickness_range": [0.02, 0.06],
+    "layerable": true
+  },
+  "render": {
+    "textureStyle": "organic"
+  }
 }

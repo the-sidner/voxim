@@ -48,8 +48,29 @@ export interface InventoryState {
 }
 
 export interface HotbarState {
-  /** 8 quick-access slots mirroring specific inventory indices. */
-  slots: (ItemStack | null)[];
+  /**
+   * 8 quick-access slots. Each entry is the INVENTORY slot index currently
+   * assigned to that hotbar slot, or null when unassigned (T-309
+   * prerequisite — `hotbar_assign`/`hotbar_use`). The displayed ItemStack is
+   * derived live from InventoryState via this mapping (see `hotbarItems`
+   * below), not stored redundantly — so quantity changes / consumption on
+   * the assigned inventory slot show up automatically.
+   *
+   * Client-local for now: not networked, not persisted across reconnect
+   * (session-scoped). The ticket's full vision networks the hotbar
+   * server-authoritatively so other players see slung gear, and gates
+   * inventory access behind a backpack slot — that is a separate, bigger
+   * arc (see TICKETS.md T-309), not built here.
+   *
+   * Known simplification: because this maps by inventory SLOT INDEX (per
+   * the ticket), an unrelated inventory reorder that lands a different item
+   * on the assigned index will silently show that new item in the hotbar.
+   * Acceptable for a client-local v1.
+   */
+  assignments: (number | null)[];
+  /** Which hotbar slot is "active" (conceptually in-hand). Purely a client-
+   *  local selection (`hotbar_use`) — does not equip anything; the real
+   *  Equipment system is unrelated and unaffected. */
   activeIndex: number;
 }
 
@@ -177,6 +198,31 @@ export interface ContainerPanelState {
   slots:     (ContainerSlotView | null)[];
 }
 
+// ── Heir ritual guidance (T-072) ──────────────────────────────────────────────
+//
+// game.ts arms this the moment it observes the local player's own
+// `Heritage.generation` climb during THIS session — a real death → heir
+// respawn, not just joining as an existing heir — then keeps rescanning known
+// entities for the player's own dynasty's library/treasury chests. A step
+// only exists while its matching chest genuinely still holds something:
+// nothing here is scripted, it just reads world state and disappears once
+// the chests are empty or the player dismisses the banner.
+
+export interface HeirRitualStep {
+  kind:        "tome" | "equipment";
+  /** The nearest matching chest belonging to the player's own dynasty. */
+  containerId: string;
+  /** How many items are still waiting in that chest. */
+  pending:     number;
+  /** Straight-line world distance from the player, or null if unknown (chest
+   *  or player position not yet resolved). */
+  distance:    number | null;
+}
+
+export interface HeirRitualState {
+  steps: HeirRitualStep[];
+}
+
 // ── Dialogue ───────────────────────────────────────────────────────────────────
 
 export interface DialogueChoice {
@@ -256,7 +302,8 @@ export type PanelId =
   | "settings"
   | "death"
   | "debug"
-  | "network";
+  | "network"
+  | "scene";
 
 // ── Root UIState ───────────────────────────────────────────────────────────────
 
@@ -282,6 +329,8 @@ export interface UIState {
   trader:       TraderState | null;
   jobBoard:     JobBoardState | null;
   dialogue:     DialogueState | null;
+  /** Non-modal HUD guidance for the respawn/heir ritual (T-072); null when inactive. */
+  heirRitual:   HeirRitualState | null;
 
   // Panel visibility
   openPanels:  Set<PanelId>;
@@ -348,7 +397,7 @@ const _initial: UIState = {
   hunger:      null,
   equipment:   null,
   inventory:   null,
-  hotbar:      { slots: Array(8).fill(null) as (null)[], activeIndex: 0 },
+  hotbar:      { assignments: Array(8).fill(null) as (null)[], activeIndex: 0 },
   stats:       null,
   skillLoadout: null,
   skillCooldowns: null,
@@ -358,6 +407,7 @@ const _initial: UIState = {
   trader:      null,
   jobBoard:    null,
   dialogue:    null,
+  heirRitual:  null,
   openPanels:  new Set(),
   modalStack:  [],
   drag:        null,
@@ -438,3 +488,21 @@ export const isModalOpen = computed(() => uiState.value.modalStack.length > 0);
 
 /** True when the inventory panel is visible. */
 export const inventoryOpen = computed(() => uiState.value.openPanels.has("inventory"));
+
+/**
+ * Derive each hotbar slot's displayed ItemStack from its assigned inventory
+ * index (T-309) — null when unassigned, the assigned inventory slot is
+ * empty, or the index is out of range. Single source of truth: the
+ * assignment mapping + live InventoryState, never a stored duplicate.
+ */
+export function hotbarSlotItems(
+  hotbar: HotbarState | null,
+  inventory: InventoryState | null,
+): (ItemStack | null)[] {
+  if (!hotbar) return Array(8).fill(null);
+  return hotbar.assignments.map((idx) => (idx != null ? inventory?.slots[idx] ?? null : null));
+}
+
+/** The hotbar's displayed items — used by both Hotbar.tsx (HUD icons) and
+ *  game.ts (body-anchor render sync) so the two never disagree. */
+export const hotbarItems = computed(() => hotbarSlotItems(uiState.value.hotbar, uiState.value.inventory));

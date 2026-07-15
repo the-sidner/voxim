@@ -2,6 +2,12 @@ import { computed } from "@preact/signals";
 import { uiState } from "../ui_store.ts";
 import { Bar } from "./primitives.tsx";
 
+/**
+ * Health/stamina/hunger vitals. Renders as the topmost row of the shared
+ * bottom `.action-frame` dock (`ui_manager.tsx`, T-314) — no positioning
+ * of its own, the frame lays it out with Hotbar/SkillBar below it.
+ */
+
 const health  = computed(() => uiState.value.health);
 const stamina = computed(() => uiState.value.stamina);
 const hunger  = computed(() => uiState.value.hunger);
@@ -15,11 +21,7 @@ export function StatusBars() {
   const hg = hunger.value;
 
   return (
-    <div class="vitals" style={{
-      position: "fixed", bottom: "100px", left: "50%",
-      transform: "translateX(-50%)",
-      zIndex: "var(--z-hud)",
-    }}>
+    <div class="vitals">
       {hp && (() => {
         const ratio = hp.current / hp.max;
         return (

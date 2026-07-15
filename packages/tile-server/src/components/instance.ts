@@ -5,60 +5,89 @@
  * `{ kind: "unique", entityId }` inventory slot form). They give each item
  * its own mutable identity: wear, authorship, quality, and provenance.
  *
- * Durability / Inscribed / QualityStamped are networked — the client needs
- * them to display durability bars, read tome fragments, and apply the
- * quality-scaled stat badge. AoI brings the unique item entity (and these
- * components along with it) into the holder's session via aoi.ts.
+ * Durability / Stats / Provenance are networked — the client displays the
+ * durability bar and the derived-stat/provenance tooltip lines. AoI brings
+ * the unique item entity (and these components along with it) into the
+ * holder's session via aoi.ts.
+ *
+ * Inscribed / QualityStamped are server-only (T-349): no client consumer
+ * ever landed for tome-fragment reading or the quality badge — both are read
+ * purely server-side (deriveItemStats, the scribe workstation, dynasty.ts).
  *
  * History / Owned are server-only: the client never renders these directly
  * and they can be large. Surface them through a UI command response when the
  * UI is built, not over the delta stream.
  */
 import { defineComponent } from "@voxim/engine";
-import { ComponentType } from "@voxim/protocol";
-import {
-  durabilityCodec,
-  inscribedCodec,
-  qualityStampedCodec,
-  statsCodec,
-  provenanceCodec,
-  WireReader,
-  WireWriter,
-} from "@voxim/codecs";
+import type { Serialiser } from "@voxim/engine";
+import { ComponentType, networkedCodec } from "@voxim/protocol";
+import { WireReader, WireWriter } from "@voxim/codecs";
 import type {
   DurabilityData,
-  InscribedData,
-  QualityStampedData,
   StatsData,
   ProvenanceData,
 } from "@voxim/codecs";
 import type { EffectSpec } from "@voxim/content";
 
-export type { DurabilityData, InscribedData, QualityStampedData, StatsData, ProvenanceData };
+export type { DurabilityData, StatsData, ProvenanceData };
 
 // ---- Durability (networked) ----
 
 export const Durability = defineComponent({
   name: "durability" as const,
   wireId: ComponentType.durability,
-  codec: durabilityCodec,
+  codec: networkedCodec<DurabilityData>(ComponentType.durability),
   default: (): DurabilityData => ({ remaining: 100, max: 100 }),
 });
 
-// ---- Inscribed (networked) ----
+// ---- Inscribed (server-only) ----
+// A lore fragment encoded into a unique item. Written at a scribe workstation;
+// read at the "internalise" interaction to grant the fragment to the reader.
+
+export interface InscribedData {
+  fragmentId: string;
+}
+
+const inscribedCodec: Serialiser<InscribedData> = {
+  encode(v) {
+    const w = new WireWriter();
+    w.writeStr(v.fragmentId);
+    return w.toBytes();
+  },
+  decode(b) {
+    return { fragmentId: new WireReader(b).readStr() };
+  },
+};
 
 export const Inscribed = defineComponent({
   name: "inscribed" as const,
-  wireId: ComponentType.inscribed,
+  networked: false,
   codec: inscribedCodec,
   default: (): InscribedData => ({ fragmentId: "" }),
 });
 
-// ---- QualityStamped (networked) ----
+// ---- QualityStamped (server-only) ----
+// Craft-time quality tier in [0, 1]. deriveItemStats() reads this and multiplies
+// the relevant derived stats (armour reduction, food/water value, light intensity).
+
+export interface QualityStampedData {
+  quality: number;
+}
+
+const qualityStampedCodec: Serialiser<QualityStampedData> = {
+  encode(v) {
+    const w = new WireWriter();
+    w.writeF32(v.quality);
+    return w.toBytes();
+  },
+  decode(b) {
+    return { quality: new WireReader(b).readF32() };
+  },
+};
 
 export const QualityStamped = defineComponent({
   name: "qualityStamped" as const,
-  wireId: ComponentType.qualityStamped,
+  networked: false,
   codec: qualityStampedCodec,
   default: (): QualityStampedData => ({ quality: 1 }),
 });
@@ -72,7 +101,7 @@ export const QualityStamped = defineComponent({
 export const Stats = defineComponent({
   name: "stats" as const,
   wireId: ComponentType.stats,
-  codec: statsCodec,
+  codec: networkedCodec<StatsData>(ComponentType.stats),
   default: (): StatsData => ({}),
 });
 
@@ -84,7 +113,7 @@ export const Stats = defineComponent({
 export const Provenance = defineComponent({
   name: "provenance" as const,
   wireId: ComponentType.provenance,
-  codec: provenanceCodec,
+  codec: networkedCodec<ProvenanceData>(ComponentType.provenance),
   default: (): ProvenanceData => ([]),
 });
 

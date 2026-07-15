@@ -20,18 +20,16 @@
  * AFTER chunks are committed (they need the world graph populated).
  */
 import type { World } from "@voxim/engine";
+import { mulberry32 } from "@voxim/engine";
 import type { ContentService } from "@voxim/content";
+import { BoundaryKind } from "@voxim/protocol";
+import { TILE_SIZE } from "@voxim/world";
 import { spawnPrefab } from "./spawner.ts";
 
-const TILE_SIZE = 512;
-const WALL_HEIGHT = 2.0;
-
-/** Mirror of atlas's BOUNDARY_KIND_*; literals keep atlas out of tile-server's runtime bundle. */
-const BOUNDARY_KIND_OPEN  = 0;
-const BOUNDARY_KIND_STONE = 1;
-
-/** Pool of NPC prefab ids used by the mob POI.  Wired by id; kept lean for "first primitive". */
-const MOB_NPC_POOL = ["wolf", "bandit", "archer", "drowner", "rotten_knight"] as const;
+/** Pool of NPC prefab ids used by the mob POI.  Wired by id; kept lean for
+ *  "first primitive". Boot-cross-checked in server.ts against content.prefabs
+ *  (T-315 A6) — every id here is assumed loaded by the time spawnMobPois runs. */
+export const MOB_NPC_POOL = ["wolf", "bandit", "archer", "drowner", "rotten_knight"] as const;
 
 /** Number of NPCs spawned per mob POI.  User spec: "3 random mobs". */
 const MOB_COUNT = 3;
@@ -48,7 +46,7 @@ interface ChamberInfo {
   id: number;
   cx: number;   // world-unit centroid x
   cy: number;   // world-unit centroid y
-  pixelCount: number;
+  cellCount: number;
 }
 
 export interface MobSpawn {
@@ -57,15 +55,16 @@ export interface MobSpawn {
   y: number;
 }
 
-/** Mulberry32 — same PRNG procedural_spawner uses; matched on purpose. */
-function mulberry32(seed: number): () => number {
-  let s = seed >>> 0;
-  return () => {
-    s = (s + 0x6D2B79F5) >>> 0;
-    let t = Math.imul(s ^ (s >>> 15), 1 | s);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
+/** The four render-field planes a room POI de-natures for its footprint
+ *  (indoor/worked ⇒ no forest fields). Same flat TILE_SIZE² indexing as
+ *  `heights`/`opens`/`kinds`/`materials`. Stair ramps carve through
+ *  wilderness too but are NOT covered here — their field divergence is
+ *  accepted (see `applyStairUnlock`'s doc comment, T-315 A4). */
+export interface RoomFieldPlanes {
+  fertility: Uint8Array;
+  wetness: Uint8Array;
+  overgrowth: Uint8Array;
+  traffic: Uint8Array;
 }
 
 /**
@@ -75,15 +74,27 @@ function mulberry32(seed: number): () => number {
  *
  * `woodMaterialId` and `floorMaterialFallbackId` are tile-server's content
  * material ids (atlas-id translation has already happened by this point).
+ *
+ * `fields` are the atlas's derived render-field planes (T-311 P3) for the
+ * SAME tile buffers — room POIs de-nature them under the stamped footprint
+ * so a walled room doesn't keep reading the forest fertility/wetness it
+ * replaced (T-315 A4).
+ *
+ * `wallHeight` is the world's actual wall-step height
+ * (GenParams.terrain.wallHeight, T-315 C1) — room POI walls rise this far
+ * above the local floor, matching the wall step atlas generation used for
+ * the surrounding terrain.
  */
 export function placePois(
   heights: Float32Array,
   opens: Uint8Array,
   kinds: Uint16Array,
   materials: Uint16Array,
+  fields: RoomFieldPlanes,
   chambers: ChamberInfo[],
   tileSeed: number,
   woodMaterialId: number,
+  wallHeight: number,
 ): MobSpawn[] {
   const mobs: MobSpawn[] = [];
   let mobChambers = 0;
@@ -92,7 +103,7 @@ export function placePois(
   for (const ch of chambers) {
     // Skip tiny chambers — they're not meaningful POI hosts and a 5×5 room
     // wouldn't fit anyway.
-    if (ch.pixelCount < 25) continue;
+    if (ch.cellCount < 25) continue;
 
     // Seed = tileSeed XOR chamberId so different tiles get different POIs
     // but each (tile, chamber) pair is stable across restarts.
@@ -113,7 +124,7 @@ export function placePois(
       mobChambers++;
     } else if (roll < P_MOB + P_ROOM) {
       // Room POI — stamp a 5×5 wooden enclosure around the chamber centre.
-      stampRoom(heights, opens, kinds, materials, cx, cy, woodMaterialId);
+      stampRoom(heights, opens, kinds, materials, fields, cx, cy, woodMaterialId, wallHeight);
       roomChambers++;
     }
     // else: empty chamber.
@@ -129,8 +140,8 @@ export function placePois(
 /**
  * Spawn the mob NPCs returned by {@link placePois}.  Called after
  * `chunksFromBuffers` so the world graph (chunks, terrain) is in place.
- * Skips any spawn whose prefab id isn't in the content store — keeps
- * `MOB_NPC_POOL` resilient to content changes.
+ * Every `MOB_NPC_POOL` id is boot-cross-checked in server.ts (T-315 A6),
+ * so no runtime existence guard is needed here.
  */
 export function spawnMobPois(
   world: World,
@@ -138,7 +149,6 @@ export function spawnMobPois(
   mobs: MobSpawn[],
 ): void {
   for (const m of mobs) {
-    if (!content.prefabs.get(m.prefabId)) continue;
     spawnPrefab(world, content, m.prefabId, { x: m.x, y: m.y });
   }
 }
@@ -149,24 +159,31 @@ export function spawnMobPois(
  *
  * The room footprint is `(2*ROOM_HALF + 1)` cells per axis.  Walls form a
  * one-cell-thick perimeter; the interior stays open.
+ *
+ * De-natures `fields` (fertility/wetness/overgrowth→0, traffic→walked)
+ * across the FULL footprint — walls AND interior — so the room reads as
+ * indoor/worked rather than keeping the forest fields it replaced. Height/
+ * open/kind/material stay wall-perimeter-only as before (T-315 A4).
  */
 function stampRoom(
   heights: Float32Array,
   opens: Uint8Array,
   kinds: Uint16Array,
   materials: Uint16Array,
+  fields: RoomFieldPlanes,
   cx: number,
   cy: number,
   woodMaterialId: number,
+  wallHeight: number,
 ): void {
   const x0 = cx - ROOM_HALF, x1 = cx + ROOM_HALF;
   const y0 = cy - ROOM_HALF, y1 = cy + ROOM_HALF;
   if (x0 < 0 || y0 < 0 || x1 >= TILE_SIZE || y1 >= TILE_SIZE) return;
 
   // Read the local floor height from the chamber centre — it's open ground,
-  // so heights[idx] is exactly the floor.  Walls rise WALL_HEIGHT above this.
+  // so heights[idx] is exactly the floor.  Walls rise wallHeight above this.
   const floor = heights[cx + cy * TILE_SIZE];
-  const wallY = floor + WALL_HEIGHT;
+  const wallY = floor + wallHeight;
 
   // South-facing doorway: middle cell of the south edge.
   const doorX = cx;
@@ -174,15 +191,24 @@ function stampRoom(
 
   for (let y = y0; y <= y1; y++) {
     for (let x = x0; x <= x1; x++) {
+      const idx = x + y * TILE_SIZE;
+
+      // Indoor/worked field de-naturing covers the whole footprint (walls
+      // AND interior floor) — a walled room shouldn't keep reading the
+      // forest fertility/wetness/overgrowth it replaced.
+      fields.fertility[idx]  = 0;
+      fields.wetness[idx]    = 0;
+      fields.overgrowth[idx] = 0;
+      fields.traffic[idx]    = 128; // moderate, walked-interior traffic
+
       const onPerimeter =
         x === x0 || x === x1 || y === y0 || y === y1;
       if (!onPerimeter) continue;
       if (x === doorX && y === doorY) continue;
 
-      const idx = x + y * TILE_SIZE;
       heights[idx]   = wallY;
       opens[idx]     = 0;
-      kinds[idx]     = BOUNDARY_KIND_STONE; // suppress forest decoration
+      kinds[idx]     = BoundaryKind.stone; // suppress forest decoration
       materials[idx] = woodMaterialId;
     }
   }
@@ -191,6 +217,6 @@ function stampRoom(
   // a stray closed pixel right at the door cell.
   const dIdx = doorX + doorY * TILE_SIZE;
   opens[dIdx] = 1;
-  kinds[dIdx] = BOUNDARY_KIND_OPEN;
+  kinds[dIdx] = BoundaryKind.open;
   heights[dIdx] = floor;
 }

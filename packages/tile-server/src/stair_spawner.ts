@@ -9,11 +9,15 @@
  *
  * Found stairs (`locked === null`) spawn at path-floor height; the
  * ramp underneath makes the climb walkable. Locked stairs spawn at
- * the same height but the wilderness wall stays a 2u step, so the
+ * the same height but the wilderness wall stays a step, so the
  * player sees the stair but can't pass — the visual contract is
- * "stairs here, locked". The future StairUnlockSystem (T-212 v2)
+ * "stairs here, locked". The `unlock_stair` effect resolver (T-213b)
  * flips lock state when the player consumes the gating trinket and
- * applies the heightmap ramp at runtime.
+ * applies the heightmap ramp at runtime — it needs `wallHeight` /
+ * `rampDepth` / `rampHalfWidth` at that point with no atlas access, so
+ * `placeStairs` stamps all three onto the `Stair` component here (the
+ * only place they're available together: `wallHeight` from GenParams,
+ * `rampDepth`/`rampHalfWidth` from the `StairEdge`).
  */
 
 import type { World } from "@voxim/engine";
@@ -23,8 +27,10 @@ import { Facing } from "./components/game.ts";
 import { Stair } from "./components/stair.ts";
 import { spawnPrefab } from "./spawner.ts";
 
-const STAIR_FOUND_PREFAB_ID  = "stair";
-const STAIR_LOCKED_PREFAB_ID = "stair_locked";
+/** Boot-cross-checked in server.ts against content.prefabs (T-315 A6) —
+ *  placeStairs assumes both are loaded. */
+export const STAIR_FOUND_PREFAB_ID  = "stair";
+export const STAIR_LOCKED_PREFAB_ID = "stair_locked";
 
 export function placeStairs(
   world: World,
@@ -32,13 +38,8 @@ export function placeStairs(
   level: LevelDef,
   heightBuffer: Float32Array,
   tileSize: number,
+  wallHeight: number,
 ): number {
-  for (const id of [STAIR_FOUND_PREFAB_ID, STAIR_LOCKED_PREFAB_ID]) {
-    if (!content.prefabs.get(id)) {
-      console.warn(`[stair_spawner] missing prefab "${id}" — skipping stair spawn`);
-      return 0;
-    }
-  }
   const stairs = level.edges.stairs;
   if (!stairs.length) return 0;
 
@@ -87,6 +88,9 @@ export function placeStairs(
       anchorX:    ax,
       anchorY:    ay,
       unlocked:   !isLocked,
+      wallHeight,
+      rampDepth:     stair.rampDepth,
+      rampHalfWidth: stair.rampHalfWidth,
     });
     placed++;
     if (isLocked) locked++; else found++;

@@ -6,6 +6,8 @@
  * To retire a component, leave its slot reserved but remove it from the enum.
  */
 
+import { SCENE_PARENT_WIRE_ID } from "@voxim/engine";
+
 export const ComponentType = {
   heightmap:          0,
   materialGrid:       1,
@@ -28,7 +30,8 @@ export const ComponentType = {
   heritage:           16,
   itemData:           17,
   inventory:          18,
-  craftingQueue:      19,
+  // 19 is retired (was craftingQueue) — written once at player spawn, read by
+  //    nobody; crafting is entirely WorkstationBuffer-based (T-350); do not reuse
   // 20 (interactCooldown) retired — server-only rate limiter, never needed on client
   blueprint:          21,
   resource_node:      22,
@@ -42,10 +45,13 @@ export const ComponentType = {
   hitbox:             29,
   workstationBuffer:  30,
   lightEmitter:       31,
-  darknessModifier:   32,
+  // 32 is retired (was darknessModifier) — zero writers ever spawned one; the
+  //    darkness-subtraction loop in getLightAt() was dead code (T-350); do not reuse
   durability:         33,
-  inscribed:          34,
-  qualityStamped:     35,
+  // 34 is retired (was inscribed) — server-only now (T-349): no client
+  //    consumer ever read it off the wire; do not reuse
+  // 35 is retired (was qualityStamped) — server-only now (T-349), same
+  //    reason; do not reuse
   // 36 (staggered) retired — stagger is a reaction action + `staggered`
   //    tag now; rendered from AnimationState. Never reuse.
   counterReady:       37,
@@ -58,15 +64,28 @@ export const ComponentType = {
   name:               44,
   // 45 (characterStateMachine) retired — CSM deleted (T-228)
   // 46 (swingChain) retired — swing chain folded into actions (T-227)
-  actorSlots: 47,
+  // 47 is retired (was actorSlots) — server-only now (T-349): the "client
+  //    runs slot dispatch for prediction" justification was never realized
+  //    (the predictor is position-only); do not reuse
   activeActions: 48,
   resource:           50,  // T-262: vitals (stamina/hunger/thirst/poise) on the wire for the HUD
   actionCooldowns:    51,  // T-265: per-action cooldowns + GCD for the skill bar sweep
   jobBoard:           52,  // T-076: hiring board's pending jobs on the wire for the job-board panel
   container:          53,  // T-077/T-078: family library/treasury slot store, on the wire for the chest deposit/withdraw panel
+  vegFieldGrid:       54,  // T-311 P3: per-cell canopyLight/corruption/fertility (render fields, never collision)
+  surfaceStateGrid:   55,  // T-311 P3: per-cell wetness/overgrowth/wear/variantIndex/ruinAge/traffic
+  waterGrid:          56,  // T-311 P3: per-cell water surface level (f32, NaN = no water)
+  poiInteractable:    57,  // T-212 v2: `action`/`puzzle` POI world-prop marker — client's hover/click
+                           //   detects it the same way it detects workstationBuffer/container/traderInventory
+  cliffGrid:          58,  // T-311 P6: per-cell profileId/erosion/tier/edge for the terraced-cliff voxeliser
+  bone:               59,  // T-219: one entity per skeleton bone; boneId only — restPose/parentBoneId
+                           //   are content data (SkeletonDef.bones), motion is derived client-side, never wired
   // 49 (parent) — defined in @voxim/engine/src/scene.ts; engine owns the
-  //    scene-graph primitive (co-equal with World), so its wire id lives
-  //    there. Reserved here so the numbering map stays visible. Never reuse.
+  //    scene-graph primitive (co-equal with World), so the numeric constant
+  //    lives there (SCENE_PARENT_WIRE_ID). Mirrored into this enum so the
+  //    client decode registry (codec_registry.ts) and COMPONENT_TYPE_TO_NAME
+  //    can resolve it like any other component. Never reuse.
+  parent: SCENE_PARENT_WIRE_ID,
 } as const;
 
 /** Map from component name (ComponentDef.name) → wire u8 type ID. */

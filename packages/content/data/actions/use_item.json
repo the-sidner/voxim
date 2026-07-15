@@ -3,14 +3,47 @@
   "committed": true,
   "kind": "active",
   "slot": "primary",
-  "phases": { "raise": { "ticks": 6 }, "apply": { "ticks": 3 }, "recover": { "ticks": 8 } },
-  "cancel": {
-    "raise":   { "into": ["any"] },
-    "apply":   { "into": [] },
-    "recover": { "into": ["any"] }
+  "phases": {
+    "raise": {
+      "ticks": 6
+    },
+    "apply": {
+      "ticks": 3
+    },
+    "recover": {
+      "ticks": 8
+    }
   },
-  "movement": { "raise": "slowed", "apply": "slowed", "recover": "free" },
+  "cancel": {
+    "raise": {
+      "into": [
+        "any"
+      ]
+    },
+    "apply": {
+      "into": []
+    },
+    "recover": {
+      "into": [
+        "any"
+      ]
+    }
+  },
+  "movement": {
+    "raise": 0.5,
+    "apply": 0.5,
+    "recover": "free"
+  },
   "priority": 4,
-  "preconditions": [ { "gate": "slot_has_usable" } ],
-  "effects": [ { "phase": "apply:enter", "kind": "apply_item_effects" } ]
+  "preconditions": [
+    {
+      "gate": "slot_has_usable"
+    }
+  ],
+  "effects": [
+    {
+      "phase": "apply:enter",
+      "kind": "apply_item_effects"
+    }
+  ]
 }

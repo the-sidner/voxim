@@ -17,5 +17,8 @@
   "tags": [
     "organic",
     "wood"
-  ]
+  ],
+  "render": {
+    "textureStyle": "wood"
+  }
 }

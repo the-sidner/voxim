@@ -1,6 +1,5 @@
 import { defineComponent } from "@voxim/engine";
-import { ComponentType } from "@voxim/protocol";
-import { traderInventoryCodec } from "@voxim/codecs";
+import { ComponentType, networkedCodec } from "@voxim/protocol";
 
 /**
  * One entry in a trader's catalogue.
@@ -26,6 +25,6 @@ export interface TraderInventoryData {
 export const TraderInventory = defineComponent({
   name: "traderInventory" as const,
   wireId: ComponentType.traderInventory,
-  codec: traderInventoryCodec,
+  codec: networkedCodec<TraderInventoryData>(ComponentType.traderInventory),
   default: (): TraderInventoryData => ({ listings: [] }),
 });

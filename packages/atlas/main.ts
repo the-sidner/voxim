@@ -11,9 +11,9 @@
  * Environment:
  *   ATLAS_PORT            HTTP port. Default 8082.
  *   DATABASE_URL          Postgres URL. Required.
- *   VOXIM_SERVICE_SECRET  Shared secret gating /world/bake + /world/restart
- *                         (T-258). Required (>=16 chars) when VOXIM_ENV=production;
- *                         dev falls back to a default. Read endpoints stay public.
+ *   VOXIM_SERVICE_SECRET  Shared secret gating /world/bake (T-258). Required
+ *                         (>=16 chars) when VOXIM_ENV=production; dev falls
+ *                         back to a default. Read endpoints stay public.
  *   VOXIM_ENV             "production" → fail closed when the secret is unset.
  *   BOOTSTRAP_WORLD_NAME  Name for the auto-baked world. Default "bootstrap".
  *   BOOTSTRAP_WORLD_SEED  Seed for the auto-bake. Default 1.
@@ -29,7 +29,7 @@ import {
 } from "@voxim/db";
 import { JsonSource } from "@voxim/content";
 import { resolveServiceSecret } from "@voxim/protocol";
-import { startAtlasServer } from "./mod.ts";
+import { startAtlasServer, crossCheckVariantIndex } from "./mod.ts";
 import { bakeWorld } from "./src/bake.ts";
 
 const port              = parseInt(Deno.env.get("ATLAS_PORT")            ?? "8082");
@@ -51,6 +51,9 @@ const tilesRepo  = new PgAtlasTileInitRepo(pool);
 // every tile bakes with an empty narrative.
 const content = await JsonSource.load();
 console.log(`[Atlas] loaded content: ${content.pois.size} POIs · ${content.zones.size} zones`);
+// T-319: fail-fast if `fieldsStage`'s "corrupted" MaterialVariant lookup
+// can't resolve — the alternative is a silent variantIndex=0 everywhere.
+crossCheckVariantIndex(content);
 
 // Bootstrap a world only when none exist. Subsequent boots are no-ops
 // against the worlds table — atlas leaves authored worlds in place and

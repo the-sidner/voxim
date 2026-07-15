@@ -45,8 +45,8 @@ export interface GenParams {
     sourceAltitude: number;
     /** Chebyshev distance between sources (poor-man's Poisson disk). */
     minSeparation: number;
-    /** Pixel radius of stamped river width (so river is ~2*r+1 px wide). */
-    widthPixels: number;
+    /** Cell radius of stamped river width (so river is ~2*r+1 cells wide). */
+    widthCells: number;
   };
 
   /** Tile-scale noise field that emerges into rooms. */
@@ -64,7 +64,7 @@ export interface GenParams {
   /** Heightmap stage. */
   terrain: {
     /**
-     * Vertical step at every CLIFF wall pixel. Must exceed runtime
+     * Vertical step at every CLIFF wall cell. Must exceed runtime
      * physics stepHeight (currently 0.75u) so cliffs aren't traversable.
      */
     wallHeight: number;
@@ -72,13 +72,16 @@ export interface GenParams {
     floorBaseline: number;
     /** Floor modulation amplitude before biome.ruggedness scaling. */
     floorModAmplitude: number;
-    /** Floor modulation noise frequency (cycles per pixel). */
+    /** Floor modulation noise frequency (cycles per cell). */
     floorModFrequency: number;
+    /** Scale applied to (biome.altitude - 0.5) to bias the floor height by
+     *  altitude, before modulation. Default 4 → ~[-2, +2]. */
+    altitudeBiasScale: number;
   };
 
-  /** Per-pixel material rule selectors. */
+  /** Per-cell material rule selectors. */
   materials: {
-    /** Per-pixel detail noise frequency. */
+    /** Per-cell detail noise frequency. */
     detailFrequency: number;
     /** altitude > X → STONE. */
     stoneAltitudeStrict: number;
@@ -94,6 +97,18 @@ export interface GenParams {
     waterDetail: number;
     /** moisture > X → GRASS, else DIRT. */
     grassMoisture: number;
+    /** High-frequency "spread" noise frequency — perturbs a chamber's base
+     *  material into patches (higher than detailFrequency → small patches). */
+    spreadFrequency: number;
+    /** perturbWithSpread thresholds (spread is in [-1, 1]). */
+    spreadGrassToDirt: number;
+    spreadGrassToGravel: number;
+    spreadGrassToMoss: number;
+    spreadDirtToGravel: number;
+    spreadDirtToMud: number;
+    spreadStoneToGravel: number;
+    spreadStoneToMoss: number;
+    spreadSandToGravel: number;
   };
 
   /**
@@ -120,9 +135,9 @@ export interface GenParams {
   room: {
     /** Target junction count per tile. Poisson sampler aims for this many. */
     targetCount: number;
-    /** Min separation between junction seeds, in pixels. */
+    /** Min separation between junction seeds, in cells. */
     minSeparation: number;
-    /** Per-room size range when grown, in pixels. */
+    /** Per-room size range when grown, in cells. */
     sizeMin: number;
     sizeMax: number;
     /**
@@ -143,7 +158,7 @@ export interface GenParams {
    * Pipeline: Delaunay triangulation over chamber centroids → Kruskal MST
    * for guaranteed connectivity → keep `loopRate` of the non-tree edges
    * as braids → for each kept edge, ray-march from each centroid toward
-   * the partner to find the chamber-boundary entry/exit pixels (so the
+   * the partner to find the chamber-boundary entry/exit cells (so the
    * carve enters and exits at the chamber walls instead of crossing the
    * interior) → generate `segments + 1` waypoints along the line, with
    * interior waypoints perpendicular-perturbed by `curvature × edge_len`
@@ -153,13 +168,13 @@ export interface GenParams {
    * the curve.
    */
   network: {
-    /** Cap on Delaunay edge length, in pixels. Longer candidates are dropped. */
+    /** Cap on Delaunay edge length, in cells. Longer candidates are dropped. */
     maxEdgeLength: number;
     /** Fraction of non-tree Delaunay edges kept as loops. 0 = tree, 1 = full net. */
     loopRate: number;
     /**
-     * Per-edge brush half-width range, in pixels. 0 = 1px wide path, 1 =
-     * 3px, 2 = 5px. Each edge picks its own width uniformly from this range.
+     * Per-edge brush half-width range, in cells. 0 = 1 cell wide path, 1 =
+     * 3 cells, 2 = 5 cells. Each edge picks its own width uniformly from this range.
      */
     widthMin: number;
     widthMax: number;
@@ -199,25 +214,45 @@ export interface GenParams {
      * 36%, etc.
      */
     branchLengthFraction: number;
+    /** Max spawnBranches attempts rolled per corridor (each attempt
+     *  independently rolls against branchRate). */
+    branchMaxAttemptsPerCorridor: number;
+    /**
+     * A branch's start point is sampled at
+     * `t = branchPositionMin + rng() × branchPositionRange` along the
+     * parent spline. Default [0.2, +0.6] → t ∈ [0.2, 0.8]. (Stored as
+     * min + range rather than min/max so the default reproduces the
+     * exact float sequence of the original hand-written literals —
+     * `max - min` for 0.8 - 0.2 is not bit-identical to the literal 0.6.)
+     */
+    branchPositionMin: number;
+    branchPositionRange: number;
+    /** Angular jitter amplitude (radians) applied to a branch's
+     *  perpendicular-off-parent direction; actual jitter is uniform in
+     *  [-jitter/2, +jitter/2]. */
+    branchAngleJitter: number;
+    /**
+     * The ×random length-variance multiplier applied to
+     * parentLen × branchLengthFraction is
+     * `branchLengthVarianceMin + rng() × branchLengthVarianceRange`.
+     * Default [0.7, +0.6] → multiplier ∈ [0.7, 1.3]. Same min+range
+     * reasoning as branchPositionMin/Range above.
+     */
+    branchLengthVarianceMin: number;
+    branchLengthVarianceRange: number;
   };
 
-  /** Per-pixel boundary kind (STONE / FOREST / GRASS_MOUND) selectors. */
+  /** Per-cell boundary kind (STONE / FOREST / GRASS_MOUND) selectors. */
   kinds: {
-    /** Per-pixel detail noise frequency. */
+    /** Per-cell detail noise frequency. */
     detailFrequency: number;
-    /** Closed pixel: altitude > X → STONE. */
+    /** Closed cell: altitude > X → STONE. */
     stoneAltitudeStrict: number;
     /** altitude > X AND ruggedness > Y → STONE. */
     stoneAltitudeRugged: number;
     stoneRuggednessThreshold: number;
     /** moisture > X → FOREST (else falls back to GRASS_MOUND). */
     forestMoisture: number;
-    /**
-     * Tile-server tree spawn stride for FOREST pixels, in world units.
-     * Smaller = denser forest. Tile-server reads this from the world's
-     * persisted params at boot.
-     */
-    forestDensityStride: number;
   };
 
   /**
@@ -262,6 +297,72 @@ export interface GenParams {
     /** degree == 1 + area > this → "pocket" (worth visiting cul-de-sac) */
     pocketAreaMin: number;
     /** Everything else with degree ≤ 1 → "deadend". */
+
+    /** Disk radius (atlas cells) carved around each qualifying network
+     *  junction to form a crossroads sector. */
+    crossroadsDiskRadius: number;
+    /** Minimum junction degree that carves a crossroads disk. */
+    crossroadsDegreeMin: number;
+    /** Wilderness blobs smaller than this (cells) get merged into their
+     *  largest neighbour during phase 4b. */
+    wildernessMergeThreshold: number;
+    /** Search radius (atlas cells) for the proximity-based wilderness
+     *  merge fallback, when a small blob has no direct adjacency. */
+    mergeProximityRadius: number;
+
+    /** Per-role minimum area (atlas cells) below which nameZone
+     *  declines to name a sector (reads as too small/insignificant). */
+    namedAreaMinArena: number;
+    namedAreaMinPlaza: number;
+    namedAreaMinLobby: number;
+    namedAreaMinPocket: number;
+    namedAreaMinCrossroads: number;
+    namedAreaMinCorridor: number;
+    namedAreaMinDeadend: number;
+    namedAreaMinGrove: number;
+    namedAreaMinThicket: number;
+    namedAreaMinCrag: number;
+    namedAreaMinHollow: number;
+    namedAreaMinOutcrop: number;
+    namedAreaMinMorass: number;
+  };
+
+  /** T-311 P3 — render-field derivation weights (Atlas-inspector tunes these). */
+  fields: {
+    /** canopyLight: canopy-shadow spread radius (passes) + per-cell falloff. */
+    forestShadowPasses: number;
+    forestShadowDecay: number;
+    /** wetness: damp-ground spread from water (passes) + falloff. */
+    waterSpreadPasses: number;
+    waterSpreadDecay: number;
+    /** corruption added at moisture 0 (dry tiles read more corrupt). */
+    corruptionDrynessBias: number;
+    /** corruption above this → the "corrupted" material variant index. */
+    variantCorruptThreshold: number;
+    /** fertility dapple: fbm modulation amplitude [1-amp,1+amp] (0 = flat) +
+     *  frequency per cell — makes fertility patchy so field-driven scatter
+     *  reads as groves/clearings, not a uniform carpet. */
+    fertilityDappleAmp: number;
+    fertilityDappleScale: number;
+    /** wear = pathLevel × this. */
+    wearFromTraffic: number;
+    /** corruption = ruinAge × this + corruptionDrynessBias term. */
+    corruptionRuinAgeWeight: number;
+    /** fertility canopy term: (base + gain × canopyLight/255). */
+    fertilityCanopyBase: number;
+    fertilityCanopyGain: number;
+    /** fertility corruption term: (1 - damp × corruption/255). */
+    fertilityCorruptionDamp: number;
+  };
+
+  /** T-311 P6 — CliffGrid derivation (per-zone erosion-state hash thresholds).
+   *  Stone wilderness-perimeter cells only (v1 scope); forest/grass_mound
+   *  walls stay undecorated (profileId 0 = "none"). */
+  cliff: {
+    /** hash255(chamber/zone, tileSeed) below this → "crisp" erosion. */
+    erosionCrispMax: number;
+    /** ...between erosionCrispMax and this → "weathered"; above → "broken". */
+    erosionWeatheredMax: number;
   };
 }
 
@@ -270,7 +371,7 @@ export interface GenParams {
  *   - 7 chambers per tile with organic noise-derived silhouettes,
  *     connected by curving variable-width corridors.
  *   - noise field is now used purely as a *cost surface* (chamber growth
- *     prefers low-noise pixels). The threshold knob in `noise` is
+ *     prefers low-noise cells). The threshold knob in `noise` is
  *     vestigial under this approach but kept so other consumers
  *     (boundary kinds, materials) still have their hooks.
  *   - vegetation as the default closed kind (low vegetationMoisture cutoff)
@@ -289,7 +390,7 @@ export const DEFAULT_GEN_PARAMS: GenParams = {
   river: {
     sourceAltitude: 0.55,  // more sources → more rivers
     minSeparation: 2,
-    widthPixels: 2,
+    widthCells: 2,
   },
   noise: {
     baseFrequency: 0.022,                // smaller features → noise sculpts chamber walls
@@ -299,7 +400,7 @@ export const DEFAULT_GEN_PARAMS: GenParams = {
     octaves: 5,
   },
   terrain: {
-    // Closed pixels stay at floor height by default — visual contrast is
+    // Closed cells stay at floor height by default — visual contrast is
     // carried by darker materials + tree entities, not by a vertical step.
     // All three wall kinds (STONE, FOREST, GRASS_MOUND) rise by this
     // amount. Must exceed runtime stepHeight (0.75u) so players can't
@@ -308,6 +409,7 @@ export const DEFAULT_GEN_PARAMS: GenParams = {
     floorBaseline: 0.0,
     floorModAmplitude: 1.5,
     floorModFrequency: 0.01,
+    altitudeBiasScale: 4,
   },
   room: {
     targetCount: 14,                     // more junctions → more graph nodes
@@ -329,6 +431,12 @@ export const DEFAULT_GEN_PARAMS: GenParams = {
     branchRate: 0.65,                    // most corridors spawn at least one branch
     branchMaxDepth: 2,
     branchLengthFraction: 0.55,
+    branchMaxAttemptsPerCorridor: 2,
+    branchPositionMin: 0.2,
+    branchPositionRange: 0.6,
+    branchAngleJitter: Math.PI * 0.5,
+    branchLengthVarianceMin: 0.7,
+    branchLengthVarianceRange: 0.6,
   },
   materials: {
     detailFrequency: 0.06,
@@ -341,6 +449,15 @@ export const DEFAULT_GEN_PARAMS: GenParams = {
     waterAltitude: 0.55,
     waterDetail: 0.60,
     grassMoisture: 0.40,
+    spreadFrequency: 0.18,
+    spreadGrassToDirt: 0.55,
+    spreadGrassToGravel: 0.40,
+    spreadGrassToMoss: -0.55,
+    spreadDirtToGravel: 0.55,
+    spreadDirtToMud: -0.55,
+    spreadStoneToGravel: 0.55,
+    spreadStoneToMoss: -0.55,
+    spreadSandToGravel: 0.65,
   },
   kinds: {
     detailFrequency: 0.05,
@@ -348,15 +465,6 @@ export const DEFAULT_GEN_PARAMS: GenParams = {
     stoneAltitudeRugged: 0.65,
     stoneRuggednessThreshold: 0.70,
     forestMoisture: 0.10,                // almost everything wet enough → forest walls
-    /**
-     * Tile-server tree spawn stride for FOREST wall pixels, in world units.
-     * Smaller = denser forest. Trade-off vs. entity count:
-     *   stride 4  → ~5000 trees / fully-forested 512u tile (heavy)
-     *   stride 6  → ~2200 trees / fully-forested 512u tile (recommended)
-     *   stride 12 → ~600  trees / fully-forested 512u tile (sparse cluster)
-     * Read at boot from the world's persisted params.
-     */
-    forestDensityStride: 6,
   },
   zoneGraph: {
     arenaAreaMin:           1500,
@@ -367,6 +475,23 @@ export const DEFAULT_GEN_PARAMS: GenParams = {
     corridorAreaMax:        250,
     corridorAspectRatioMax: 0.4,
     pocketAreaMin:          150,
+    crossroadsDiskRadius:      3,
+    crossroadsDegreeMin:       3,
+    wildernessMergeThreshold: 400,
+    mergeProximityRadius:      8,
+    namedAreaMinArena:      500,
+    namedAreaMinPlaza:      200,
+    namedAreaMinLobby:      200,
+    namedAreaMinPocket:     200,
+    namedAreaMinCrossroads: 150,
+    namedAreaMinCorridor:   250,
+    namedAreaMinDeadend:    180,
+    namedAreaMinGrove:      300,
+    namedAreaMinThicket:    300,
+    namedAreaMinCrag:       300,
+    namedAreaMinHollow:     300,
+    namedAreaMinOutcrop:    300,
+    namedAreaMinMorass:     300,
   },
   poiNetwork: {
     targetPoiCount:         4,
@@ -374,6 +499,25 @@ export const DEFAULT_GEN_PARAMS: GenParams = {
     minFitScore:            0.1,
     preferredTopologyBonus: 0.5,
     maxWireSearchDepth:     8,
+  },
+  fields: {
+    forestShadowPasses:      3,
+    forestShadowDecay:       0.72,
+    waterSpreadPasses:       4,
+    waterSpreadDecay:        0.78,
+    corruptionDrynessBias:   40,
+    variantCorruptThreshold: 160,
+    fertilityDappleAmp:      0.45,
+    fertilityDappleScale:    0.05,   // features ~20 cells — grove-sized
+    wearFromTraffic:         0.85,
+    corruptionRuinAgeWeight: 0.6,
+    fertilityCanopyBase:     0.4,
+    fertilityCanopyGain:     0.6,
+    fertilityCorruptionDamp: 0.5,
+  },
+  cliff: {
+    erosionCrispMax:     85,   // hash255 < 85  → crisp     (~1/3)
+    erosionWeatheredMax: 170,  // 85..170       → weathered (~1/3); above → broken
   },
 };
 
@@ -411,6 +555,8 @@ export const PRESETS: Record<string, { name: string; description: string; params
         maxEdgeLength: 480, loopRate: 0.40, widthMin: 2, widthMax: 5,
         segments: 3, curvature: 0.10, bezierSamples: 240,
         branchRate: 0.25, branchMaxDepth: 1, branchLengthFraction: 0.40,
+        branchMaxAttemptsPerCorridor: 2, branchPositionMin: 0.2, branchPositionRange: 0.6,
+        branchAngleJitter: Math.PI * 0.5, branchLengthVarianceMin: 0.7, branchLengthVarianceRange: 0.6,
       },
       kinds: { ...DEFAULT_GEN_PARAMS.kinds, forestMoisture: 0.10 },
     },
@@ -436,6 +582,8 @@ export const PRESETS: Record<string, { name: string; description: string; params
         maxEdgeLength: 220, loopRate: 0.95, widthMin: 0, widthMax: 1,
         segments: 5, curvature: 0.35, bezierSamples: 200,
         branchRate: 0.85, branchMaxDepth: 3, branchLengthFraction: 0.55,
+        branchMaxAttemptsPerCorridor: 2, branchPositionMin: 0.2, branchPositionRange: 0.6,
+        branchAngleJitter: Math.PI * 0.5, branchLengthVarianceMin: 0.7, branchLengthVarianceRange: 0.6,
       },
       terrain: { ...DEFAULT_GEN_PARAMS.terrain, wallHeight: 3.0 },
       kinds: {
@@ -453,7 +601,7 @@ export const PRESETS: Record<string, { name: string; description: string; params
     params: {
       ...DEFAULT_GEN_PARAMS,
       biome: { ...DEFAULT_GEN_PARAMS.biome, biasMoisture: 0.40, biasAltitude: -0.30 },
-      river: { sourceAltitude: 0.40, minSeparation: 1, widthPixels: 3 },
+      river: { sourceAltitude: 0.40, minSeparation: 1, widthCells: 3 },
       noise: {
         baseFrequency: 0.020,
         extraFrequencyPerRuggedness: 0.006,
@@ -469,6 +617,8 @@ export const PRESETS: Record<string, { name: string; description: string; params
         maxEdgeLength: 320, loopRate: 0.75, widthMin: 2, widthMax: 4,
         segments: 4, curvature: 0.28, bezierSamples: 220,
         branchRate: 0.55, branchMaxDepth: 2, branchLengthFraction: 0.50,
+        branchMaxAttemptsPerCorridor: 2, branchPositionMin: 0.2, branchPositionRange: 0.6,
+        branchAngleJitter: Math.PI * 0.5, branchLengthVarianceMin: 0.7, branchLengthVarianceRange: 0.6,
       },
       kinds: {
         ...DEFAULT_GEN_PARAMS.kinds,
@@ -511,6 +661,8 @@ function cloneParams(p: GenParams): GenParams {
     kinds:      { ...p.kinds },
     zoneGraph:  { ...p.zoneGraph },
     poiNetwork: { ...p.poiNetwork },
+    fields:     { ...p.fields },
+    cliff:      { ...p.cliff },
   };
 }
 

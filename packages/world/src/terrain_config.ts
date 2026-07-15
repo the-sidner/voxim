@@ -1,9 +1,12 @@
 /**
  * Terrain generation configuration types and default values.
  *
- * Every knob used by the multi-layer terrain generator is centralised here so
- * the server can override them at runtime (e.g. from terrain_config.json)
- * without recompiling.
+ * `DEFAULT_TERRAIN_CONFIG` below is the sole authority — there is no
+ * external JSON override; no loader reads a terrain_config.json anywhere.
+ * This config only feeds the cave-instance/local generation path
+ * (`caveInstanceTerrain` → `buildTerrainBuffers`, both in
+ * packages/world/src/generator.ts). It has zero bearing on overworld
+ * terrain generation — atlas owns that path exclusively.
  */
 
 // ---------------------------------------------------------------------------
@@ -122,12 +125,6 @@ export interface ErosionConfig {
    * Cells with a steeper slope shed material downhill each pass.
    */
   thermalAngle: number;
-  /**
-   * Moisture-driven smoothing strength (0–1).
-   * Higher values soften wet biomes (swamps, coasts) more aggressively.
-   * Currently reserved for future hydraulic erosion pass.
-   */
-  hydraulicStrength: number;
 }
 
 export interface ZoneConfig {
@@ -136,10 +133,6 @@ export interface ZoneConfig {
    * E.g. 32 → 32×32 = 1 024 zones per 512-unit tile, each covering 16 units.
    */
   gridSize: number;
-  /** Probability (0–1) that an eligible hills/mountains zone becomes Ruins. */
-  ruinChance: number;
-  /** Normalised altitude threshold: only zones above this can become Ruins. */
-  ruinMinAltitude: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -228,11 +221,8 @@ export const DEFAULT_TERRAIN_CONFIG: TerrainConfig = {
     enabled: true,
     thermalPasses: 12,
     thermalAngle: 1.2,
-    hydraulicStrength: 0.15,
   },
   zone: {
     gridSize: 32,
-    ruinChance: 0.06,
-    ruinMinAltitude: 0.38,
   },
 };

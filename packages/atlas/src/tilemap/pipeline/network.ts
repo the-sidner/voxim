@@ -23,6 +23,7 @@
  */
 
 import type { Transformer } from "@voxim/levelgen";
+import { mulberry32 } from "@voxim/engine";
 import { carveSpline, makeWaypoints, samplePoint, sampleTangent } from "./bezier_carve.ts";
 import type { Corridor } from "../types.ts";
 import type { GenParams } from "../../genparams.ts";
@@ -113,7 +114,7 @@ export const network: Transformer<JunctionsState, NetworkState, GenParams["netwo
     return { ...state, openMask, corridors, degrees };
   };
 
-function sampleWidth(rng: () => number, params: GenParams["network"]): number {
+export function sampleWidth(rng: () => number, params: GenParams["network"]): number {
   const lo = Math.min(params.widthMin, params.widthMax);
   const hi = Math.max(params.widthMin, params.widthMax);
   if (lo === hi) return lo;
@@ -227,25 +228,15 @@ class UnionFind {
   }
 }
 
-function mulberry32(seed: number): () => number {
-  let s = seed >>> 0;
-  return () => {
-    s = (s + 0x6D2B79F5) >>> 0;
-    let t = s;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
 /**
  * Recursive branch-paths pass. With probability `branchRate`, picks a
- * random t ∈ [0.2, 0.8] along the parent corridor's spline, takes the
- * local tangent + perpendicular, and carves a new spline that veers off
- * into the wall space. Branches recurse up to `branchMaxDepth` levels,
- * shrinking by `branchLengthFraction` each level. Branches that
- * coincidentally hit other corridors / chambers form natural junctions;
- * ones that don't form dead-end paths.
+ * random t ∈ [branchPositionMin, branchPositionMin + branchPositionRange]
+ * along the parent corridor's spline, takes the local tangent +
+ * perpendicular, and carves a new spline that veers off into the wall
+ * space. Branches recurse up to `branchMaxDepth` levels, shrinking by
+ * `branchLengthFraction` each level. Branches that coincidentally hit
+ * other corridors / chambers form natural junctions; ones that don't
+ * form dead-end paths.
  *
  * Mutates `openMask` and appends every carved branch to `out`.
  */
@@ -260,19 +251,20 @@ function spawnBranches(
   out: Corridor[],
 ): void {
   if (depth >= params.branchMaxDepth) return;
-  for (let attempt = 0; attempt < 2; attempt++) {
+  for (let attempt = 0; attempt < params.branchMaxAttemptsPerCorridor; attempt++) {
     if (rng() >= params.branchRate) continue;
-    const t = 0.2 + rng() * 0.6;
+    const t = params.branchPositionMin + rng() * params.branchPositionRange;
     const start = samplePoint(parent.waypoints, t);
     const tang  = sampleTangent(parent.waypoints, t);
     let nx = -tang.y;
     let ny =  tang.x;
     if (rng() < 0.5) { nx = -nx; ny = -ny; }
-    const angleJitter = (rng() - 0.5) * Math.PI * 0.5;
+    const angleJitter = (rng() - 0.5) * params.branchAngleJitter;
     const cos = Math.cos(angleJitter), sin = Math.sin(angleJitter);
     const dirX = nx * cos - ny * sin;
     const dirY = nx * sin + ny * cos;
-    const branchLen = parentLen * params.branchLengthFraction * (0.7 + rng() * 0.6);
+    const branchLen = parentLen * params.branchLengthFraction *
+      (params.branchLengthVarianceMin + rng() * params.branchLengthVarianceRange);
     const halfWidth = sampleWidth(rng, params);
     const margin = halfWidth + 2;
     const endX = clamp(start.x + dirX * branchLen, margin, gridSize - 1 - margin);

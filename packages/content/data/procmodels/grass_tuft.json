@@ -1,0 +1,30 @@
+{
+  "id": "grass_tuft",
+  "generator": "foliage_tuft",
+  "params": {
+    "blades": [
+      6,
+      11
+    ],
+    "height": [
+      2,
+      4
+    ],
+    "spread": 1.2,
+    "droop": 0.0,
+    "material": "fern_green"
+  },
+  "morphTiers": [
+    {
+      "material": "leaf_litter",
+      "height": [
+        1,
+        3
+      ],
+      "blades": [
+        4,
+        8
+      ]
+    }
+  ]
+}

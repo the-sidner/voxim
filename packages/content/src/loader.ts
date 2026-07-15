@@ -21,7 +21,10 @@
  */
 import type { ContentService } from "./store.ts";
 import { StaticContentStore } from "./store.ts";
-import type { MaterialDef, MaterialProperties, ModelDefinition, SkeletonDef, Recipe, LoreFragment, NpcTemplate, Prefab, GameConfig, TileLayout, WeaponActionDef, ActionDef, ActionGate, BehaviorTreeSpec, BiomeDef, ZoneDef, ResourceDef, TriggerDef, ProcModelDef, ScatterDef, Palette } from "./types.ts";
+import type { MaterialDef, MaterialProperties, MaterialGeneratorPreferences, ModelDefinition, SkeletonDef, Recipe, LoreFragment, NpcTemplate, Prefab, GameConfig, TileLayout, WeaponActionDef, ActionDef, ActionGate, BehaviorTreeSpec, BiomeDef, ZoneDef, ResourceDef, TriggerDef, PuzzleDef, ProcModelDef, ScatterDef, GradeDef, LightDef,
+  AtmosphereDef, WaterStyleDef, DecalDef, ParticleEmitterDef, DissolveProfileDef, DeathStyleDef, CliffProfileDef, Palette, SwingableData, ArmorData, EquippableData, GaitDef, GaitKeyframe } from "./types.ts";
+import { crossCheckFieldExpr } from "./field_expr.ts";
+import { crossCheckBodyRecipe } from "./body_recipe.ts";
 import { snapColorToRamp, hexStrToNum } from "./palette_snap.ts";
 import { parsePoiDef } from "./poi_schema.ts";
 import { buildAnimationLibrary, type LibraryClipFile } from "./anim_library.ts";
@@ -50,9 +53,9 @@ async function loadContentStoreInternal(
   const [
     materialsRaw, modelsRaw, skeletonsRaw, recipesRaw,
     loreRaw, prefabsRaw, npcTemplatesRaw,
-    weaponActionsRaw, actionsRaw, behaviorTreesRaw,
-    biomesRaw, zonesRaw, poisRaw, resourcesRaw, triggersRaw,
-    procModelsRaw, scatterRaw, animLibraryArchetypes,
+    weaponActionsRaw, gaitsRaw, actionsRaw, behaviorTreesRaw,
+    biomesRaw, zonesRaw, poisRaw, resourcesRaw, triggersRaw, puzzlesRaw,
+    procModelsRaw, scatterRaw, gradesRaw, lightsRaw, atmospheresRaw, waterStylesRaw, decalsRaw, particlesRaw, dissolveProfilesRaw, deathStylesRaw, cliffProfilesRaw, animLibraryArchetypes,
   ] = await Promise.all([
     readJsonDir(dataDir, "materials"),
     readJsonDir(dataDir, "models"),
@@ -62,6 +65,7 @@ async function loadContentStoreInternal(
     readJsonDir(dataDir, "prefabs"),
     readJsonDir(dataDir, "npcs"),
     readJsonDir(dataDir, "weapon_actions"),
+    readJsonDirOptional(dataDir, "gaits"),
     readJsonDirOptional(dataDir, "actions"),
     readJsonDir(dataDir, "behavior_trees"),
     readJsonDir(dataDir, "biomes"),
@@ -69,8 +73,18 @@ async function loadContentStoreInternal(
     readJsonDirOptional(dataDir, "pois"),
     readJsonDirOptional(dataDir, "resources"),
     readJsonDirOptional(dataDir, "triggers"),
+    readJsonDirOptional(dataDir, "puzzles"),
     readJsonDirOptional(dataDir, "procmodels"),
     readJsonDirOptional(dataDir, "scatter"),
+    readJsonDirOptional(dataDir, "grades"),
+    readJsonDirOptional(dataDir, "lights"),
+    readJsonDirOptional(dataDir, "atmospheres"),
+    readJsonDirOptional(dataDir, "water_styles"),
+    readJsonDirOptional(dataDir, "decals"),
+    readJsonDirOptional(dataDir, "particles"),
+    readJsonDirOptional(dataDir, "dissolve_profiles"),
+    readJsonDirOptional(dataDir, "death_styles"),
+    readJsonDirOptional(dataDir, "cliff_profiles"),
     // T-178: anim_library is now organized as `{archetype}/{clipId}.json`
     // subfolders. Returns Map<archetype, clipFile[]>.
     readJsonArchetypeDirs(dataDir, "anim_library").catch(() => new Map()),
@@ -104,7 +118,31 @@ async function loadContentStoreInternal(
       console.log(`[palette] ${mat.name.padEnd(14)} ${hexOf(mat.color)} → ${(swatchName.get(snapped) ?? "?").padEnd(11)} ${hexOf(snapped)}${override ? " (override)" : ""}`);
     }
     mat.color = snapped;
+    // T-311 P4: the disturbanceField FieldExpr must reference known planes.
+    if (mat.render?.relief?.disturbanceField) {
+      crossCheckFieldExpr(mat.render.relief.disturbanceField, `Material '${mat.name}' relief.disturbanceField`);
+    }
+    // T-301: generatorPreferences is an authoring HINT, not a required
+    // schema — but if authored, its shape must be sane (fail-fast, same
+    // stance as every other content validation in this loop).
+    if (mat.generatorPreferences) {
+      validateGeneratorPreferences(mat.name, mat.generatorPreferences);
+    }
     store.registerMaterial(mat);
+  }
+
+  // T-315 A6: mossBlend.material names another material by NAME. Can't
+  // inline-check in the loop above — materials register in filename order,
+  // so a blend target may not be registered yet when the referencing
+  // material's file is processed. Separate post-registration pass, same
+  // shape as the scatter→procModel cross-check below.
+  for (const mat of store.materials.values()) {
+    const mb = mat.render?.mossBlend;
+    if (mb && !store.materials.get(mb.material)) {
+      throw new Error(
+        `[content] material '${mat.name}' mossBlend.material references unknown material '${mb.material}'`,
+      );
+    }
   }
 
   for (const raw of modelsRaw as ModelDefinition[]) {
@@ -112,7 +150,16 @@ async function loadContentStoreInternal(
   }
 
   for (const raw of skeletonsRaw as SkeletonDef[]) {
+    // T-219 prerequisite: the bone-entity spawn walk resolves each bone's
+    // parent ENTITY via a boneId->EntityId map built in array order — fail
+    // fast on an out-of-order skeleton instead of a silently wrong chain.
+    validateSkeletonBoneOrder(raw);
     store.registerSkeleton(raw);
+    // T-186 Layer 2: a skeleton's bodyRecipe part must name a real bone and
+    // every formula field must resolve (at both morph extremes) against the
+    // skeleton's own morphParams — fail fast, same stance as every other
+    // content cross-check in this file.
+    crossCheckBodyRecipe(raw);
   }
 
   // Build one AnimationLibrary per archetype subdirectory under
@@ -142,6 +189,7 @@ async function loadContentStoreInternal(
 
   for (const effective of resolvePrefabInheritance(prefabsRaw as Prefab[])) {
     validatePrefabFields(effective);
+    validateArmorCoversBones(effective);
     store.registerPrefab(effective);
   }
   validatePrefabChildRefs(store);
@@ -152,6 +200,22 @@ async function loadContentStoreInternal(
 
   for (const raw of weaponActionsRaw as WeaponActionDef[]) {
     store.registerWeaponAction(raw);
+  }
+
+  // Gaits (T-308) — the procedural walk-cycle catalogue. Validate each def's
+  // own shape, then cross-check every skeleton's `gaitId` (skeletons are
+  // already fully registered above) against the loaded set — fail fast,
+  // same stance as every other content cross-check in this file.
+  for (const raw of gaitsRaw as GaitDef[]) {
+    validateGaitDef(raw);
+    store.registerGait(raw);
+  }
+  for (const skeleton of store.skeletons.values()) {
+    if (skeleton.gaitId && !store.gaits.get(skeleton.gaitId)) {
+      throw new Error(
+        `Skeleton '${skeleton.id}': gaitId '${skeleton.gaitId}' references an unknown gait`,
+      );
+    }
   }
 
   // Actions (T-225) — validate each def's internal shape, then a final
@@ -194,6 +258,11 @@ async function loadContentStoreInternal(
     store.registerTrigger(raw);
   }
 
+  for (const raw of puzzlesRaw as PuzzleDef[]) {
+    validatePuzzleDef(raw);
+    store.registerPuzzle(raw);
+  }
+
   // Procedural models + scatter (T-285) — visual-only content the client's
   // ScatterRenderer consumes. Register first, then cross-check scatter→procModel
   // once all procmodels are loaded (the generator id is checked client-side,
@@ -206,13 +275,130 @@ async function loadContentStoreInternal(
     validateScatterDef(raw);
     store.registerScatter(raw);
   }
+  for (const raw of gradesRaw as GradeDef[]) {
+    store.registerGrade(raw);
+  }
+  for (const raw of lightsRaw as LightDef[]) {
+    validateLightDef(raw);
+    store.registerLight(raw);
+  }
+  for (const raw of atmospheresRaw as AtmosphereDef[]) {
+    validateAtmosphereDef(raw);
+    store.registerAtmosphere(raw);
+  }
+  if (!store.atmospheres.get("default")) {
+    throw new Error(
+      `[content] no "default" AtmosphereDef loaded — data/atmospheres/default.json ` +
+      `must exist as the selector fallback.`,
+    );
+  }
+  for (const raw of waterStylesRaw as WaterStyleDef[]) {
+    validateWaterStyleDef(raw);
+    store.registerWaterStyle(raw);
+  }
+  if (!store.waterStyles.get("default")) {
+    throw new Error(
+      `[content] no "default" WaterStyleDef loaded — data/water_styles/default.json ` +
+      `must exist as the selector fallback.`,
+    );
+  }
+  for (const raw of decalsRaw as DecalDef[]) {
+    validateDecalDef(raw);
+    store.registerDecal(raw);
+  }
+  for (const raw of particlesRaw as ParticleEmitterDef[]) {
+    validateParticleEmitterDef(raw);
+    store.registerParticle(raw);
+  }
+  for (const raw of dissolveProfilesRaw as DissolveProfileDef[]) {
+    validateDissolveProfileDef(raw);
+    store.registerDissolveProfile(raw);
+  }
+  for (const raw of deathStylesRaw as DeathStyleDef[]) {
+    validateDeathStyleDef(raw);
+    store.registerDeathStyle(raw);
+  }
+  for (const raw of cliffProfilesRaw as CliffProfileDef[]) {
+    store.registerCliffProfile(raw);
+  }
+  // T-340: a ranged WeaponActionDef's muzzleParticleId and an AtmosphereDef's
+  // ambienceParticleId must both resolve against the particles registry
+  // (content→content id refs, same split as scatter→procModel below — no
+  // client registry involved on either side of these two checks).
+  for (const wa of store.weaponActions.values()) {
+    if (wa.muzzleParticleId && !store.particles.get(wa.muzzleParticleId)) {
+      throw new Error(
+        `[content] weapon action "${wa.id}" references unknown particle emitter "${wa.muzzleParticleId}"`,
+      );
+    }
+  }
+  for (const atmo of store.atmospheres.values()) {
+    if (atmo.ambienceParticleId && !store.particles.get(atmo.ambienceParticleId)) {
+      throw new Error(
+        `[content] atmosphere "${atmo.id}" references unknown particle emitter "${atmo.ambienceParticleId}"`,
+      );
+    }
+  }
+  // T-339: a DeathStyleDef's own internal refs — resourceKey, a dissolve
+  // style's dissolveProfileId, a crumble style's impactParticleId — must
+  // all resolve (content→content id refs, same split as muzzleParticleId/
+  // ambienceParticleId above). Whether an NpcTemplate.deathStyleId resolves
+  // to one of these defs, and whether `style` names a registered server
+  // DeathHook, are checked in server.ts instead — same split as the
+  // trigger/dissolveProfileId NpcTemplate checks already living there.
+  for (const ds of store.deathStyles.values()) {
+    if (!store.resources.get(ds.resourceKey)) {
+      throw new Error(`[content] death style "${ds.id}" references unknown resource "${ds.resourceKey}"`);
+    }
+    if (ds.style === "dissolve" && ds.dissolveProfileId && !store.dissolveProfiles.get(ds.dissolveProfileId)) {
+      throw new Error(`[content] death style "${ds.id}" references unknown dissolve profile "${ds.dissolveProfileId}"`);
+    }
+    if (ds.style === "crumble" && ds.crumble && !store.particles.get(ds.crumble.impactParticleId)) {
+      throw new Error(`[content] death style "${ds.id}" references unknown particle emitter "${ds.crumble.impactParticleId}"`);
+    }
+  }
   for (const s of store.scatter.values()) {
     if (!store.procModels.get(s.procModel)) {
       throw new Error(`[content] scatter "${s.id}" references unknown procModel "${s.procModel}"`);
     }
+    // T-311 P4: a morphField without tiers to select is an authoring error.
+    if (s.morphField && !store.procModels.get(s.procModel)?.morphTiers?.length) {
+      throw new Error(
+        `[content] scatter "${s.id}" authors morphField but procModel "${s.procModel}" has no morphTiers`,
+      );
+    }
+  }
+  // T-302: a model's procModelId must resolve (membership only — the
+  // generator itself, and the class:"character"/skeletonId agreement, are
+  // client-side concerns checked by crossCheckDesignLanguage where the
+  // generator registry lives; this loader is shared server+client and only
+  // owns the "does the id exist at all" half, same split as scatter above).
+  for (const m of store.models.values()) {
+    if (m.procModelId && !store.procModels.get(m.procModelId)) {
+      throw new Error(`[content] model "${m.id}" references unknown procModel "${m.procModelId}"`);
+    }
+  }
+  // T-306: a weapon prefab's swingable.bladeGrammar / an armor prefab's
+  // armor.armorGrammar must resolve (membership only — the generator itself is
+  // a client-side concern checked by crossCheckDesignLanguage, same split as
+  // procModelId above).
+  for (const p of store.prefabs.values()) {
+    const swingable = p.components["swingable"] as SwingableData | undefined;
+    if (swingable?.bladeGrammar && !store.procModels.get(swingable.bladeGrammar)) {
+      throw new Error(
+        `[content] prefab "${p.id}" swingable.bladeGrammar references unknown procModel "${swingable.bladeGrammar}"`,
+      );
+    }
+    const armor = p.components["armor"] as ArmorData | undefined;
+    if (armor?.armorGrammar && !store.procModels.get(armor.armorGrammar)) {
+      throw new Error(
+        `[content] prefab "${p.id}" armor.armorGrammar references unknown procModel "${armor.armorGrammar}"`,
+      );
+    }
   }
 
   const gameConfig = await readJsonObject(dataDir, "game_config.json") as unknown as GameConfig;
+  validateInputBindings(gameConfig);
   store.setGameConfig(gameConfig);
 
   try {
@@ -425,7 +611,7 @@ export function resolvePrefabInheritance(raw: Prefab[]): Prefab[] {
  * Abstract prefabs (`_`-prefixed) are skipped — they exist only as inheritance
  * roots and may legitimately carry partial/unfinished fields.
  */
-function validatePrefabFields(p: Prefab): void {
+export function validatePrefabFields(p: Prefab): void {
   if (p.id.startsWith("_")) return;
 
   if (p.category !== undefined) {
@@ -464,18 +650,42 @@ function validatePrefabFields(p: Prefab): void {
       throw new Error(`Prefab '${p.id}': children must be an array`);
     }
     for (const c of p.children) {
-      if (typeof c?.prefabId !== "string" || c.prefabId.length === 0) {
-        throw new Error(`Prefab '${p.id}': every child needs a non-empty prefabId`);
+      // T-334: a child is EITHER a fixed `prefabId` OR a `pool` of variant
+      // ids (pool wins if both are set — same precedence as SubObjectRef's
+      // modelId/pool) — mirrors resolveSubObjects' vocabulary exactly.
+      const hasPrefabId = c?.prefabId !== undefined;
+      const hasPool = c?.pool !== undefined;
+      const label = hasPrefabId ? `'${c.prefabId}'` : hasPool ? "(pool)" : "(unlabelled)";
+      if (hasPrefabId && (typeof c.prefabId !== "string" || c.prefabId.length === 0)) {
+        throw new Error(`Prefab '${p.id}': child prefabId must be a non-empty string when present`);
+      }
+      if (hasPool) {
+        if (!Array.isArray(c.pool) || c.pool.length === 0) {
+          throw new Error(`Prefab '${p.id}': child ${label} pool must be a non-empty array`);
+        }
+        for (const entry of c.pool) {
+          if (typeof entry !== "string" || entry.length === 0) {
+            throw new Error(`Prefab '${p.id}': child ${label} pool entries must be non-empty strings`);
+          }
+        }
+      }
+      if (!hasPrefabId && !hasPool) {
+        throw new Error(`Prefab '${p.id}': every child needs a prefabId or a pool`);
+      }
+      if (c.probability !== undefined) {
+        if (typeof c.probability !== "number" || !Number.isFinite(c.probability) || c.probability < 0 || c.probability > 1) {
+          throw new Error(`Prefab '${p.id}': child ${label} probability must be a number in [0, 1]`);
+        }
       }
       if (c.local !== undefined) {
         if (typeof c.local !== "object" || Array.isArray(c.local)) {
-          throw new Error(`Prefab '${p.id}': child '${c.prefabId}' local must be an object`);
+          throw new Error(`Prefab '${p.id}': child ${label} local must be an object`);
         }
         for (const axis of ["x", "y", "z", "scale"] as const) {
           const v = c.local[axis];
           if (v !== undefined && (typeof v !== "number" || !Number.isFinite(v))) {
             throw new Error(
-              `Prefab '${p.id}': child '${c.prefabId}' local.${axis} must be a finite number`,
+              `Prefab '${p.id}': child ${label} local.${axis} must be a finite number`,
             );
           }
         }
@@ -485,24 +695,108 @@ function validatePrefabFields(p: Prefab): void {
 }
 
 /**
- * After every prefab is registered, resolve `children[].prefabId` against
- * the full set (T-217). A child must reference a concrete prefab — unknown
- * or abstract (`_`-prefixed) targets fail loud here rather than at spawn.
+ * T-223 — `armor.coversBones` is only meaningful alongside a procedural
+ * `armorGrammar` (it names which of that generator's bones THIS piece should
+ * fan out onto), and is REQUIRED for any item equipped into a multi-bone
+ * slot (`legs`/`feet`) — those slots have no single bone a scene-graph
+ * `Parent` edge can express (T-220's `EQUIP_SLOT_PRIMARY_BONE` deliberately
+ * excludes them), so without `coversBones` the client has nothing to render
+ * the piece on. Fails loud at load rather than silently rendering nothing
+ * for a future legs/feet item that forgets to declare it.
  */
-function validatePrefabChildRefs(store: ContentService): void {
+/**
+ * Keyboard bindings that a browser would steal from us (T-335).
+ *
+ * A modifier key can never be a game binding. This is not a style rule: a page
+ * cannot `preventDefault` the browser's own reserved chords, so binding crouch
+ * to Ctrl silently made crouch-walking forward (Ctrl+W) into "close the tab".
+ * Any modifier binding turns every ordinary movement key into a browser chord —
+ * the failure is combinatorial, not local to one key. `Tab` (focus steal) and
+ * the F-keys (devtools/fullscreen/refresh) go for the same reason.
+ *
+ * Enforced at boot so the bug cannot return by an innocent-looking JSON edit.
+ * That structural guarantee — not the rebind itself — is what T-335 delivers.
+ */
+const RESERVED_KEY_CODES = new Set([
+  "ControlLeft", "ControlRight",
+  "AltLeft", "AltRight",
+  "MetaLeft", "MetaRight",
+  "Tab",
+  ...Array.from({ length: 12 }, (_, i) => `F${i + 1}`),
+]);
+
+export function validateInputBindings(cfg: GameConfig): void {
+  const bindings = cfg.input?.bindings;
+  if (!bindings) throw new Error(`game_config.json: missing "input.bindings" (T-335)`);
+
+  const seen = new Map<string, string>();
+  for (const [action, codes] of Object.entries(bindings)) {
+    if (!Array.isArray(codes) || codes.length === 0) {
+      throw new Error(`game_config.json: input.bindings["${action}"] must be a non-empty array of KeyboardEvent codes`);
+    }
+    for (const code of codes) {
+      if (RESERVED_KEY_CODES.has(code)) {
+        throw new Error(
+          `game_config.json: input.bindings["${action}"] binds "${code}", a browser-reserved key. ` +
+          `A modifier binding makes every movement key a browser chord (crouch on Ctrl turned Ctrl+W into "close tab"), ` +
+          `and a page cannot preventDefault a reserved chord. Pick a plain key.`,
+        );
+      }
+      const other = seen.get(code);
+      if (other) {
+        throw new Error(`game_config.json: "${code}" is bound to both "${other}" and "${action}"`);
+      }
+      seen.set(code, action);
+    }
+  }
+}
+
+export function validateArmorCoversBones(p: Prefab): void {
+  if (p.id.startsWith("_")) return;
+  const armor = p.components["armor"] as ArmorData | undefined;
+  if (!armor) return;
+  if (armor.coversBones && !armor.armorGrammar) {
+    throw new Error(
+      `[content] prefab "${p.id}": armor.coversBones is set without armor.armorGrammar — coversBones only applies to procedural (grammar-driven) armor`,
+    );
+  }
+  const equippable = p.components["equippable"] as EquippableData | undefined;
+  const multiBoneSlot = equippable?.slots?.some((s) => s === "legs" || s === "feet") ?? false;
+  if (multiBoneSlot && !armor.coversBones) {
+    throw new Error(
+      `[content] prefab "${p.id}": equips into a multi-bone slot (legs/feet) but armor.coversBones is unset — the client has no single bone to graph-attach to and no bone list to fan out onto`,
+    );
+  }
+}
+
+/**
+ * After every prefab is registered, resolve every id a `children` entry
+ * names — the fixed `prefabId` form AND every entry of a `pool` (T-334,
+ * even though `pool` wins at spawn time when both are set) — against the
+ * full prefab set (T-217). Every referenced id must be a concrete prefab;
+ * unknown or abstract (`_`-prefixed) targets fail loud here rather than at
+ * spawn (or, worse, only on whichever seed happens to draw the bad pool
+ * entry).
+ */
+export function validatePrefabChildRefs(store: ContentService): void {
   for (const p of store.prefabs.values()) {
     if (!p.children) continue;
     for (const c of p.children) {
-      const target = store.prefabs.get(c.prefabId);
-      if (!target) {
-        throw new Error(
-          `Prefab '${p.id}': child references unknown prefab '${c.prefabId}'`,
-        );
-      }
-      if (target.id.startsWith("_")) {
-        throw new Error(
-          `Prefab '${p.id}': child '${c.prefabId}' is abstract and cannot be spawned`,
-        );
+      const candidateIds = new Set<string>();
+      if (c.prefabId !== undefined) candidateIds.add(c.prefabId);
+      for (const entry of c.pool ?? []) candidateIds.add(entry);
+      for (const candidateId of candidateIds) {
+        const target = store.prefabs.get(candidateId);
+        if (!target) {
+          throw new Error(
+            `Prefab '${p.id}': child references unknown prefab '${candidateId}'`,
+          );
+        }
+        if (target.id.startsWith("_")) {
+          throw new Error(
+            `Prefab '${p.id}': child '${candidateId}' is abstract and cannot be spawned`,
+          );
+        }
       }
     }
   }
@@ -535,7 +829,6 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
 }
 
 const VALID_ACTION_KINDS = new Set(["active", "reaction", "ambient"]);
-const VALID_ACTION_MOVEMENT = new Set(["free", "slowed", "locked"]);
 const VALID_ACTION_EFFECT_EDGES = new Set(["enter", "exit", "tick"]);
 const ACTION_PHASE_REF_RE = /^([^:]+):(enter|exit|tick)$/;
 
@@ -613,6 +906,20 @@ export function validateTriggerDef(def: TriggerDef): void {
 }
 
 /**
+ * Shape-validate one PuzzleDef (T-212 v2). `kind` membership in the
+ * puzzle-kind registry (`poi/puzzle_kinds/mod.ts`) is the tile-server's
+ * boot cross-check, same stance as TriggerDef's effect/gate checks.
+ */
+export function validatePuzzleDef(def: PuzzleDef): void {
+  if (typeof def.id !== "string" || def.id.length === 0) {
+    throw new Error(`PuzzleDef: missing or empty id`);
+  }
+  if (typeof def.kind !== "string" || def.kind.length === 0) {
+    throw new Error(`Puzzle '${def.id}': 'kind' must be a non-empty string`);
+  }
+}
+
+/**
  * Shape-validate one ProcModelDef (T-285). `generator` membership in the
  * client generator registry is the CLIENT's boot cross-check (generators are
  * client-side); `params` is opaque (the generator interprets its own shape).
@@ -627,6 +934,270 @@ export function validateProcModelDef(def: ProcModelDef): void {
   if (def.params === null || typeof def.params !== "object") {
     throw new Error(`ProcModel '${def.id}': 'params' must be an object`);
   }
+  // T-311 P4: corruption-morph tiers — at most 3 overrides (4 tiers incl. base).
+  if (def.morphTiers !== undefined) {
+    if (!Array.isArray(def.morphTiers) || def.morphTiers.length < 1 || def.morphTiers.length > 3) {
+      throw new Error(`ProcModel '${def.id}': 'morphTiers' must be an array of 1–3 param-override objects`);
+    }
+    for (const t of def.morphTiers) {
+      if (t === null || typeof t !== "object" || Array.isArray(t)) {
+        throw new Error(`ProcModel '${def.id}': every 'morphTiers' entry must be an object`);
+      }
+    }
+  }
+}
+
+export function validateLightDef(def: LightDef): void {
+  if (typeof def.id !== "string" || def.id.length === 0) {
+    throw new Error(`LightDef: missing or empty id`);
+  }
+  if (def.family !== "warm" && def.family !== "corruption" && def.family !== "cold") {
+    throw new Error(`Light '${def.id}': 'family' must be 'warm' | 'corruption' | 'cold'`);
+  }
+  for (const k of ["baseColor", "radius", "intensity"] as const) {
+    if (typeof def[k] !== "number") throw new Error(`Light '${def.id}': '${k}' must be a number`);
+  }
+}
+
+/** Shape-validate one AtmosphereDef (T-311 P5a). Cross-checked at boot against
+ *  `WorldClock.biomeTag`'s closed tag vocabulary is the SELECTOR's job (server
+ *  boot, T-315 A6 house pattern) — this only validates the def's own shape. */
+export function validateAtmosphereDef(def: AtmosphereDef): void {
+  if (typeof def.id !== "string" || def.id.length === 0) {
+    throw new Error(`AtmosphereDef: missing or empty id`);
+  }
+  const sa = def.sunArc;
+  if (!sa || typeof sa !== "object") {
+    throw new Error(`Atmosphere '${def.id}': 'sunArc' must be an object`);
+  }
+  for (const k of ["dawnAzimuthDeg", "duskAzimuthDeg", "maxAltitudeDeg", "nightDepthDeg"] as const) {
+    if (typeof sa[k] !== "number") {
+      throw new Error(`Atmosphere '${def.id}': sunArc.${k} must be a number`);
+    }
+  }
+  const m = def.mist;
+  if (!m || typeof m !== "object") {
+    throw new Error(`Atmosphere '${def.id}': 'mist' must be an object`);
+  }
+  if (typeof m.heightMin !== "number" || typeof m.heightMax !== "number" || m.heightMax < m.heightMin) {
+    throw new Error(`Atmosphere '${def.id}': mist.heightMin/heightMax must be numbers with heightMax >= heightMin`);
+  }
+  if (!m.densityByPhase || typeof m.densityByPhase !== "object") {
+    throw new Error(`Atmosphere '${def.id}': 'mist.densityByPhase' must be an object`);
+  }
+  if (typeof m.color !== "string" || m.color.length === 0) {
+    throw new Error(`Atmosphere '${def.id}': 'mist.color' must be a non-empty hex string`);
+  }
+  if (typeof m.easeRate !== "number" || m.easeRate <= 0) {
+    throw new Error(`Atmosphere '${def.id}': 'mist.easeRate' must be a positive number`);
+  }
+  const g = def.godRay;
+  if (!g || typeof g !== "object") {
+    throw new Error(`Atmosphere '${def.id}': 'godRay' must be an object`);
+  }
+  for (const k of ["intensity", "nearFieldRange", "decay", "strength"] as const) {
+    if (typeof g[k] !== "number") {
+      throw new Error(`Atmosphere '${def.id}': godRay.${k} must be a number`);
+    }
+  }
+  if (typeof g.color !== "string" || g.color.length === 0) {
+    throw new Error(`Atmosphere '${def.id}': 'godRay.color' must be a non-empty hex string`);
+  }
+}
+
+/** Shape-validate one WaterStyleDef (T-311 P5b). */
+export function validateWaterStyleDef(def: WaterStyleDef): void {
+  if (typeof def.id !== "string" || def.id.length === 0) {
+    throw new Error(`WaterStyleDef: missing or empty id`);
+  }
+  for (const k of ["shallowColor", "deepColor"] as const) {
+    if (typeof def[k] !== "string" || def[k].length === 0) {
+      throw new Error(`WaterStyle '${def.id}': '${k}' must be a non-empty hex string`);
+    }
+  }
+  if (typeof def.opacity !== "number") {
+    throw new Error(`WaterStyle '${def.id}': 'opacity' must be a number`);
+  }
+  const w = def.waves;
+  if (!w || typeof w !== "object") {
+    throw new Error(`WaterStyle '${def.id}': 'waves' must be an object`);
+  }
+  for (const k of ["amplitude", "frequencyX", "frequencyZ", "speed"] as const) {
+    if (!Array.isArray(w[k]) || w[k].length !== 3) {
+      throw new Error(`WaterStyle '${def.id}': waves.${k} must be a 3-element array`);
+    }
+  }
+  for (const k of ["normalScale", "lumDivisor"] as const) {
+    if (typeof w[k] !== "number") {
+      throw new Error(`WaterStyle '${def.id}': waves.${k} must be a number`);
+    }
+  }
+  const f = def.fresnel;
+  if (!f || typeof f !== "object") {
+    throw new Error(`WaterStyle '${def.id}': 'fresnel' must be an object`);
+  }
+  for (const k of ["exponent", "tintStrength", "opacityBoost"] as const) {
+    if (typeof f[k] !== "number") {
+      throw new Error(`WaterStyle '${def.id}': fresnel.${k} must be a number`);
+    }
+  }
+  const s = def.specular;
+  if (!s || typeof s !== "object") {
+    throw new Error(`WaterStyle '${def.id}': 'specular' must be an object`);
+  }
+  if (typeof s.exponent !== "number") {
+    throw new Error(`WaterStyle '${def.id}': specular.exponent must be a number`);
+  }
+  if (!Array.isArray(s.gain) || s.gain.length !== 3) {
+    throw new Error(`WaterStyle '${def.id}': specular.gain must be a 3-element array`);
+  }
+}
+
+/** Shape-validate one ephemeral combat DecalDef (T-311 P4). The `source` id is
+ *  cross-checked on the client against the decal-source registry (the closed
+ *  event catalog); `material` against the material registry. */
+export function validateDecalDef(def: DecalDef): void {
+  if (typeof def.id !== "string" || def.id.length === 0) {
+    throw new Error(`DecalDef: missing or empty id`);
+  }
+  if (typeof def.source !== "string" || def.source.length === 0) {
+    throw new Error(`Decal '${def.id}': 'source' must be a non-empty decal-source id`);
+  }
+  if (typeof def.material !== "string" || def.material.length === 0) {
+    throw new Error(`Decal '${def.id}': 'material' must be a material name`);
+  }
+  if (!Array.isArray(def.count) || def.count.length !== 2 || def.count[0] < 0 || def.count[1] < def.count[0]) {
+    throw new Error(`Decal '${def.id}': 'count' must be a [min,max] pair with 0 ≤ min ≤ max`);
+  }
+  if (!Array.isArray(def.sizeRange) || def.sizeRange.length !== 2 || def.sizeRange[0] <= 0) {
+    throw new Error(`Decal '${def.id}': 'sizeRange' must be a positive [min,max] pair`);
+  }
+  if (typeof def.radius !== "number" || def.radius < 0) {
+    throw new Error(`Decal '${def.id}': 'radius' must be ≥ 0`);
+  }
+  if (typeof def.ttlSeconds !== "number" || def.ttlSeconds <= 0
+    || typeof def.fadeSeconds !== "number" || def.fadeSeconds < 0) {
+    throw new Error(`Decal '${def.id}': 'ttlSeconds' must be > 0 and 'fadeSeconds' ≥ 0`);
+  }
+}
+
+/** Shape-validate one ParticleEmitterDef (T-340). `source` (when present) is
+ *  cross-checked on the client against the particle-source registry; `material`
+ *  against the material registry (same split as validateDecalDef). */
+export function validateParticleEmitterDef(def: ParticleEmitterDef): void {
+  if (typeof def.id !== "string" || def.id.length === 0) {
+    throw new Error(`ParticleEmitterDef: missing or empty id`);
+  }
+  if (def.source !== undefined && (typeof def.source !== "string" || def.source.length === 0)) {
+    throw new Error(`Particle '${def.id}': 'source' must be a non-empty particle-source id when present`);
+  }
+  if (typeof def.material !== "string" || def.material.length === 0) {
+    throw new Error(`Particle '${def.id}': 'material' must be a material name`);
+  }
+  if (!Array.isArray(def.count) || def.count.length !== 2 || def.count[0] < 0 || def.count[1] < def.count[0]) {
+    throw new Error(`Particle '${def.id}': 'count' must be a [min,max] pair with 0 ≤ min ≤ max`);
+  }
+  if (!Array.isArray(def.speed) || def.speed.length !== 2 || def.speed[0] < 0 || def.speed[1] < def.speed[0]) {
+    throw new Error(`Particle '${def.id}': 'speed' must be a [min,max] pair with 0 ≤ min ≤ max`);
+  }
+  if (typeof def.spreadDeg !== "number" || def.spreadDeg < 0 || def.spreadDeg > 180) {
+    throw new Error(`Particle '${def.id}': 'spreadDeg' must be in [0,180]`);
+  }
+  if (!Array.isArray(def.lifetime) || def.lifetime.length !== 2 || def.lifetime[0] <= 0 || def.lifetime[1] < def.lifetime[0]) {
+    throw new Error(`Particle '${def.id}': 'lifetime' must be a positive [min,max] pair`);
+  }
+  if (typeof def.gravityScale !== "number" || !Number.isFinite(def.gravityScale)) {
+    throw new Error(`Particle '${def.id}': 'gravityScale' must be a finite number`);
+  }
+  if (!def.size || typeof def.size.start !== "number" || def.size.start <= 0
+    || typeof def.size.end !== "number" || def.size.end < 0) {
+    throw new Error(`Particle '${def.id}': 'size.start' must be > 0 and 'size.end' ≥ 0`);
+  }
+  if (def.ambience) {
+    if (typeof def.ambience.count !== "number" || def.ambience.count <= 0) {
+      throw new Error(`Particle '${def.id}': 'ambience.count' must be > 0`);
+    }
+    if (typeof def.ambience.boxHalfExtent !== "number" || def.ambience.boxHalfExtent <= 0) {
+      throw new Error(`Particle '${def.id}': 'ambience.boxHalfExtent' must be > 0`);
+    }
+    if (typeof def.ambience.boxHeight !== "number" || def.ambience.boxHeight <= 0) {
+      throw new Error(`Particle '${def.id}': 'ambience.boxHeight' must be > 0`);
+    }
+  }
+}
+
+/** Shape-validate one DissolveProfileDef (T-311 P5c). `maxSeparatedVoxels` /
+ *  `maxSeparationDistance` are the I3b hard caps — enforced positive so a
+ *  zeroed-out profile can't silently disable the cost guard. */
+export function validateDissolveProfileDef(def: DissolveProfileDef): void {
+  if (typeof def.id !== "string" || def.id.length === 0) {
+    throw new Error(`DissolveProfileDef: missing or empty id`);
+  }
+  if (typeof def.frayBandWidth !== "number" || def.frayBandWidth < 0 || def.frayBandWidth > 1) {
+    throw new Error(`DissolveProfileDef '${def.id}': 'frayBandWidth' must be in [0,1]`);
+  }
+  if (typeof def.driftSpeed !== "number" || def.driftSpeed < 0) {
+    throw new Error(`DissolveProfileDef '${def.id}': 'driftSpeed' must be ≥ 0`);
+  }
+  if (typeof def.maxSeparatedVoxels !== "number" || def.maxSeparatedVoxels <= 0) {
+    throw new Error(`DissolveProfileDef '${def.id}': 'maxSeparatedVoxels' must be > 0 (I3b hard cap)`);
+  }
+  if (typeof def.maxSeparationDistance !== "number" || def.maxSeparationDistance <= 0) {
+    throw new Error(`DissolveProfileDef '${def.id}': 'maxSeparationDistance' must be > 0 (I3b hard cap)`);
+  }
+  if (typeof def.durationTicks !== "number" || def.durationTicks <= 0) {
+    throw new Error(`DissolveProfileDef '${def.id}': 'durationTicks' must be > 0`);
+  }
+  if (def.phaseCurve !== undefined && def.phaseCurve !== "linear" && def.phaseCurve !== "smoothstep") {
+    throw new Error(`DissolveProfileDef '${def.id}': 'phaseCurve' must be 'linear' | 'smoothstep'`);
+  }
+}
+
+/** Shape-validate one DeathStyleDef (T-339). Cross-registry refs
+ *  (resourceKey/dissolveProfileId/crumble.impactParticleId) are checked
+ *  after every def has loaded — see the loop right after this function's
+ *  call site. */
+export function validateDeathStyleDef(def: DeathStyleDef): void {
+  if (typeof def.id !== "string" || def.id.length === 0) {
+    throw new Error(`DeathStyleDef: missing or empty id`);
+  }
+  if (def.style !== "dissolve" && def.style !== "crumble") {
+    throw new Error(`DeathStyleDef '${def.id}': 'style' must be 'dissolve' | 'crumble'`);
+  }
+  if (typeof def.resourceKey !== "string" || def.resourceKey.length === 0) {
+    throw new Error(`DeathStyleDef '${def.id}': 'resourceKey' must be a non-empty resource id`);
+  }
+  if (def.style === "dissolve") {
+    if (typeof def.dissolveProfileId !== "string" || def.dissolveProfileId.length === 0) {
+      throw new Error(`DeathStyleDef '${def.id}': style "dissolve" requires 'dissolveProfileId'`);
+    }
+    return;
+  }
+  const c = def.crumble;
+  if (!c) {
+    throw new Error(`DeathStyleDef '${def.id}': style "crumble" requires a 'crumble' block`);
+  }
+  if (!Array.isArray(c.impulseSpeed) || c.impulseSpeed.length !== 2 || c.impulseSpeed[0] < 0 || c.impulseSpeed[1] < c.impulseSpeed[0]) {
+    throw new Error(`DeathStyleDef '${def.id}': crumble.impulseSpeed must be a [min,max] pair with 0 ≤ min ≤ max`);
+  }
+  if (typeof c.spreadDeg !== "number" || c.spreadDeg < 0 || c.spreadDeg > 180) {
+    throw new Error(`DeathStyleDef '${def.id}': crumble.spreadDeg must be in [0,180]`);
+  }
+  if (typeof c.gravityScale !== "number" || c.gravityScale < 0) {
+    throw new Error(`DeathStyleDef '${def.id}': crumble.gravityScale must be ≥ 0`);
+  }
+  if (!Array.isArray(c.spinSpeed) || c.spinSpeed.length !== 2 || c.spinSpeed[0] < 0 || c.spinSpeed[1] < c.spinSpeed[0]) {
+    throw new Error(`DeathStyleDef '${def.id}': crumble.spinSpeed must be a [min,max] pair with 0 ≤ min ≤ max`);
+  }
+  if (typeof c.durationTicks !== "number" || c.durationTicks <= 0) {
+    throw new Error(`DeathStyleDef '${def.id}': crumble.durationTicks must be > 0`);
+  }
+  if (typeof c.fadeTicks !== "number" || c.fadeTicks < 0 || c.fadeTicks > c.durationTicks) {
+    throw new Error(`DeathStyleDef '${def.id}': crumble.fadeTicks must be in [0, durationTicks]`);
+  }
+  if (typeof c.impactParticleId !== "string" || c.impactParticleId.length === 0) {
+    throw new Error(`DeathStyleDef '${def.id}': crumble.impactParticleId must be a non-empty particle id`);
+  }
 }
 
 /** Shape-validate one ScatterDef (T-285). procModel→ProcModelDef membership is
@@ -638,8 +1209,16 @@ export function validateScatterDef(def: ScatterDef): void {
   if (typeof def.procModel !== "string" || def.procModel.length === 0) {
     throw new Error(`Scatter '${def.id}': 'procModel' must be a non-empty id`);
   }
-  if (typeof def.kind !== "number" || !Number.isInteger(def.kind) || def.kind < 0) {
-    throw new Error(`Scatter '${def.id}': 'kind' must be a non-negative integer boundary kind`);
+  // 'kind' and 'material' are mutually exclusive dispatch keys (mirrors
+  // scatter_renderer.ts's own `matIds !== undefined ? ... : kinds[cellIdx] === def.kind`
+  // branch): 'kind' is required when 'material' is absent, and must be
+  // omitted (never silently ignored) when 'material' is present.
+  if (def.material === undefined) {
+    if (typeof def.kind !== "number" || !Number.isInteger(def.kind) || def.kind < 0) {
+      throw new Error(`Scatter '${def.id}': 'kind' must be a non-negative integer boundary kind (required when 'material' is absent)`);
+    }
+  } else if (def.kind !== undefined) {
+    throw new Error(`Scatter '${def.id}': 'kind' is ignored when 'material' is set — omit it`);
   }
   if (typeof def.pool !== "number" || def.pool < 1 || !Number.isInteger(def.pool)) {
     throw new Error(`Scatter '${def.id}': 'pool' must be a positive integer`);
@@ -649,6 +1228,19 @@ export function validateScatterDef(def: ScatterDef): void {
   }
   if (!Array.isArray(def.scaleJitter) || def.scaleJitter.length !== 2) {
     throw new Error(`Scatter '${def.id}': 'scaleJitter' must be a [min,max] pair`);
+  }
+  // T-311 P4: a densityField FieldExpr must reference only known field planes.
+  if (def.densityField) crossCheckFieldExpr(def.densityField, `ScatterDef '${def.id}'`);
+  // T-311 P4: same for the corruption-morph tier selector (procModel morphTiers
+  // membership is cross-checked with the other procModel refs after load).
+  if (def.morphField) crossCheckFieldExpr(def.morphField, `ScatterDef '${def.id}' morphField`);
+  if (def.cluster) {
+    if (!Array.isArray(def.cluster.count) || def.cluster.count.length !== 2) {
+      throw new Error(`Scatter '${def.id}': 'cluster.count' must be a [min,max] pair`);
+    }
+    if (typeof def.cluster.radius !== "number" || def.cluster.radius < 0) {
+      throw new Error(`Scatter '${def.id}': 'cluster.radius' must be ≥ 0`);
+    }
   }
 }
 
@@ -705,6 +1297,66 @@ export function validateResourceDef(def: ResourceDef): void {
       }
     }
   }
+}
+
+/** Validate one GaitDef's own shape (T-308). `forward` must be a non-empty,
+ *  phase-ascending track — `backward`/`strafe`, if authored, get the same
+ *  check (see swing_pose.ts's `applyGaitPose` for how an absent track is
+ *  derived from `forward` instead). */
+/**
+ * T-219 prerequisite: `SkeletonDef.bones` must be parent-before-child
+ * ordered — a bone's `parent` id must already have appeared earlier in the
+ * array (or be `null`, the root). The client's `entity_mesh.ts`
+ * (`upgradeToSkeletonModel`) already silently assumes this when building
+ * `boneGroups` (an out-of-order bone falls back to the model root group,
+ * no error); the tile-server's bone-entity spawn walk (spawner.ts,
+ * `installSkeletonBones`) inherits the SAME assumption — resolving a
+ * bone's parent ENTITY by looking up an already-created entry in a
+ * boneId->EntityId map built in array order. Fail fast at load instead of
+ * producing a silently-wrong (or crashing) parent chain at spawn time.
+ */
+export function validateSkeletonBoneOrder(def: SkeletonDef): void {
+  const seen = new Set<string>();
+  for (const bone of def.bones) {
+    if (bone.parent !== null && !seen.has(bone.parent)) {
+      throw new Error(
+        `Skeleton '${def.id}': bone '${bone.id}' declares parent '${bone.parent}' ` +
+        `before it is defined — SkeletonDef.bones must be parent-before-child ordered`,
+      );
+    }
+    seen.add(bone.id);
+  }
+}
+
+export function validateGaitDef(def: GaitDef): void {
+  if (typeof def.id !== "string" || def.id.length === 0) {
+    throw new Error(`GaitDef: missing or empty id`);
+  }
+  if (typeof def.strideLength !== "number" || !(def.strideLength > 0)) {
+    throw new Error(`Gait '${def.id}': strideLength must be a positive number`);
+  }
+  const checkTrack = (name: string, track: GaitKeyframe[] | undefined) => {
+    if (track === undefined) return;
+    if (!Array.isArray(track) || track.length === 0) {
+      throw new Error(`Gait '${def.id}': ${name} must be a non-empty array`);
+    }
+    let prevPhase = -Infinity;
+    for (const kf of track) {
+      if (typeof kf.phase !== "number" || kf.phase < 0 || kf.phase > 1) {
+        throw new Error(`Gait '${def.id}': ${name} keyframe phase must be in [0,1], got ${kf.phase}`);
+      }
+      if (kf.phase < prevPhase) {
+        throw new Error(`Gait '${def.id}': ${name} keyframes must be phase-ascending`);
+      }
+      prevPhase = kf.phase;
+      if (typeof kf.fwd !== "number" || typeof kf.right !== "number" || typeof kf.up !== "number") {
+        throw new Error(`Gait '${def.id}': ${name} keyframe at phase ${kf.phase} needs numeric fwd/right/up`);
+      }
+    }
+  };
+  checkTrack("forward", def.forward);
+  checkTrack("backward", def.backward);
+  checkTrack("strafe", def.strafe);
 }
 
 export function validateActionDef(def: ActionDef): void {
@@ -771,14 +1423,25 @@ export function validateActionDef(def: ActionDef): void {
   if (!def.movement || typeof def.movement !== "object" || Array.isArray(def.movement)) {
     throw new Error(`Action '${def.id}': movement must be an object`);
   }
+  // T-345: a phase's movement is "free", "locked", or a SPEED MULTIPLIER in
+  // (0,1]. The old "slowed" string is retired — it named a mode nothing
+  // implemented (physics read it as "free"), so every def that declared it was
+  // lying about its own behaviour and drawing a bow felt exactly like walking.
+  // Rejecting it BY NAME matters: without this branch it would just fail the
+  // number test with an unhelpful message, and the reason would be lost.
   for (const name of phaseNames) {
     const v = def.movement[name];
     if (v === undefined) {
-      throw new Error(`Action '${def.id}' phase '${name}': movement value required (free|slowed|locked)`);
+      throw new Error(`Action '${def.id}' phase '${name}': movement value required (free|locked|number in (0,1])`);
     }
-    if (!VALID_ACTION_MOVEMENT.has(v)) {
-      throw new Error(`Action '${def.id}' movement.${name}: must be free|slowed|locked, got '${v}'`);
-    }
+    if (v === "free" || v === "locked") continue;
+    if (typeof v === "number" && v > 0 && v <= 1) continue;
+    const hint = (v as unknown) === "slowed"
+      ? ` — "slowed" is retired (T-345): name the multiplier itself, e.g. 0.4, so the penalty depends on the action`
+      : "";
+    throw new Error(
+      `Action '${def.id}' movement.${name}: must be "free", "locked", or a number in (0,1] — got ${JSON.stringify(v)}${hint}`,
+    );
   }
   for (const name of Object.keys(def.movement)) {
     if (!phaseNames.includes(name)) {
@@ -792,6 +1455,25 @@ export function validateActionDef(def: ActionDef): void {
   }
   if (def.triggersGcd !== undefined && typeof def.triggersGcd !== "boolean") {
     throw new Error(`Action '${def.id}': triggersGcd must be a boolean`);
+  }
+  if (def.hitStopTicks !== undefined
+    && (typeof def.hitStopTicks !== "number" || def.hitStopTicks < 0 || !Number.isFinite(def.hitStopTicks))) {
+    throw new Error(`Action '${def.id}': hitStopTicks must be a non-negative number`);
+  }
+  if (def.preWindup !== undefined) {
+    if (typeof def.preWindup.clipId !== "string" || def.preWindup.clipId.length === 0) {
+      throw new Error(`Action '${def.id}': preWindup.clipId must be a non-empty string`);
+    }
+    if (typeof def.preWindup.ticks !== "number" || !Number.isInteger(def.preWindup.ticks) || def.preWindup.ticks <= 0) {
+      throw new Error(`Action '${def.id}': preWindup.ticks must be a positive integer`);
+    }
+    const firstPhase = phaseNames[0];
+    const firstPhaseTicks = def.phases[firstPhase]?.ticks ?? 0;
+    if (firstPhaseTicks !== -1 && def.preWindup.ticks >= firstPhaseTicks) {
+      throw new Error(
+        `Action '${def.id}': preWindup.ticks (${def.preWindup.ticks}) must be < first phase '${firstPhase}'.ticks (${firstPhaseTicks})`,
+      );
+    }
   }
   if (def.costs !== undefined) {
     if (typeof def.costs !== "object" || Array.isArray(def.costs)) {
@@ -860,6 +1542,19 @@ export function validateActionDef(def: ActionDef): void {
     validateActionGates(def.id, "preconditions", def.preconditions);
   }
 
+  if (def.releaseActionId !== undefined) {
+    if (typeof def.releaseActionId !== "string" || def.releaseActionId.length === 0) {
+      throw new Error(`Action '${def.id}': releaseActionId must be a non-empty string when present`);
+    }
+    if (def.kind !== "ambient") {
+      throw new Error(`Action '${def.id}': releaseActionId is only valid on kind "ambient" (needs a perpetual hold phase)`);
+    }
+    const hasPerpetualPhase = Object.values(def.phases).some((p) => p.ticks === -1);
+    if (!hasPerpetualPhase) {
+      throw new Error(`Action '${def.id}': releaseActionId requires at least one phase with ticks: -1 (the hold)`);
+    }
+  }
+
   if (def.kind === "reaction" && typeof def.interruptPriority !== "number") {
     throw new Error(`Action '${def.id}': reactions must declare interruptPriority (number)`);
   }
@@ -900,6 +1595,43 @@ export function validateActionCrossRefs(defs: ActionDef[]): void {
         }
       }
     }
+    // T-337: releaseActionId names a real action, same fail-fast style as
+    // cancel targets above.
+    if (def.releaseActionId && !ids.has(def.releaseActionId)) {
+      throw new Error(
+        `Action '${def.id}': releaseActionId '${def.releaseActionId}' resolves to no loaded action`,
+      );
+    }
+  }
+}
+
+/**
+ * T-301: `generatorPreferences` is an authoring hint (never required), but
+ * an authored range must be a real [min,max] range and any authored 0-1
+ * fraction must actually lie in [0,1] — a swapped or out-of-bounds hint would
+ * silently mislead every future generator that reads it. Fail fast, matching
+ * every other content validation in this file.
+ */
+function validateGeneratorPreferences(materialName: string, prefs: MaterialGeneratorPreferences): void {
+  const where = `Material '${materialName}' generatorPreferences`;
+  const checkRange = (name: string, r?: [number, number]) => {
+    if (!r) return;
+    const [lo, hi] = r;
+    if (!(lo <= hi)) {
+      throw new Error(`[content] ${where}.${name} must be [min,max] with min<=max, got [${lo}, ${hi}]`);
+    }
+  };
+  checkRange("density_range", prefs.density_range);
+  checkRange("thickness_range", prefs.thickness_range);
+  if (prefs.density_range) {
+    for (const v of prefs.density_range) {
+      if (v < 0 || v > 1) {
+        throw new Error(`[content] ${where}.density_range values must be in [0,1], got ${v}`);
+      }
+    }
+  }
+  if (prefs.emission !== undefined && (prefs.emission < 0 || prefs.emission > 1)) {
+    throw new Error(`[content] ${where}.emission must be in [0,1], got ${prefs.emission}`);
   }
 }
 

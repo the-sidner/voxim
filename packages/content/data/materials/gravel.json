@@ -17,5 +17,41 @@
   "tags": [
     "ground",
     "stone"
-  ]
+  ],
+  "generatorPreferences": {
+    "density_range": [0.4, 0.8],
+    "layerable": true
+  },
+  "render": {
+    "textureStyle": "stone",
+    "mossBlend": {
+      "material": "moss",
+      "floorBias": 0.7,
+      "wallBias": 0.4,
+      "jointBoost": 0.3,
+      "tintShift": [
+        -0.04,
+        0.06,
+        -0.05
+      ]
+    },
+    "wetness": {
+      "gloss": 6.0,
+      "darken": 0.25,
+      "reflectGain": 0
+    },
+    "relief": {
+      "warp": 0.55,
+      "surfaceWarp": 0.18,
+      "disturbanceField": [
+        {
+          "field": "traffic",
+          "curve": "smoothstep",
+          "min": 0.55,
+          "max": 0.05,
+          "weight": 1.0
+        }
+      ]
+    }
+  }
 }

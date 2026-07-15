@@ -17,9 +17,13 @@ export type UIAction =
   | { type: "use_item";    fromSlot: number }
   | { type: "deploy_item"; fromSlot: number }
   | { type: "split_stack"; fromSlot: number; quantity: number }
+  // Read a tome sitting in an inventory slot — internalises its Lore fragment
+  // (T-072 heir ritual; T-020 server substrate).
+  | { type: "read_tome";   fromSlot: number }
 
-  // Hotbar
+  // Hotbar (T-309 prerequisite — client-local; see ui_store.ts HotbarState)
   | { type: "hotbar_assign"; inventorySlot: number; hotbarSlot: number }
+  | { type: "hotbar_clear";  hotbarSlot: number }
   | { type: "hotbar_use";    hotbarSlot: number }
 
   // Workstation buffer (load / take). Targets the player's nearest
@@ -43,6 +47,8 @@ export type UIAction =
 
   // Respawn
   | { type: "respawn" }
+  // Dismiss the heir-ritual guidance banner for the remainder of this life (T-072).
+  | { type: "dismiss_ritual" }
 
   // Settings
   | { type: "rebind_key"; action: string; key: string }
@@ -55,6 +61,9 @@ export type UIAction =
   | { type: "debug_set_time";   hour: number }
   | { type: "debug_teleport";   worldX: number; worldY: number }
   | { type: "debug_set_stat";   stat: "health" | "stamina"; value: number }
+  | { type: "debug_kill_entity"; entityId: string }
+  | { type: "debug_spawn_dummy"; attackLoop: boolean }
+  | { type: "debug_set_action_param"; actionId: string; field: string; value: number }
 
   // Building
   | { type: "place_blueprint"; structureType: string; worldX: number; worldY: number }

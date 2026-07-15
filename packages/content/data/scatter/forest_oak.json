@@ -2,9 +2,51 @@
   "id": "forest_oak",
   "kind": 2,
   "procModel": "oak",
-  "pool": 4,
-  "stride": 7,
-  "baseScale": 0.7,
-  "scaleJitter": [0.85, 1.15],
-  "rotate": true
+  "pool": 6,
+  "stride": 8,
+  "baseScale": 0.6,
+  "scaleJitter": [
+    0.8,
+    1.25
+  ],
+  "rotate": true,
+  "densityField": [
+    {
+      "field": "canopyLight",
+      "curve": "smoothstep",
+      "min": 1.0,
+      "max": 0.15,
+      "weight": 0.15
+    },
+    {
+      "field": "fertility",
+      "curve": "smoothstep",
+      "min": 0.15,
+      "max": 0.45,
+      "weight": 0.55
+    },
+    {
+      "field": "traffic",
+      "curve": "linear",
+      "min": 0.15,
+      "max": 0.6,
+      "weight": -0.7
+    }
+  ],
+  "cluster": {
+    "count": [
+      0,
+      1
+    ],
+    "radius": 3.0
+  },
+  "morphField": [
+    {
+      "field": "corruption",
+      "curve": "linear",
+      "min": 0.35,
+      "max": 0.6,
+      "weight": 1.0
+    }
+  ]
 }

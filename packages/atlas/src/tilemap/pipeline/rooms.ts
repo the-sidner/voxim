@@ -3,25 +3,26 @@
  *
  * After the network stage has carved corridors, we walk every junction
  * and probabilistically promote it to a *room*: a small noise-flooded
- * disk grown around its seed pixel. The probability scales with the
+ * disk grown around its seed cell. The probability scales with the
  * junction's degree (count of network edges incident on it) so true
  * convergence points get rooms reliably; pass-through bends rarely do.
  *
  *   prob = clamp(roomChanceBase + (degree − 1) · roomChancePerDegree, 0, 1)
  *
  * Growth uses the same priority-flood as the old chambers stage:
- * round-robin one pixel per chosen room per round, picking the lowest
+ * round-robin one cell per chosen room per round, picking the lowest
  * `noise + compactness · |p − seed|` candidate. This gives organic,
  * gridSize-invariant shapes that absorb whatever the corridor entries
  * happen to land on (so the room visibly *swells* around its junction,
- * including the corridor-entry pixels).
+ * including the corridor-entry cells).
  *
  * Output mirrors the old chambers stage: `chambers[]` (one per grown
- * room with id/centroid/pixelCount) and `chamberOf[]` (per-pixel id;
- * 0xFFFF for non-room pixels). Wire shape unchanged.
+ * room with id/centroid/cellCount) and `chamberOf[]` (per-cell id;
+ * 0xFFFF for non-room cells). Wire shape unchanged.
  */
 
 import type { Transformer } from "@voxim/levelgen";
+import { mulberry32 } from "@voxim/engine";
 import { ROOM_ID_NONE } from "./room_detection.ts";
 import type { Junction } from "./junctions.ts";
 import type { Room } from "../types.ts";
@@ -64,7 +65,7 @@ export const rooms: Transformer<NetworkState, RoomsState, GenParams["room"]> =
   const sumY:    number[]  = new Array(picks.length).fill(0);
   const done:    boolean[] = new Array(picks.length).fill(false);
 
-  // Seed each room with its junction pixel.
+  // Seed each room with its junction cell.
   for (let c = 0; c < picks.length; c++) {
     const { seed } = picks[c];
     const idx = seed.y * gridSize + seed.x;
@@ -109,7 +110,7 @@ export const rooms: Transformer<NetworkState, RoomsState, GenParams["room"]> =
       id: c,
       cx: (sumX[c] / sizes[c] + 0.5) * px2world,
       cy: (sumY[c] / sizes[c] + 0.5) * px2world,
-      pixelCount: sizes[c],
+      cellCount: sizes[c],
     });
   }
 
@@ -187,15 +188,4 @@ class MinHeap {
     const tn = this.idx[i]; this.idx[i] = this.idx[j]; this.idx[j] = tn;
     const tk = this.key[i]; this.key[i] = this.key[j]; this.key[j] = tk;
   }
-}
-
-function mulberry32(seed: number): () => number {
-  let s = seed >>> 0;
-  return () => {
-    s = (s + 0x6D2B79F5) >>> 0;
-    let t = s;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
 }

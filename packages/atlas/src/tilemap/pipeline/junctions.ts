@@ -14,11 +14,12 @@
  */
 
 import type { Transformer } from "@voxim/levelgen";
+import { mulberry32 } from "@voxim/engine";
 import type { GenParams } from "../../genparams.ts";
 import type { JunctionsState, NoiseState } from "./state.ts";
 
 export interface Junction {
-  /** Pixel coords. */
+  /** Cell coords. */
   x: number;
   y: number;
 }
@@ -45,8 +46,8 @@ export const junctions: Transformer<NoiseState, JunctionsState, GenParams["room"
   };
 
 /**
- * Bridson Poisson-disk sampling on a pixel grid. Returns up to `target`
- * points each at least `minSeparation` pixels from any other.
+ * Bridson Poisson-disk sampling on a cell grid. Returns up to `target`
+ * points each at least `minSeparation` cells from any other.
  */
 function poissonSeeds(
   gridSize: number, target: number, minSeparation: number, rng: () => number,
@@ -151,15 +152,4 @@ function ensureUniformCoverage(
       }
     }
   }
-}
-
-function mulberry32(seed: number): () => number {
-  let s = seed >>> 0;
-  return () => {
-    s = (s + 0x6D2B79F5) >>> 0;
-    let t = s;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
 }

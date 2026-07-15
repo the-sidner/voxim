@@ -45,7 +45,7 @@ function dodger(world: World): string {
   world.write(id, ActorSlots, { slots: ["locomotion"] });
   world.write(id, ActiveActions, { states: {} });
   world.write(id, InputState, {
-    seq: 0, timestamp: 0, facing: 0, movementX: 1, movementY: 0,
+    seq: 0, timestamp: 0, facing: 0, pitch: 0, movementX: 1, movementY: 0,
     actions: ACTION_DODGE, chargeMs: 0, rttMs: 0,
   });
   world.write(id, Facing, { angle: 0 });

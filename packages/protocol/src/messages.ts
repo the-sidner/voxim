@@ -36,6 +36,16 @@ export interface MovementDatagram {
   facing: number; // f32
 
   /**
+   * Aim pitch (T-337): elevation angle above the horizontal plane, radians,
+   * 0 = level. Drives ranged/thrown-weapon DISTANCE (up = farther, down =
+   * nearer) — a distinct, independently-captured axis from the camera's own
+   * gaze pitch (camera_rig.ts), which stays a narrow framing knob. Only
+   * meaningful while a hold-to-aim action is charging (see
+   * `ActionDef.releaseActionId`); otherwise unread.
+   */
+  pitch: number; // f32
+
+  /**
    * Normalised movement direction on the horizontal plane.
    * (0,0) = stationary. Independent of facing.
    */
@@ -65,13 +75,15 @@ export interface MovementDatagram {
 
   /**
    * Duration the use-skill button was held before release, in milliseconds,
-   * clipped to u16 (~65 s). Zero for taps. Server reads this when ACTION_USE_SKILL
-   * is set on this tick and picks the matching weapon action variant from the
-   * equipped weapon's `swingable.actions[]` (first whose [chargeMin, chargeMax]
-   * window contains chargeMs wins).
+   * clipped to u16 (~65 s). Zero for taps. `PrimaryIntentResolver` reads this
+   * when ACTION_USE_SKILL is set on this tick and compares it against the
+   * equipped weapon's `swingable.heavyChargeMs` threshold — at or above it
+   * plays the chain entry's `.heavy` variant, below plays `.light`.
    *
-   * For ranged weapons the action handler also reads chargeMs directly to scale
-   * projectile speed / damage — same field, two consumers.
+   * Ranged/thrown weapons (T-337/T-338) do NOT use chargeMs — they use the
+   * hold-to-aim mechanic instead (`ActionDef.releaseActionId` + the `pitch`
+   * field above), which is server-measured continuously rather than
+   * client-measured-then-reported-once-at-release.
    */
   chargeMs: number; // u16
 }
@@ -157,7 +169,39 @@ export const enum CommandType {
                           //   Server gates dynasty/kind/capacity/reach (T-077/T-078).
   ContainerWithdraw = 25, // payload: u8 strLen + UTF-8 containerId + u8 slotIndex — pull the chest
                           //   slot back into the player's inventory. Server gates dynasty/reach.
-  // 26-255 reserved for future commands
+  UseEntity         = 26, // payload: u8 strLen + UTF-8 entityId — use a world-prop entity carrying
+                          //   PoiInteractable or Lever (POI `action`/`puzzle` activities, T-212 v2).
+                          //   Server validates proximity via crafting.interactRange; fires the
+                          //   owning POI's reward via the shared poi/reward.ts grant helper.
+                          //   Not PickUp (no inventory transfer) or LoadWorkstation (no buffer) —
+                          //   "use this prop, maybe consume it, fire POI effects" is a new shape.
+  DebugGiveTrinket  = 28, // payload: u8 strLen + UTF-8 stairId — dev-only cheat (T-213b): finds the
+                          //   Stair entity by stairId and hands the player a unique trinket item
+                          //   wired (via per-instance ItemEffects) to its trinketId. Stands in for
+                          //   the full POI-completion -> trinket-drop economy, which is separate,
+                          //   larger, out-of-scope work (see TICKETS.md T-212).
+  // 27 reserved for future commands
+  DebugKillEntity   = 29, // payload: u8 strLen + UTF-8 entityId — dev-only cheat (T-311 P5c I3b
+                          //   harness): sets the named entity's Health.current to 0 via the
+                          //   proper deferred world.mutate write, so DeathSystem + death hooks
+                          //   (e.g. shed_dissolve) run exactly as they would from real combat.
+                          //   Lets the I3b dissolve-cost measurement kill an arbitrary NPC.
+  DebugSpawnDummy   = 30, // payload: u8 attackLoop (0/1) — combat-feel tuning pipeline (T-327):
+                          //   spawns a "training_dummy" (attackLoop=0) or "training_dummy_attacker"
+                          //   (attackLoop=1) NPC a few units in front of the player, facing them.
+                          //   The dummy never dies (Health floored at 1 in health_hit_handler.ts)
+                          //   and auto-heals a few seconds after the last hit (TrainingDummySystem).
+  DebugSetActionParam = 31, // payload: u8 strLen + UTF-8 actionId + u8 strLen + UTF-8 field + f32 value —
+                          //   combat-feel tuning pipeline (T-327): patches a numeric leaf of the
+                          //   in-memory ContentService live, effective on the NEXT read (next action
+                          //   start / next hit) — no restart. `field` is a dotted path into the
+                          //   ActionDef named by `actionId` (e.g. "phases.windup.ticks",
+                          //   "hitStopTicks", "cooldownTicks"); `actionId` = "$config" instead
+                          //   redirects `field` into GameConfig (e.g. "combat.knockbackImpulseXY",
+                          //   "combat.aimAssist.rangeUnits") for the handful of feel knobs that live
+                          //   there rather than on any one ActionDef. Only ever overwrites a field
+                          //   that is ALREADY a number — cannot add fields or change shape.
+  // 32-255 reserved for future commands
 }
 
 /**
@@ -196,6 +240,7 @@ export type CommandPayload =
   | { cmd: CommandType.LoadWorkstation; inventorySlot: number; bufferSlot: number }
   | { cmd: CommandType.TakeWorkstation; bufferSlot: number }
   | { cmd: CommandType.PickUp;          entityId: string }
+  | { cmd: CommandType.UseEntity;       entityId: string }
   | { cmd: CommandType.ContainerDeposit;  containerId: string; fromInventorySlot: number }
   | { cmd: CommandType.ContainerWithdraw; containerId: string; slotIndex: number }
   | { cmd: CommandType.DebugGiveItem;  itemType: string; quantity: number }
@@ -203,6 +248,10 @@ export type CommandPayload =
   | { cmd: CommandType.DebugSetTime;   hour: number }
   | { cmd: CommandType.DebugTeleport;  worldX: number; worldY: number }
   | { cmd: CommandType.DebugSetStat;   stat: string; value: number }
+  | { cmd: CommandType.DebugGiveTrinket; stairId: string }
+  | { cmd: CommandType.DebugKillEntity; entityId: string }
+  | { cmd: CommandType.DebugSpawnDummy; attackLoop: boolean }
+  | { cmd: CommandType.DebugSetActionParam; actionId: string; field: string; value: number }
   | { cmd: CommandType.Respawn };
 
 export interface CommandDatagram {
@@ -230,7 +279,8 @@ export type GameEvent =
   | LoreExternalisedEvent
   | LoreInternalisedEvent
   | ZoneEnteredEvent
-  | HealedEvent;
+  | HealedEvent
+  | EnclosureChangedEvent;
 
 /**
  * Fired when a player crosses a zone boundary or spawns (T-211). The
@@ -271,7 +321,11 @@ export interface DamageDealtEvent {
   sourceId: EntityId;
   amount: number;
   blocked: boolean;
-  /** World-space contact point for hit effects. */
+  /**
+   * World-space contact point for hit effects: the blade contact point for
+   * melee hits, the target's own position for non-spatial damage
+   * (starvation/dehydration DPS, a skill's life drain).
+   */
   hitX: number;
   hitY: number;
   hitZ: number;
@@ -384,4 +438,27 @@ export interface LoreInternalisedEvent {
   type: "LoreInternalised";
   entityId: EntityId;
   fragmentId: string;
+}
+
+/**
+ * One sealed world cell, integer coordinates (floor of the world position —
+ * matches EnclosureSystem.isEnclosed's convention).
+ */
+export interface EnclosedCell {
+  x: number;
+  y: number;
+}
+
+/**
+ * Fired by EnclosureSystem (T-065 server core, T-066 wire face) whenever its
+ * recomputed enclosed-cell set differs from last time — a wall ring closing
+ * or a hole reopening. Tile-wide broadcast, like DayPhaseChanged: every
+ * connected client sees the same roofs, so there's no per-player filtering.
+ * Carries the FULL current set (not a diff/delta) — the client discards its
+ * previous roof geometry and rebuilds from this list each time, which stays
+ * simple given how rarely walls change.
+ */
+export interface EnclosureChangedEvent {
+  type: "EnclosureChanged";
+  cells: EnclosedCell[];
 }

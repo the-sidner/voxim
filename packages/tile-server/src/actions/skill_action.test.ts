@@ -34,7 +34,7 @@ function caster(world: World, actions: number, slot0: string | null = "skill_men
   world.write(id, ActorSlots, { slots: ["primary"] });
   world.write(id, ActiveActions, { states: {} });
   world.write(id, InputState, {
-    seq: 1, timestamp: 0, facing: 0, movementX: 0, movementY: 0, actions, chargeMs: 0, rttMs: 0,
+    seq: 1, timestamp: 0, facing: 0, pitch: 0, movementX: 0, movementY: 0, actions, chargeMs: 0, rttMs: 0,
   });
   world.write(id, LoreLoadout, { skills: [slot0, null, null, null], learnedFragmentIds: [] });
   world.write(id, Resource, { values: { stamina: { value: 100, max: 100 } } });

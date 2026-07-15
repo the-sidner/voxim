@@ -8,6 +8,7 @@ import type { HeightmapData, MaterialGridData } from "./components.ts";
 /** Tile constants */
 export const TILE_SIZE = 512; // voxels
 export const CHUNK_SIZE = 32; // voxels per chunk side
+export const CHUNK_CELLS = CHUNK_SIZE * CHUNK_SIZE; // 1024 cells per chunk
 export const CHUNKS_PER_TILE_SIDE = TILE_SIZE / CHUNK_SIZE; // 16
 export const CHUNKS_PER_TILE = CHUNKS_PER_TILE_SIDE * CHUNKS_PER_TILE_SIDE; // 256
 

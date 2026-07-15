@@ -3,21 +3,23 @@
  *
  * Each worldmap gate gets stitched into the path network: pick the
  * nearest junction by Euclidean distance and carve a Catmull-Rom spline
- * from the gate's edge pixel to that junction's position. Same carve
+ * from the gate's edge cell to that junction's position. Same carve
  * primitive the network stage uses; same per-edge brush width range.
  *
  * Gate corridors use kind="portal" so the inspector can paint them
  * differently (white) from network corridors (cyan).
  *
- * Junctions are points (no extent), so there's no boundary-pixel
+ * Junctions are points (no extent), so there's no boundary-cell
  * search — the gate corridor terminates exactly at the junction.
  * After this stage we re-flood `roomOf` so the gate-summary can find
  * which connected component the gate landed in.
  */
 
 import type { Transformer } from "@voxim/levelgen";
+import { mulberry32 } from "@voxim/engine";
 import { runRoomDetection } from "./room_detection.ts";
-import { carveSpline, makeWaypoints, clampPx } from "./bezier_carve.ts";
+import { carveSpline, makeWaypoints, clampCell } from "./bezier_carve.ts";
+import { sampleWidth } from "./network.ts";
 import type { Corridor, Portal } from "../types.ts";
 import type { Edge, GateSpec } from "../../worldmap/types.ts";
 import type { GenParams } from "../../genparams.ts";
@@ -37,12 +39,12 @@ export const portalPlacement: Transformer<RoomsState, PortalsState, GenParams["n
       openMask, seeds, gridSize, px2world, worldCell: { gates }, corridors: priorCorridors,
     } = state;
 
-  // Entry pixel per edge.
+  // Entry cell per edge.
   const entries: Array<{ edge: Edge; gate: GateSpec; ex: number; ey: number }> = [];
   for (const edge of EDGES) {
     const gate = gates[edge];
     if (!gate) continue;
-    const along = clampPx(Math.round(gate.offset / px2world), gridSize);
+    const along = clampCell(Math.round(gate.offset / px2world), gridSize);
     let ex = 0, ey = 0;
     switch (edge) {
       case "north": ex = along;          ey = 0;            break;
@@ -92,7 +94,7 @@ export const portalPlacement: Transformer<RoomsState, PortalsState, GenParams["n
     }));
   }
 
-  // Re-flood: gate carves merged the gate pixel into a connected component.
+  // Re-flood: gate carves merged the gate cell into a connected component.
   const det = runRoomDetection({ openMask, gridSize, px2world });
 
   const portals: Portal[] = [];
@@ -103,8 +105,8 @@ export const portalPlacement: Transformer<RoomsState, PortalsState, GenParams["n
     portals.push({
       edge:    e.edge,
       offset:  e.gate.offset,
-      pixelX:  e.ex,
-      pixelY:  e.ey,
+      cellX:   e.ex,
+      cellY:   e.ey,
       roomId,
     });
   }
@@ -118,21 +120,3 @@ export const portalPlacement: Transformer<RoomsState, PortalsState, GenParams["n
     corridors: priorCorridors.concat(corridors),
   };
 };
-
-function sampleWidth(rng: () => number, params: GenParams["network"]): number {
-  const lo = Math.min(params.widthMin, params.widthMax);
-  const hi = Math.max(params.widthMin, params.widthMax);
-  if (lo === hi) return lo;
-  return lo + Math.floor(rng() * (hi - lo + 1));
-}
-
-function mulberry32(seed: number): () => number {
-  let s = seed >>> 0;
-  return () => {
-    s = (s + 0x6D2B79F5) >>> 0;
-    let t = s;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}

@@ -5,7 +5,9 @@
 export type { Transformer, Stage } from "./src/transformer.ts";
 export { bindStage, pipe } from "./src/transformer.ts";
 
-export { splitSeed, hashString } from "./src/seed.ts";
+export { splitSeed, hashString, hashBytes } from "./src/seed.ts";
+
+export { hash2, valueNoise2D, fbm, ridgedFbm, billowFbm, domainWarp } from "./src/noise.ts";
 
 export { TransformerRegistry } from "./src/registry.ts";
 

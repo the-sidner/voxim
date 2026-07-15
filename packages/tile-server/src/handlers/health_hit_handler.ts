@@ -14,6 +14,7 @@ import {
 import { Blocking, IFrame } from "../components/tags.ts";
 import { PendingReaction, ActiveActions } from "../components/action.ts";
 import { Velocity } from "../components/game.ts";
+import { TrainingDummy } from "../components/training_dummy.ts";
 import type { DeathRequestPort } from "../events/death.ts";
 import { effective } from "../modifiers/modifier.ts";
 import type { ModifierSourceRegistry } from "../modifiers/modifier.ts";
@@ -37,6 +38,10 @@ const log = createLogger("HealthHitHandler");
  * consuming the HitLanded fact (T-259), never handler code.
  */
 export class HealthHitHandler implements HitHandler {
+  // T-333: dispatch bubbles to the nearest ancestor carrying Health — a hit
+  // on a bone entity resolves to the creature that takes the damage.
+  readonly requiredComponent = Health;
+
   constructor(
     private readonly content: ContentService,
     private readonly deaths: DeathRequestPort,
@@ -99,10 +104,24 @@ export class HealthHitHandler implements HitHandler {
         sourceId: ctx.attackerId,
         amount: 0,
         blocked: true,
-        bodyPart: "",
+        hitX: ctx.hitX,
+        hitY: ctx.hitY,
+        hitZ: ctx.hitZ,
       });
       return;
     }
+
+    // Front/back dot product (T-198/T-299): direction from the TARGET TO THE
+    // ATTACKER projected on the target's own forward axis. dot >= 0 means the
+    // attacker is in front of the target; dot < 0 means the hit came from
+    // behind. Computed once here and reused both for the rear damage
+    // multiplier below AND the hit_front/hit_back reaction pick further down
+    // (previously duplicated at the reaction-pick site).
+    const targetToAttackerX = ctx.attackerX - ctx.targetX;
+    const targetToAttackerY = ctx.attackerY - ctx.targetY;
+    const targetForwardX = Math.cos(ctx.targetSnapshotFacing);
+    const targetForwardY = Math.sin(ctx.targetSnapshotFacing);
+    const frontBackDot = targetToAttackerX * targetForwardX + targetToAttackerY * targetForwardY;
 
     // ── Damage multipliers ────────────────────────────────────────────────────
     let damageMult = 1.0;
@@ -136,8 +155,14 @@ export class HealthHitHandler implements HitHandler {
     const pm = combatCfg.partMultipliers;
     const attackerPartMult = pm.attacker[ctx.attackerPart] ?? 1.0;
     const victimPartMult   = pm.victim[ctx.bodyPart] ?? 1.0;
+    // Global rear multiplier (T-299): a hit landing from behind the target's
+    // facing deals more damage. Applies to every actor equally — a Shield-
+    // Knight's frontal block arc already gives it a flanking weakness for
+    // free (an attack outside blockArcHalfRadians disables isBlocking), so
+    // this needs no per-archetype override.
+    const rearMult = frontBackDot < 0 ? pm.rearMultiplier : 1.0;
     const baseDamage = ctx.weaponStats.damage ?? 0;
-    let damage = baseDamage * damageMult * blockMult * attackerPartMult * victimPartMult * (1 - armorReduction);
+    let damage = baseDamage * damageMult * blockMult * attackerPartMult * victimPartMult * rearMult * (1 - armorReduction);
 
     // ── Target-side mitigation (e.g. a shield buff child) ─────────────────────
     // A `damageTaken` mul ≤ 1 from the Status/Modifier query (T-239).
@@ -153,9 +178,17 @@ export class HealthHitHandler implements HitHandler {
     // newHealth (vs committed state) still drives this hit's own death
     // request / reaction decisions; a kill only visible in the composed
     // total is caught by DeathSystem's health≤0 sweep next tick.
-    const newHealth = Math.max(0, health.current - damage);
+    //
+    // T-327: a TrainingDummy is floored at 1, never 0 — DeathSystem's
+    // composed-lethal sweep queries committed `Health.current <= 0`, so the
+    // "never dies" guarantee has to be enforced HERE, at the write, not by
+    // skipping the death request below (the sweep would still catch it next
+    // tick). TrainingDummySystem separately heals it back to full once
+    // healDelayTicks pass with no further hit.
+    const floor = world.has(ctx.targetId, TrainingDummy) ? 1 : 0;
+    const newHealth = Math.max(floor, health.current - damage);
     const dmg = damage;
-    world.mutate(ctx.targetId, Health, (h) => ({ ...h, current: Math.max(0, h.current - dmg) }));
+    world.mutate(ctx.targetId, Health, (h) => ({ ...h, current: Math.max(floor, h.current - dmg) }));
 
     // ── Severe-hit injury roll (T-008) ────────────────────────────────────────
     // A single hit over the threshold can inflict a persistent injury whose
@@ -184,7 +217,6 @@ export class HealthHitHandler implements HitHandler {
       sourceId: ctx.attackerId,
       amount: damage,
       blocked: isBlocking,
-      bodyPart: ctx.bodyPart,
       hitX: ctx.hitX,
       hitY: ctx.hitY,
       hitZ: ctx.hitZ,
@@ -207,16 +239,10 @@ export class HealthHitHandler implements HitHandler {
     // the dispatcher's `reaction` slot next tick (interrupt priority lets a
     // stagger preempt a flinch). Blocked hits don't react.
     if (!isBlocking && damage > 0) {
-      // Direction from the TARGET TO THE ATTACKER. dot > 0 with target's
-      // forward axis means the attacker is in the half-space the target is
-      // looking at = hit came from the front.
-      const targetToAttackerX = ctx.attackerX - ctx.targetX;
-      const targetToAttackerY = ctx.attackerY - ctx.targetY;
-      const targetForwardX = Math.cos(ctx.targetSnapshotFacing);
-      const targetForwardY = Math.sin(ctx.targetSnapshotFacing);
-      const dot = targetToAttackerX * targetForwardX + targetToAttackerY * targetForwardY;
+      // Reuses frontBackDot computed above (T-299) — dot >= 0 means the
+      // attacker is in front of the target.
       world.set(ctx.targetId, PendingReaction, {
-        actionId: dot >= 0 ? "hit_front" : "hit_back",
+        actionId: frontBackDot >= 0 ? "hit_front" : "hit_back",
       });
 
       // ── Poise / stagger (T-197, poise is a Resource since T-238d) ──────────
@@ -257,17 +283,23 @@ export class HealthHitHandler implements HitHandler {
     if (newHealth <= 0) {
       this.deaths.request({ entityId: ctx.targetId, killerId: ctx.attackerId, cause: "damage" });
     } else if (!isBlocking) {
+      // Knockback emphasis (T-292): scale the impulse by how hard this hit
+      // landed relative to a reference damage value, so a heavy swing shoves
+      // noticeably harder than a light poke instead of every hit pushing
+      // the same fixed amount.
+      const kb = combatCfg.knockback;
+      const knockbackMult = Math.max(kb.minMult, Math.min(kb.maxMult, damage / kb.referenceDamage));
       const dx = ctx.targetX - ctx.attackerX;
       const dy = ctx.targetY - ctx.attackerY;
       const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-      const kx = (dx / dist) * combatCfg.knockbackImpulseXY;
-      const ky = (dy / dist) * combatCfg.knockbackImpulseXY;
+      const kx = (dx / dist) * combatCfg.knockbackImpulseXY * knockbackMult;
+      const ky = (dy / dist) * combatCfg.knockbackImpulseXY * knockbackMult;
       const vel = world.get(ctx.targetId, Velocity);
       if (vel) {
         world.set(ctx.targetId, Velocity, {
           x: vel.x + kx,
           y: vel.y + ky,
-          z: vel.z + combatCfg.knockbackImpulseZ,
+          z: vel.z + combatCfg.knockbackImpulseZ * knockbackMult,
         });
       }
     }

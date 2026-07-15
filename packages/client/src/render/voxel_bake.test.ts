@@ -5,7 +5,7 @@
  * reference, plus the merge bookkeeping.
  */
 
-import { assertEquals } from "jsr:@std/assert";
+import { assert, assertEquals } from "jsr:@std/assert";
 import * as THREE from "three";
 import { vertexDisp } from "./displacement.ts";
 import {
@@ -15,9 +15,13 @@ import {
   BOX_INDEX_COUNT,
   BOX_VERT_COUNT,
   computeVertexNormals,
+  driftDirFor,
+  resolveFrayCoreness,
+  resolveMossResponse,
   unitBoxIndex,
   unitBoxUV,
 } from "./voxel_bake.ts";
+import { TERRAIN_DISP_MAG } from "./terrain_voxels.ts";
 import type { VoxelAtom } from "@voxim/content";
 
 // ---- THREE reference implementations (the pre-T-067 synchronous path) ----
@@ -197,6 +201,48 @@ Deno.test("bakeSubModel with no matching material yields empty arrays", () => {
   assertEquals(baked.indices.length, 0);
 });
 
+// ---- T-326: render.relief.dispMag is THE one warp-amplitude knob every
+// voxel-baked class reads (terrain/scatter/props/characters). bakeSubModel's
+// dispMag parameter is the static-prop (walls, ruins, built structures) wire.
+
+Deno.test("bakeSubModel: omitted dispMag stays byte-identical to the pre-T-326 signature", () => {
+  const nodes = [
+    { x: 0, y: 0, z: 0, materialId: 1 },
+    { x: 1, y: 2, z: 3, materialId: 1 },
+  ];
+  const scale = { x: 0.6, y: 0.4, z: 0.9 };
+  const withoutArg = bakeSubModel(nodes, 1, scale);
+  const withUndefined = bakeSubModel(nodes, 1, scale, undefined);
+  assertEquals(withoutArg.positions, withUndefined.positions);
+});
+
+Deno.test("bakeSubModel: dispMag threads through identically to calling bakeVoxels directly", () => {
+  const nodes = [
+    { x: 0, y: 0, z: 0, materialId: 1 },
+    { x: 1, y: 0, z: 0, materialId: 1 },
+  ];
+  const scale = { x: 1, y: 1, z: 1 };
+  const dispMag = 0.037; // an arbitrary authored render.relief.dispMag
+  const viaSub = bakeSubModel(nodes, 1, scale, dispMag);
+  const atoms: VoxelAtom[] = nodes.map((n) => ({
+    cx: n.x * scale.x, cy: n.y * scale.y, cz: n.z * scale.z,
+    sx: scale.x, sy: scale.y, sz: scale.z, materialId: n.materialId,
+  }));
+  const viaAtoms = bakeVoxels(atoms, 1, dispMag);
+  assertEquals(viaSub.positions, viaAtoms.positions);
+});
+
+Deno.test("bakeSubModel: an authored dispMag changes the baked geometry vs the engine default", () => {
+  const nodes = [{ x: 0, y: 0, z: 0, materialId: 1 }];
+  const scale = { x: 1, y: 1, z: 1 };
+  const default_ = bakeSubModel(nodes, 1, scale);
+  const authored = bakeSubModel(nodes, 1, scale, 0.037);
+  assert(
+    default_.positions.some((v, i) => v !== authored.positions[i]),
+    "an authored dispMag must actually change the displaced corners, proving the knob is live",
+  );
+});
+
 Deno.test("computeVertexNormals matches THREE for the merged geometry", () => {
   // Build a 2-voxel indexed mesh, recompute normals both ways, compare.
   const scale = { x: 0.3, y: 0.3, z: 0.3 };
@@ -270,7 +316,7 @@ Deno.test("bakeVoxels constant-mag keeps a shared cliff-edge corner crack-free (
   // coincide at (1.0, 4, 0) and (1.0, 4, 1) — exactly the seam terrain must not crack.
   const deep:    VoxelAtom = { cx: 0.5, cy: 0.5, cz: 2.5,   sx: 1, sy: 1, sz: 3,    materialId: 1 };
   const shallow: VoxelAtom = { cx: 1.5, cy: 0.5, cz: 3.875, sx: 1, sy: 1, sz: 0.25, materialId: 1 };
-  const TERRAIN_MAG = 0.10 * 0.25; // = TERRAIN_DISP_MAG (0.10 * HEIGHT_STEP)
+  const TERRAIN_MAG = TERRAIN_DISP_MAG;
 
   // Count vertices of A that EXACTLY equal some vertex of B (merged positions are
   // already translated to three-world space, so coincidence = shared world corner).
@@ -290,9 +336,140 @@ Deno.test("bakeVoxels constant-mag keeps a shared cliff-edge corner crack-free (
   const bC = bakeVoxels([shallow], 1, TERRAIN_MAG);
   assertEquals(countShared(aC.positions, bC.positions) >= 2, true, "constant mag must weld the shared cliff-top corners");
 
-  // Default per-voxel mag: deep→0.10*1, shallow→0.10*0.25 differ, so the shared
+  // Default per-voxel mag: omitting `mag` falls back to "10% of the voxel's own
+  // smallest edge" (bakeVoxels' own default, unrelated to TERRAIN_DISP_MAG) —
+  // deep (sz=3) and shallow (sz=0.25) get different magnitudes, so the shared
   // corners displace apart → the seam cracks (this is the bug the override fixes).
   const aD = bakeVoxels([deep], 1);
   const bD = bakeVoxels([shallow], 1);
   assertEquals(countShared(aD.positions, bD.positions), 0, "default per-voxel mag cracks the seam (no shared corner survives)");
+});
+
+Deno.test("moss-creep (T-311 P4): no moss01 atoms bake byte-identically; moss01 lerps toward the response", () => {
+  const atom: VoxelAtom = { cx: 0.5, cy: 0.5, cz: 0.5, sx: 1, sy: 1, sz: 1, materialId: 1 };
+  const moss = resolveMossResponse(0x808080, 0x34522a, [0, 0, 0]);
+
+  // Passing a moss response with NO mossy atoms changes nothing.
+  const plain = bakeVoxels([atom], 1);
+  const withResp = bakeVoxels([atom], 1, undefined, undefined, moss);
+  assertEquals(plain.colors, withResp.colors, "no moss01 → byte-identical colours");
+
+  // moss01=1 → the colour multiplier scales by the ratio exactly (full lerp).
+  const mossy = bakeVoxels([{ ...atom, moss01: 1 }], 1, undefined, undefined, moss);
+  assertEquals(mossy.colors[0], Math.fround(plain.colors[0] * moss.ratio[0]));
+  assertEquals(mossy.colors[1], Math.fround(plain.colors[1] * moss.ratio[1]));
+  assertEquals(mossy.colors[2], Math.fround(plain.colors[2] * moss.ratio[2]));
+
+  // Ratio: moss #34522a over stone #808080 → green channel strongest.
+  assertEquals(moss.ratio[1] > moss.ratio[0] && moss.ratio[1] > moss.ratio[2], true);
+
+  // Half moss sits strictly between plain and full.
+  const half = bakeVoxels([{ ...atom, moss01: 0.5 }], 1, undefined, undefined, moss);
+  const between = (a: number, m: number, b: number) => (m > Math.min(a, b)) && (m < Math.max(a, b));
+  assertEquals(between(plain.colors[0], half.colors[0], mossy.colors[0]), true);
+});
+
+Deno.test("wetness sidecar (T-311 P4): aWetness only when atoms carry wet01; colours untouched", () => {
+  const atom: VoxelAtom = { cx: 0.5, cy: 0.5, cz: 0.5, sx: 1, sy: 1, sz: 1, materialId: 1 };
+  const dry = bakeVoxels([atom], 1);
+  assertEquals(dry.wetness, undefined, "no wet01 → no wetness plane");
+
+  const wet = bakeVoxels([{ ...atom, wet01: 0.75 }], 1);
+  assertEquals(wet.wetness?.length, BOX_VERT_COUNT, "one value per vertex");
+  assertEquals(wet.wetness![0], 0.75);
+  // The response is in-shader — the baked colours stay byte-identical.
+  assertEquals(wet.colors, dry.colors);
+
+  // Mixed: only the wet atom's verts carry the value; the dry atom's are 0.
+  const mixed = bakeVoxels([{ ...atom, wet01: 1 }, { ...atom, cx: 1.5 }], 1);
+  assertEquals(mixed.wetness![0], 1);
+  assertEquals(mixed.wetness![BOX_VERT_COUNT], 0);
+});
+
+Deno.test("dispSeed (T-311 P4): decorrelated per-voxel warp; absent = welded/byte-identical", () => {
+  const atom: VoxelAtom = { cx: 0.5, cy: 0.5, cz: 0.5, sx: 1, sy: 1, sz: 1, materialId: 1 };
+  const welded = bakeVoxels([atom], 1);
+  const weldedAgain = bakeVoxels([atom], 1);
+  assertEquals(welded.positions, weldedAgain.positions, "no seed → deterministic weld");
+
+  const seeded = bakeVoxels([{ ...atom, dispSeed: 7 }], 1);
+  const seededAgain = bakeVoxels([{ ...atom, dispSeed: 7 }], 1);
+  assertEquals(seeded.positions, seededAgain.positions, "seeded bake is deterministic");
+  // A seeded voxel warps differently from the welded one at the same position…
+  let differs = false;
+  for (let i = 0; i < welded.positions.length; i++) {
+    if (welded.positions[i] !== seeded.positions[i]) { differs = true; break; }
+  }
+  assertEquals(differs, true, "seed decorrelates from the world-position weld");
+  // …and two different seeds differ from each other.
+  const other = bakeVoxels([{ ...atom, dispSeed: 8 }], 1);
+  let seedsDiffer = false;
+  for (let i = 0; i < seeded.positions.length; i++) {
+    if (other.positions[i] !== seeded.positions[i]) { seedsDiffer = true; break; }
+  }
+  assertEquals(seedsDiffer, true, "distinct seeds → distinct warps");
+});
+
+Deno.test("tintScale (T-311 P4): mottle collapses toward flat; absent = byte-identical", () => {
+  const atom: VoxelAtom = { cx: 0.5, cy: 0.5, cz: 0.5, sx: 1, sy: 1, sz: 1, materialId: 1 };
+  const wild = bakeVoxels([atom], 1);
+  const explicit = bakeVoxels([{ ...atom, tintScale: 1 }], 1);
+  assertEquals(wild.colors, explicit.colors, "tintScale 1 = full mottle (identical)");
+
+  const flat = bakeVoxels([{ ...atom, tintScale: 0 }], 1);
+  assertEquals(flat.colors[0], 1);
+  assertEquals(flat.colors[1], 1);
+  assertEquals(flat.colors[2], 1, "tintScale 0 = perfectly uniform (multiplier 1)");
+
+  const half = bakeVoxels([{ ...atom, tintScale: 0.5 }], 1);
+  const dist = (c: Float32Array) => Math.abs(c[0] - 1) + Math.abs(c[1] - 1) + Math.abs(c[2] - 1);
+  assert(dist(half.colors) > 0 && dist(half.colors) < dist(wild.colors), "half scale sits between");
+});
+
+Deno.test("dissolve fray sidecar (T-311 P5c): aFray/aDriftDir only when atoms carry fray01>0; colours+positions untouched", () => {
+  const atom: VoxelAtom = { cx: 0.5, cy: 0.5, cz: 0.5, sx: 1, sy: 1, sz: 1, materialId: 1 };
+  const rigid = bakeVoxels([atom], 1);
+  assertEquals(rigid.fray, undefined, "no fray01 → no fray plane");
+  assertEquals(rigid.driftDir, undefined, "no fray01 → no driftDir plane");
+
+  const zeroFray = bakeVoxels([{ ...atom, fray01: 0, driftDir: [1, 0, 0] as const }], 1);
+  assertEquals(zeroFray.fray, undefined, "fray01=0 does not count as 'any fray' — stays byte-identical");
+
+  const frayed = bakeVoxels([{ ...atom, fray01: 0.6, driftDir: [1, 0, 0] as const }], 1);
+  assertEquals(frayed.fray?.length, BOX_VERT_COUNT, "one value per vertex");
+  assertEquals(frayed.fray![0], Math.fround(0.6));
+  assertEquals(frayed.driftDir?.length, BOX_VERT_COUNT * 3, "one vec3 per vertex");
+  // The drift is in-shader — the baked positions/colours stay byte-identical.
+  assertEquals(frayed.positions, rigid.positions);
+  assertEquals(frayed.colors, rigid.colors);
+
+  // Mixed: only the frayed atom's verts carry a nonzero value; the rigid
+  // atom's are 0 (the shared Float32Array default).
+  const mixed = bakeVoxels([{ ...atom, fray01: 0.9, driftDir: [0, 1, 0] as const }, { ...atom, cx: 1.5 }], 1);
+  assertEquals(mixed.fray![0], Math.fround(0.9));
+  assertEquals(mixed.fray![BOX_VERT_COUNT], 0);
+});
+
+Deno.test("resolveFrayCoreness (T-311 P5c): 0 within the rigid core, ramps 0→1 across the fray band", () => {
+  // frayBandWidth=0.5 → rigid for the inner 50% of the model extent from the
+  // root, ramping across the outer 50%.
+  assertEquals(resolveFrayCoreness(0, 10, 0.5), 0, "at the root: fully rigid");
+  assertEquals(resolveFrayCoreness(4, 10, 0.5), 0, "still inside the rigid core");
+  assertEquals(resolveFrayCoreness(5, 10, 0.5), 0, "exactly at the band boundary: not yet frayed");
+  assert(resolveFrayCoreness(7.5, 10, 0.5) > 0 && resolveFrayCoreness(7.5, 10, 0.5) < 1, "mid-band: partial fray");
+  assertEquals(resolveFrayCoreness(10, 10, 0.5), 1, "at the farthest extremity: fully loose");
+  assertEquals(resolveFrayCoreness(20, 10, 0.5), 1, "beyond the model extent: clamps to 1");
+  assertEquals(resolveFrayCoreness(5, 10, 0), 0, "band=0 → never frays (degenerate, guarded)");
+  assertEquals(resolveFrayCoreness(5, 0, 0.5), 0, "modelExtent=0 → never frays (guarded, avoids div/0)");
+});
+
+Deno.test("driftDirFor (T-311 P5c): deterministic unit vector, distinct per position", () => {
+  const a = driftDirFor(1, 2, 3);
+  const aAgain = driftDirFor(1, 2, 3);
+  assertEquals(a, aAgain, "same position → same drift direction (no per-frame randomness)");
+  const len = Math.sqrt(a[0] * a[0] + a[1] * a[1] + a[2] * a[2]);
+  assert(Math.abs(len - 1) < 1e-6, "unit vector");
+
+  const b = driftDirFor(4, 5, 6);
+  assert(a[0] !== b[0] || a[1] !== b[1] || a[2] !== b[2], "distinct positions → distinct directions");
 });

@@ -16,6 +16,7 @@ import type { UIAction } from "../ui_actions.ts";
 import type { DebugLayer } from "../debug_store.ts";
 import { captureEnabled, capturePaused, captureSignal } from "../network_capture.ts";
 import { clientWorld, localPlayerId } from "../client_world_ref.ts";
+import { contentService } from "../content_ref.ts";
 import { computed, signal } from "@preact/signals";
 import { Pane, Section, Btn } from "./primitives.tsx";
 
@@ -30,6 +31,7 @@ const INPUT_STYLE = {
 } as const;
 
 const networkOpen = computed(() => uiState.value.openPanels.has("network"));
+const sceneOpen   = computed(() => uiState.value.openPanels.has("scene"));
 
 // ── Toggle row ─────────────────────────────────────────────────────────────────
 
@@ -150,8 +152,21 @@ export function DebugPanel({ onAction }: { onAction: (a: UIAction) => void }) {
         />
       </Section>
 
-      {/* ── Character state machine ──────────────────────────────────────── */}
-      <CSMSection />
+      {/* ── Animation ────────────────────────────────────────────────────── */}
+      <AnimationSection />
+
+      {/* ── Scene graph ───────────────────────────────────────────────────── */}
+      <Section
+        title="Scene graph"
+        hint="The replicated Parent/Bone hierarchy as a tree — NOT the Three.js scene. Those are two different trees on purpose (entities supply structure, content supplies pose)."
+      >
+        <ToggleRow
+          label="Scene panel"
+          on={sceneOpen.value}
+          onToggle={() => sceneOpen.value ? closePanel("scene") : openPanel("scene")}
+          hint="T-224 — walkable since T-223 gave ClientWorld a children index"
+        />
+      </Section>
 
       {/* ── Network inspector ─────────────────────────────────────────────── */}
       <Section title="Network">
@@ -191,6 +206,10 @@ export function DebugPanel({ onAction }: { onAction: (a: UIAction) => void }) {
 
       {/* ── Set stat ──────────────────────────────────────────────────────── */}
       <SetStatSection onAction={onAction} />
+
+      {/* ── Combat-feel tuning pipeline (T-327) ──────────────────────────── */}
+      <TrainingDummySection onAction={onAction} />
+      <ActionTuningSection onAction={onAction} />
     </Pane>
   );
 }
@@ -199,21 +218,19 @@ export function DebugPanel({ onAction }: { onAction: (a: UIAction) => void }) {
 
 type ActionProps = { onAction: (a: UIAction) => void };
 
-// ── Character state machine section ───────────────────────────────────────────
+// ── Animation section ──────────────────────────────────────────────────────
 //
-// Live readout of the local player's CSM: one line per layer showing the
-// active node and how long we've been there. Re-reads every signal tick so
-// it follows transitions in real time.
+// Live readout of the local player's networked AnimationState (derived
+// server-side from ActiveActions): the current weapon action plus the clip
+// playing on each layer. Re-reads every signal tick so it follows
+// transitions in real time.
 
-function CSMSection() {
+function AnimationSection() {
   const world = clientWorld.value;
   const id = localPlayerId.value;
   const entity = world && id ? world.get(id) : undefined;
   const anim = entity?.animationState;
 
-  // The CSM was retired (T-228); the action runtime drives animation now. The
-  // client sees its result as the networked AnimationState (derived from
-  // ActiveActions), so that's what this debug view reflects.
   if (!anim) {
     return (
       <Section title="Animation">
@@ -481,5 +498,228 @@ function SetStatSection({ onAction }: ActionProps) {
         Set
       </button>
     </Section>
+  );
+}
+
+// ── Training dummy section (T-327) ──────────────────────────────────────────
+//
+// "A" of the combat-feel tuning pipeline: a practice target that takes
+// hits, never dies, and (attackLoop=true) swings at a fixed cadence — a
+// predictable telegraph to practise blocks/dodges/i-frames against.
+
+const dummyAttackLoop = signal(false);
+
+function TrainingDummySection({ onAction }: ActionProps) {
+  return (
+    <Section title="Training dummy" hint="never dies, auto-heals">
+      <label style={{
+        display: "flex", alignItems: "center", gap: "var(--s-1)",
+        marginBottom: "var(--s-1)", fontSize: "11px", color: "var(--bone-dim)",
+      }}>
+        <input
+          type="checkbox"
+          checked={dummyAttackLoop.value}
+          onChange={(e) => { dummyAttackLoop.value = (e.target as HTMLInputElement).checked; }}
+        />
+        attacks on a fixed loop
+      </label>
+      <button
+        type="button"
+        class="btn interactive"
+        onClick={() => onAction({ type: "debug_spawn_dummy", attackLoop: dummyAttackLoop.value })}
+        style={{ width: "100%", padding: "3px 8px", fontSize: "11px" }}
+      >
+        Spawn dummy
+      </button>
+    </Section>
+  );
+}
+
+// ── Action tuning section (T-327) ───────────────────────────────────────────
+//
+// "A" of the combat-feel tuning pipeline: live knobs for the action you're
+// actually swinging. Each edit sends CommandType.DebugSetActionParam (server
+// patches its in-memory ActionDef/GameConfig in place — effective on the
+// NEXT action, no restart) and, optimistically, patches the SAME field on
+// this client's own bootstrap ContentService snapshot so the row's displayed
+// value stays in sync across edits within the session (the client has no
+// server-state-readback channel for this — same fire-and-forget shape every
+// other DebugX panel row already uses).
+//
+// "$config" is the sentinel actionId that redirects `field` into GameConfig
+// instead of an ActionDef — the handful of feel knobs (knockback, aim-assist)
+// that live there rather than on any one action.
+
+/** Mirrors the server's patchNumericField (debug_commands.ts) — only ever
+ *  overwrites a field that's already a number, never creates/reshapes. */
+function patchNumericField(obj: unknown, path: string, value: number): boolean {
+  const parts = path.split(".");
+  let cur: unknown = obj;
+  for (let i = 0; i < parts.length - 1; i++) {
+    if (typeof cur !== "object" || cur === null) return false;
+    cur = (cur as Record<string, unknown>)[parts[i]];
+  }
+  if (typeof cur !== "object" || cur === null) return false;
+  const leaf = parts[parts.length - 1];
+  const rec = cur as Record<string, unknown>;
+  if (typeof rec[leaf] !== "number") return false;
+  rec[leaf] = value;
+  return true;
+}
+
+const tuneActionId = signal("");
+/** Bumped after every optimistic local patch so rows re-read the (mutated
+ *  in place, same object identity) ContentService and show the new value —
+ *  Preact-signals only re-renders on `.value` reassignment, not on a nested
+ *  mutation of an object a signal already points at. */
+const tuneVersion = signal(0);
+const saveStatus = signal<"idle" | "saving" | "saved" | "error">("idle");
+
+function ActionTuningSection({ onAction }: ActionProps) {
+  const content = contentService.value;
+  void tuneVersion.value; // registers the re-render dependency; see comment above
+
+  const actionIds = content ? [...content.actions.ids()].sort() : [];
+  const def = content && tuneActionId.value ? content.actions.get(tuneActionId.value) : undefined;
+  const cfg = content?.getGameConfig();
+
+  function setParam(actionId: string, field: string, value: number) {
+    onAction({ type: "debug_set_action_param", actionId, field, value });
+    const target = actionId === "$config" ? cfg : content?.actions.get(actionId);
+    if (target) patchNumericField(target, field, value);
+    tuneVersion.value++;
+  }
+
+  async function saveToContent() {
+    if (!tuneActionId.value) return;
+    saveStatus.value = "saving";
+    try {
+      const res = await fetch("/debug/save-action", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ actionId: tuneActionId.value }),
+      });
+      saveStatus.value = res.ok ? "saved" : "error";
+    } catch {
+      saveStatus.value = "error";
+    }
+    setTimeout(() => { saveStatus.value = "idle"; }, 2000);
+  }
+
+  return (
+    <Section title="Action tuning" hint="live — takes effect next swing">
+      <div style={{ marginBottom: "var(--s-1)" }}>
+        <select
+          value={tuneActionId.value}
+          onChange={(e) => { tuneActionId.value = (e.target as HTMLSelectElement).value; }}
+          style={{ width: "100%", ...INPUT_STYLE }}
+        >
+          <option value="">— pick an action —</option>
+          {actionIds.map((id) => <option key={id} value={id}>{id}</option>)}
+        </select>
+      </div>
+
+      {tuneActionId.value && !def && (
+        <div style={{ color: "var(--rot, #d97070)", fontSize: "11px" }}>action not found</div>
+      )}
+
+      {def && (
+        <>
+          {Object.entries(def.phases).map(([name, phase]) => (
+            phase.ticks < 0
+              ? <StaticRow key={name} label={`${name} (ticks)`} value="held" />
+              : (
+                <NumberRow
+                  key={name}
+                  label={`${name} (ticks)`}
+                  value={phase.ticks}
+                  onCommit={(v) => setParam(def.id, `phases.${name}.ticks`, v)}
+                />
+              )
+          ))}
+          {def.hitStopTicks !== undefined && (
+            <NumberRow
+              label="hitStopTicks"
+              value={def.hitStopTicks}
+              onCommit={(v) => setParam(def.id, "hitStopTicks", v)}
+            />
+          )}
+          {def.cooldownTicks !== undefined && (
+            <NumberRow
+              label="cooldownTicks"
+              value={def.cooldownTicks}
+              onCommit={(v) => setParam(def.id, "cooldownTicks", v)}
+            />
+          )}
+
+          <button
+            type="button"
+            class="btn interactive"
+            onClick={saveToContent}
+            disabled={saveStatus.value === "saving"}
+            style={{ width: "100%", padding: "3px 8px", fontSize: "11px", marginTop: "var(--s-1)" }}
+          >
+            {saveStatus.value === "saving" ? "Saving…"
+              : saveStatus.value === "saved" ? "Saved ✓"
+              : saveStatus.value === "error" ? "Save failed"
+              : "Save to content"}
+          </button>
+        </>
+      )}
+
+      {cfg && (
+        <div style={{ marginTop: "var(--s-2)", paddingTop: "var(--s-2)", borderTop: "1px solid var(--line)" }}>
+          <div style={{ color: "var(--bone-dim)", fontSize: "10px", marginBottom: "var(--s-1)" }}>
+            global combat knobs (not saved to content — live only)
+          </div>
+          <NumberRow
+            label="knockback scale"
+            value={cfg.combat.knockbackImpulseXY}
+            onCommit={(v) => setParam("$config", "combat.knockbackImpulseXY", v)}
+          />
+          <NumberRow
+            label="aim-assist range"
+            value={cfg.combat.aimAssist.rangeUnits}
+            onCommit={(v) => setParam("$config", "combat.aimAssist.rangeUnits", v)}
+          />
+          <NumberRow
+            label="aim-assist half-angle°"
+            value={cfg.combat.aimAssist.halfAngleDeg}
+            onCommit={(v) => setParam("$config", "combat.aimAssist.halfAngleDeg", v)}
+          />
+          <NumberRow
+            label="parry window (ticks)"
+            value={cfg.dodge.parryWindowTicks}
+            onCommit={(v) => setParam("$config", "dodge.parryWindowTicks", v)}
+          />
+        </div>
+      )}
+    </Section>
+  );
+}
+
+function NumberRow({ label, value, onCommit }: { label: string; value: number; onCommit: (v: number) => void }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "var(--s-1)", padding: "2px 0", fontSize: "11px" }}>
+      <span style={{ color: "var(--bone-dim)" }}>{label}</span>
+      <input
+        type="number"
+        value={value}
+        onChange={(e) => {
+          const v = parseFloat((e.target as HTMLInputElement).value);
+          if (!isNaN(v)) onCommit(v);
+        }}
+        style={{ width: "64px", textAlign: "right", ...INPUT_STYLE }}
+      />
+    </div>
+  );
+}
+
+function StaticRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "var(--s-1)", padding: "2px 0", fontSize: "11px" }}>
+      <span style={{ color: "var(--bone-dim)" }}>{label}</span>
+      <span style={{ color: "var(--bone-faint)" }}>{value}</span>
+    </div>
   );
 }

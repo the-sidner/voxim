@@ -18,6 +18,10 @@ const log = createLogger("ResourceNodeHitHandler");
  * `respawn_timer` Resource (cross@0 → respawn_node, T-242).
  */
 export class ResourceNodeHitHandler implements HitHandler {
+  // T-333: dispatch bubbles to the nearest ancestor carrying ResourceNode —
+  // a tree whose trunk becomes a child entity stays harvestable.
+  readonly requiredComponent = ResourceNode;
+
   constructor(private readonly content: ContentService) {}
 
   onHit(world: World, events: EventEmitter, ctx: HitContext): void {

@@ -1,0 +1,11 @@
+{
+  "id": "training_dummy_attacker",
+  "extends": "_playable_character",
+  "modelId": "biped_skeletal",
+  "modelScale": 1.4,
+  "components": {
+    "npc": {
+      "npcType": "training_dummy_attacker"
+    }
+  }
+}

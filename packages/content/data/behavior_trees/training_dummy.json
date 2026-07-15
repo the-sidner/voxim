@@ -1,0 +1,10 @@
+{
+  "id": "training_dummy",
+  "root": {
+    "type": "sequence",
+    "children": [
+      { "type": "check_queue_empty_or_expired" },
+      { "type": "set_job_default" }
+    ]
+  }
+}

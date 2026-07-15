@@ -32,6 +32,123 @@ export interface MaterialProperties {
   toughness: number;
 }
 
+/**
+ * Per-material RENDER look block (T-311 Phase 0a). The shape is FROZEN here in
+ * one commit (VISUAL_DATAMODEL_PLAN.md invariant I2) so the visual axes that
+ * extend it — texture / tint / relief / wetness / reflect / moss / glow — never
+ * re-break the schema. Every field here now has a live client consumer
+ * (textureStyle, tintJitter, relief, wetness, reflect, mossBlend); the shape
+ * stays frozen (I2) so future visual axes extend it without another schema
+ * break. Every field optional; absent = engine default (so adding the block
+ * to a material is a pure file-drop, no code edit).
+ */
+export interface MaterialRenderDef {
+  /** Surface-texture style id → client TextureStyle registry (grammar G4,
+   *  Phase 0a). Absent = flat colour. */
+  textureStyle?: string;
+  /** Per-voxel colour mottle (G6, Phase 0a pt.2): brightness range + warm/cool
+   *  tilt. Absent = engine-default jitter. */
+  tintJitter?: { brightness: [number, number]; warmCool: number };
+  /** Relief/displacement detail knobs (T-311 P4; additive, all optional).
+   *  `warp` — the stacked-voxel amplitude for CLIFF stacks: stones jitter
+   *  their exposed faces ±warp/2, warp their corners independently (own
+   *  dispSeed) and oversize into known-solid, so cliffs read hand-stacked.
+   *  `surfaceWarp` — the same per-voxel decorrelated warp on the walkable
+   *  floor slabs: rough, clod-like ground.
+   *  `disturbanceField` — THE per-cell disturbance axis (FieldExpr over the
+   *  server render fields, boot-cross-checked): 1 = wild, 0 = civilized.
+   *  It scales EVERY disturbance channel — surfaceWarp, the cliff-stack
+   *  warp, and the per-voxel tint mottle — so worked/trodden cells read
+   *  orderly (flat, uniform, crisp) and wilderness reads rough and mottled.
+   *  Absent ⇒ constant full disturbance. */
+  relief?: {
+    resolution?: number;
+    detail?: number;
+    /** Per-corner displacement magnitude override, world units (T-311 P4,
+     *  generalised T-326). THE one "how warped is this" amplitude knob every
+     *  voxel-baked class reads through the shared `bakeVoxels`/`bakeSubModel`
+     *  `mag` parameter — terrain (`renderer.ts`, replacing the shared
+     *  TERRAIN_DISP_MAG default), scatter (`scatter_renderer.ts`), static
+     *  props/built structures (`entity_mesh_registry.ts`→`buildSubModelGeo`),
+     *  and characters/equipment/dynamic props (`entity_mesh.ts`) all resolve
+     *  this SAME field for their material — one authoritative home, one
+     *  application point, no second warp path. Materials sharing a
+     *  cliff-edge corner with a DIFFERENT resolved dispMag will show a
+     *  visible seam — the no-crack guarantee only holds within one
+     *  material's own atoms, which always share the same resolved value.
+     *  Absent ⇒ each call site's own engine default (terrain: the shared
+     *  TERRAIN_DISP_MAG constant; every other class: bakeDisplacedVoxel's
+     *  10%-of-voxel-size per-voxel default) — current behaviour for every
+     *  material that hasn't authored one. */
+    dispMag?: number;
+    warp?: number;
+    surfaceWarp?: number;
+    disturbanceField?: import("./field_expr.ts").FieldExpr;
+  };
+  /** Wetness/gloss response, driven by SurfaceStateGrid (Phase 4). */
+  wetness?: { gloss: number; darken: number; reflectGain: number };
+  /** Reflection treatment, shared with water via the SurfaceTreatment registry
+   *  (Phase 5). */
+  reflect?: { strength: number; tint: number; blur: number; glint: number };
+  /** Moss-creep blend, driven by the OvergrowthGrid (Phase 4): material to blend
+   *  toward + per-orientation bias + crack-joint boost + tint shift. */
+  mossBlend?: {
+    material: string;
+    floorBias: number;
+    wallBias: number;
+    jointBoost: number;
+    tintShift: [number, number, number];
+  };
+  /** Emissive family for flame/rune tinting — 'warm' | 'corruption' | 'cold'
+   *  (Phase 2). */
+  glowFamily?: string;
+}
+
+/**
+ * Material STATE-LADDER variant (T-311 Phase 2, grammar G3). One ordered ladder
+ * models BOTH two-state (sacred↔corrupted) and N-state decay
+ * (fresh→weathered→decayed) + settlement upgrade-stages. Selected by a
+ * SERVER-authoritative index resolved by STABLE string `id`→index at boot (never
+ * raw array position — invariant I3c). Resolved via `materialVariantIds()` (the
+ * alphabetical stable-index table, same discipline `CliffGrid.profileId`
+ * established, T-318/T-319); the atlas `fields` stage writes the resolved index
+ * into `SurfaceStateGrid.variantIndex`.
+ */
+export interface MaterialVariant {
+  id: string;
+  colorOverride?: number;
+  colorShift?: { h: number; s: number; l: number };
+  emissiveCracks?: number;
+  addsTags?: readonly string[];
+}
+
+/**
+ * Generator-facing authoring hints (T-301, `DESIGN_LANGUAGE.md` §5) — an
+ * additive, fully-optional block a ProcModel generator MAY read for a
+ * material-appropriate default instead of a hardcoded literal. Absence is
+ * valid; populated only on materials with an obvious value (existing content
+ * is byte-unchanged unless a value is authored). Never required for a
+ * material to be usable — this is a hint, not a schema the loader enforces
+ * presence of.
+ */
+export interface MaterialGeneratorPreferences {
+  /** Suggested per-cell/per-instance placement density [min,max] (0-1),
+   *  DESIGN_LANGUAGE.md §4's semantic density bands per tag. */
+  density_range?: [number, number];
+  /** Suggested SHELL/SCATTER-FLECK thickness in world units (bark rind,
+   *  armor plate, fur tuft length) — NOT a SOLID/LIMB bulk dimension. */
+  thickness_range?: [number, number];
+  /** Whether this material suits G3 MaterialStateLadder layering (blended/
+   *  stacked as a SHELL over another material — moss over stone, rot over
+   *  flesh) rather than only appearing as solid bulk. */
+  layerable?: boolean;
+  /** Suggested emissive intensity [0,1] for generator-driven glow accents
+   *  (embers, runes, eyes) — a HINT for "if a generator adds a glowing
+   *  accent voxel using this material, here's a reasonable value";
+   *  independent of the material's own authored `emissive` field. */
+  emission?: number;
+}
+
 export interface MaterialDef {
   id: MaterialId;
   name: string;        // unique string key used by the craft system
@@ -47,6 +164,226 @@ export interface MaterialDef {
   properties: MaterialProperties;
   /** Categorical tags. Indexed by ContentRegistry.byTag() (T-174). */
   tags?: readonly string[];
+  /** Render look block (T-311 Phase 0a; shape frozen per invariant I2). */
+  render?: MaterialRenderDef;
+  /** State-ladder variants (T-311 Phase 2, grammar G3) — selected by a
+   *  server-authoritative index. Reserved; consumer lands in Phase 2. */
+  variants?: readonly MaterialVariant[];
+  /** Generator-facing authoring hints (T-301) — see `MaterialGeneratorPreferences`
+   *  and `DESIGN_LANGUAGE.md` §5. Absent = no hint authored (generators fall
+   *  back to their own defaults). */
+  generatorPreferences?: MaterialGeneratorPreferences;
+}
+
+/**
+ * Colour-grade definition (T-311 Phase 2, grammar G7 · AuthoredEnvParamSet). The
+ * full set of EdgePass grade constants lifted VERBATIM out of the shader into
+ * content (`data/grades/*.json`) — shader maths unchanged, only the source of the
+ * numbers moves. The client selects a grade and lerps the EdgePass uniforms from
+ * it; per-biome/phase selection by a networked context key lands later. Most
+ * fields map 1:1 to a `u*` EdgePass uniform; six (T-315 D2) are consumed by other
+ * render-pipeline owners instead — see each field's comment.
+ */
+export interface GradeDef {
+  id: string;
+  exposure: number;          // uExposure — pre-tonemap radiance lift
+  saturation: number;        // uSaturation — post-tonemap chroma gain
+  vignetteStart: number;     // uVignetteStart
+  vignetteStrength: number;  // uVignetteStrength
+  splitTone: number;         // uSplitTone — cool shadow ↔ warm light
+  grimGain: [number, number, number];   // uGrimGain — highlight tint
+  grimGamma: [number, number, number];  // uGrimGamma — midtone power
+  grimLift: [number, number, number];   // uGrimLift — raised cool blacks
+  grimDesat: number;         // uGrimDesat — warm pixels spared
+  warmGain: number;          // uWarmGain — warm-pixel desat exemption
+  grimCast: [number, number, number];   // uGrimCast — cool weathered cast
+  grainStrength: number;     // uGrainStrength — film grain
+  grainShadowFloor: number;  // uGrainShadowFloor
+  /** BloomPass uThreshold — HDR bright-pass cutoff (NOT an EdgePass uniform). */
+  bloomThreshold: number;
+  /** BloomPass uKnee — bright-pass rolloff softness (NOT an EdgePass uniform). */
+  bloomKnee: number;
+  /** EdgePass uBloomStrength — glow amount composited back before tonemap. */
+  bloomStrength: number;
+  /** Renderer-side world-Y sample range below the player, recomputed into
+   *  uHeightMin each frame (NOT a uniform itself — no direct `u*` counterpart). */
+  heightShadeBelow: number;
+  /** Renderer-side world-Y sample range above the player, recomputed into
+   *  uHeightMax each frame (NOT a uniform itself — no direct `u*` counterpart). */
+  heightShadeAbove: number;
+  /** Scene-wide multiplier pushing a material's authored `emissive` (0-1) past
+   *  1.0 into HDR/bloom range — a per-material build-time multiplier in
+   *  voxel_material.ts (NOT an EdgePass uniform). */
+  emissiveHdrScale: number;
+}
+
+/**
+ * Atmosphere definition (T-311 Phase 5a, grammar G7). Selected by
+ * `WorldClock.biomeTag` (the tile's single closed biome-tag, resolved through
+ * ContentService with a `default.json` fallback — the tile-wide render-context
+ * selector this phase introduces). Deliberately does NOT re-carry day/night
+ * sky/fog/sun/ambient colour ramps — those already live on `Palette.phases`,
+ * keyed by the same four phase names `sunArc`'s dawn/noon/dusk boundaries
+ * match (0.25/0.5/0.75); AtmosphereDef owns only the axes palette.phases
+ * doesn't: the sun's geometric path, ground mist, and god-rays.
+ */
+export interface AtmosphereDef {
+  id: string;
+  /** Sun path — altitude/azimuth as a function of time-of-day (sun_arc.ts). */
+  sunArc: {
+    dawnAzimuthDeg: number;
+    duskAzimuthDeg: number;
+    maxAltitudeDeg: number;
+    nightDepthDeg: number;
+  };
+  /** Ground-hugging mist band (GroundMistLayer, an EdgePass composite term —
+   *  not a separate render pass). Height band is world-Y, relative to sea
+   *  level (not player-relative — a fog-of-war-style world reconstruction). */
+  mist: {
+    heightMin: number;
+    heightMax: number;
+    /** Density multiplier per named day phase (same 4 names as Palette.phases;
+     *  falls back to 0 for an unlisted phase — mist is opt-in per phase). */
+    densityByPhase: Record<string, number>;
+    /** sRGB hex mist tint. */
+    color: string;
+    /** Per-frame ease-lerp rate toward the phase-target density weight
+     *  (mistWeightCur += (target − mistWeightCur) × easeRate), so mist
+     *  doesn't snap on a day-phase change (T-356). */
+    easeRate: number;
+  };
+  /**
+   * God-ray (light-shaft) params for the existing screen-space radial-scatter
+   * pass (god_ray_pass.ts) — NOT a shadow-map volumetric march. v1 is
+   * deliberately NEAR-FIELD ONLY: the march samples the half-res bloom
+   * bright-target within a fixed UV radius, which in practice stays inside
+   * the sun shadow camera's ±60u frustum at the current camera framing —
+   * widening/cascading the frustum for a true long-range shaft is explicitly
+   * out of scope this phase (VISUAL_DATAMODEL_PLAN.md Phase 5 caveat).
+   */
+  godRay: {
+    /** Per-step contribution (GodRayPass uWeight). */
+    intensity: number;
+    /** How far toward the sun UV the march reaches (GodRayPass uDensity).
+     *  Near-field-only ceiling: keep this small enough that SAMPLES=24 steps
+     *  never reach past the shadow frustum's on-screen projection at the
+     *  default camera framing (empirically ~0.85 today; do not widen without
+     *  re-verifying against the frustum via testplay). */
+    nearFieldRange: number;
+    /** Per-step brightness falloff (GodRayPass uDecay). */
+    decay: number;
+    /** Composite strength added into the HDR scene (EdgePass uGodRayStrength). */
+    strength: number;
+    /** sRGB hex shaft tint (EdgePass uGodRayColor). */
+    color: string;
+  };
+  /** ParticleEmitterDef (must author an `ambience` block) driving this
+   *  atmosphere's ambient drift population — e.g. embers/motes (T-340).
+   *  Boot-cross-checked; absent = no ambience particles for this
+   *  atmosphere. */
+  ambienceParticleId?: string;
+}
+
+/**
+ * Water style definition (T-311 Phase 5b, grammar G7 water axis). Selected
+ * per-tile via the SAME `WorldClock.biomeTag` render-context key P5a's
+ * AtmosphereDef uses, same boot cross-check pattern, same `"default"`
+ * fallback. Freezes today's water_renderer.ts shader constants verbatim as
+ * the default style's JSON values (zero look-change) — a biome-specific
+ * style can diverge later since these are self-contained hex colours, not a
+ * palette-token indirection (palette tokens are a separate single-source-of-
+ * truth axis; a WaterStyleDef needs to be complete on its own).
+ *
+ * `waves` mirrors the FRAG shader's `h`/`dhdx`/`dhdz` computation 1:1 — three
+ * additive sine terms, each `amplitude * sin(freqX*x + freqZ*z + speed*t)`
+ * (a term with `freqX=0` or `freqZ=0` is effectively single-axis; the third
+ * "cross" term today has both non-zero). `normalScale` is the dhdx/dhdz ->
+ * surface-normal perturbation strength; `lumDivisor` remaps the raw height
+ * field into the shallow<->deep mix (`clamp(0.5 + 0.5*(h/lumDivisor), 0, 1)`).
+ */
+export interface WaterStyleDef {
+  id: string;
+  /** Base shallow/deep tint (sRGB hex) — the water_renderer FRAG's uShallow/uDeep. */
+  shallowColor: string;
+  deepColor: string;
+  /** Base alpha before the fresnel-rim boost (uOpacity). */
+  opacity: number;
+  waves: {
+    amplitude: [number, number, number];
+    frequencyX: [number, number, number];
+    frequencyZ: [number, number, number];
+    /** Signed — a negative speed runs the term's phase backward. */
+    speed: [number, number, number];
+    normalScale: number;
+    lumDivisor: number;
+  };
+  /** Fresnel rim: exponent + how much it lightens toward shallow + how much
+   *  it boosts alpha at grazing angles. */
+  fresnel: {
+    exponent: number;
+    tintStrength: number;
+    opacityBoost: number;
+  };
+  /** Blinn specular sun-glint exponent + colour gain. */
+  specular: {
+    exponent: number;
+    gain: [number, number, number];
+  };
+}
+
+/**
+ * Light definition (T-311 Phase 2). "A light" is content: a warm/corruption/cold
+ * family, a base colour + radius + intensity, whether it is eligible to cast a
+ * real PointLight (`castsPool` — vs glowing through its emissive flame voxels
+ * only), and an optional `flickerCurveId` into the client flicker registry.
+ * Referenced by an entity's `lightDefId` (placed-emitter prefabs / Illuminator);
+ * the server resolves the numbers into the networked LightEmitter, the client
+ * derives the presentation-only fields (flicker/family/castsPool) from this def.
+ */
+export interface LightDef {
+  id: string;
+  /** Grouping / future selection key. Informational this phase (no consumer yet). */
+  family: "warm" | "corruption" | "cold";
+  baseColor: number;   // 0xRRGGBB
+  radius: number;      // world units
+  intensity: number;
+  /** Eligible for a real THREE.PointLight via the client LightBudget; false =
+   *  emissive-flame glow only (always-on, free). */
+  castsPool: boolean;
+  /** → client flicker registry; absent = 'steady'. */
+  flickerCurveId?: string;
+}
+
+/**
+ * Cliff profile (T-311 Phase 6). Resolved by the atlas `cliffStage` for stone
+ * wilderness-perimeter cells (`CliffGrid.profileId`, a stable alphabetical
+ * id→index — see `bootstrap_codec.ts`'s cliffProfiles encode order) and
+ * dispatched client-side through the `cliffVoxeliser` registry keyed by this
+ * `id`. `erosionStates` replaces the retired client-side CLIFF_MIN/STONE_H/
+ * STACK_MAX/EXPOSE_MIN constants — the same numbers, now per-profile content
+ * instead of one hardcoded stacking heuristic. `tierCount` is the course
+ * count for the per-cell vertical stack (v1 terracing is vertical coursing,
+ * NOT a horizontal multi-ring staircase — see T-318); `jitterAmp` feeds the
+ * stack's warp (`render.relief.warp`'s per-profile analogue) and
+ * `edgeChinkiness` the sub-lip corner-displacement extra.
+ */
+export interface CliffProfileDef {
+  id: string;
+  wallKind: "stone";
+  erosionStates: {
+    crisp: CliffErosionState;
+    weathered: CliffErosionState;
+    broken: CliffErosionState;
+  };
+}
+
+export interface CliffErosionState {
+  /** Course count for the per-cell vertical stack (was STACK_MAX's Math.round(depth/STONE_H)). */
+  tierCount: number;
+  /** Exposed-face + course-seam jitter amplitude (was the terrain-voxeliser's warp input). */
+  jitterAmp: number;
+  /** Sub-lip stone corner-displacement extra, scaled by jitterAmp (was CHINK_DISP_SCALE's fixed constant). */
+  edgeChinkiness: number;
 }
 
 // ---- voxel model ----
@@ -132,6 +469,20 @@ export interface ModelDefinition {
   materials: MaterialId[];
   /** Which skeleton archetype drives this model's bone sub-objects (if any). */
   skeletonId?: string;
+  /**
+   * T-302 — names the `ProcModelDef` (client procmodel registry) whose
+   * `class: "character"` generator produces this model's body, marking it
+   * `generated: true` rather than authored. Boot-cross-checked (loader.ts)
+   * against `store.procModels` membership; the client's
+   * `crossCheckDesignLanguage` additionally verifies the referenced
+   * ProcModelDef is `class: "character"` and its `params.skeletonId` matches
+   * this model's own `skeletonId` (both sides must agree on which skeleton
+   * they're describing). Absent ⇒ the model's body comes from the skeleton's
+   * `bodyRecipe` directly (unchanged, e.g. every existing `biped_skeletal`
+   * humanoid) or from authored sub-object voxels — this field only marks
+   * "this specific model's body is generator-sourced, not authored."
+   */
+  procModelId?: string;
 }
 
 export interface ModelRefData {
@@ -236,8 +587,9 @@ export interface DerivedItemStats {
   lightIntensity?: number;
   /** Light radius in world units while equipped. */
   lightRadius?: number;
-  /** Flicker amplitude 0–1. 0 = steady, 1 = heavy flicker. */
-  lightFlicker?: number;
+  /** Content LightDef id (T-311 P2) — drives the client presentation (flicker
+   *  curve / family / castsPool) of the equipped light. */
+  lightDefId?: string;
 }
 
 /**
@@ -307,6 +659,30 @@ export interface SwingableData {
    * scaled by the per-instance quality multiplier.
    */
   damage?: number;
+  /**
+   * T-306 — names a `ProcModelDef` (generator: "blade_grammar") whose blade
+   * is THIS weapon's own geometry rather than an authored `model_sword_*`.
+   * Boot-cross-checked (loader.ts) against `store.procModels` membership,
+   * same discipline as `ModelDefinition.procModelId` (T-302). When present:
+   *   - the client bakes the weapon's held-model voxels from
+   *     `bladeGrammarAtoms(seed, procModel.params, resolveMaterial)` instead
+   *     of the prefab's static `ModelDefinition.nodes` (entity_mesh_registry.ts
+   *     syncHandSlot).
+   *   - the server's `weapon_trace` resolver overrides the equipped weapon
+   *     action's `swingPath.length`/`radius` with
+   *     `deriveBladeGeometry(seed, procModel.params)` before sweeping the
+   *     hit capsule — same seed, same pure function, so the visible blade
+   *     and the hitbox can never diverge (the T-186 hitbox-parity class of
+   *     bug this ticket explicitly guards against).
+   * `seed` in both cases is `hash32(weaponEntityId)` — the SAME derivation
+   * `installVisualShell` uses for every other entity's ModelRef.seed,
+   * computed independently client/server from the already-networked
+   * EquipmentSlot.entityId (zero wire cost — no new field). Absent → this
+   * weapon's blade geometry is whatever its WeaponActionDef's authored
+   * `swingPath`/`blade` already provides (no regression for authored
+   * weapons like `iron_sword`).
+   */
+  bladeGrammar?: string;
 }
 export interface ToolData { toolType: string; }
 export interface DeployableData { prefabId: string; }
@@ -357,8 +733,37 @@ export interface PlaceableData {
  * `ItemEffects` instance component (unique items).
  */
 export interface EffectSpec { id: string; params?: Record<string, unknown>; }
-export interface IlluminatorData { radius: number; color: number; intensity: number; flicker: number; }
-export interface ArmorData { reduction: number; staminaPenalty: number; }
+export interface IlluminatorData { radius: number; color: number; intensity: number; lightDefId: string; }
+export interface ArmorData {
+  reduction: number;
+  staminaPenalty: number;
+  /**
+   * T-306 — names a `ProcModelDef` (generator: "armor_grammar") whose SHELL
+   * plates are THIS armor piece's geometry, merged per-bone into the wearer's
+   * baked mesh (entity_mesh_registry.ts syncArmorSlot → armorGrammarByBone,
+   * the same per-bone THREE.Group mechanism humanoid_grammar bodies ride).
+   * Boot-cross-checked against `store.procModels` membership. Purely visual
+   * (armorReduction is a scalar, not geometry) — no server consumer. Seed is
+   * `hash32(armorItemEntityId)` so each NPC's plate is seed-unique. Absent →
+   * the piece renders its authored `modelId` model (unchanged path).
+   */
+  armorGrammar?: string;
+  /**
+   * T-223 — bones this piece's `armorGrammar` should fan out onto when the
+   * client can't derive a single attach bone from the scene graph (legs/feet:
+   * T-220 excludes them from `EQUIP_SLOT_PRIMARY_BONE` because a scene-graph
+   * `Parent` edge is 1:1 and those slots cover multiple bones, e.g. both
+   * upper legs). A shared `armorGrammar` procModel may author plates for MORE
+   * bones than any one piece should render (e.g. `plate_armor_iron` covers
+   * torso_upper/head/upper_leg_l/upper_leg_r for three different items) — this
+   * is the per-item subset, content data rather than a client code table.
+   * Boot-cross-checked: required whenever `equippable.slots` includes `legs`
+   * or `feet`; only meaningful alongside `armorGrammar`. Ignored for
+   * single-bone slots (head/chest/back/weapon/offHand), which resolve their
+   * one bone straight from the graph.
+   */
+  coversBones?: string[];
+}
 export interface MaterialSourceData { materialName: string; }
 export interface ComposedData { slots: ItemSlotDef[]; }
 export type StackableData = Record<never, never>;
@@ -579,13 +984,61 @@ export interface GripDef {
 }
 
 /**
+ * One sample of a gait direction's foot-trajectory (T-308) — a single foot's
+ * target OFFSET from its own rest position, actor-local {fwd,right,up}
+ * (same convention as SwingKeyframe), at a normalised point in that foot's
+ * OWN full stride cycle. `phase` ascends 0→1; phase 0 and phase 1 should
+ * describe the same pose so the track loops cleanly. The other foot samples
+ * the same track at `phase + 0.5` (contralateral gait) — no separate
+ * per-foot authoring needed.
+ */
+export interface GaitKeyframe {
+  /** Normalised position in this foot's stride cycle. 0 = contact. Ascending. */
+  phase: number;
+  fwd: number;
+  right: number;
+  up: number;
+}
+
+/**
+ * Procedural walk-cycle catalogue (T-308) — Overgrowth-style: a SMALL set of
+ * authored key poses (contact / low-pass / push-off, ~3-4 keyframes),
+ * interpolated, rather than a baked clip. `forward` is the single
+ * authoritative track; `backward` and `strafe` are DERIVED from it by
+ * default (mirror the fore/aft sweep for backward; swap fore/aft onto the
+ * lateral axis for a rightward strafe, sign-flipped for leftward) — the same
+ * "author one source, derive the rest" doctrine `deriveTip()` uses for
+ * blade tips. A gait may override either with an explicit authored track.
+ *
+ * The gait's phase is driven by GROUND DISTANCE TRAVELLED, not time:
+ * `phase = (distanceTravelled / strideLength) % 1`. This is what keeps foot
+ * speed matched to ground speed at any movement speed — see
+ * `applyGaitPose()` in swing_pose.ts.
+ */
+export interface GaitDef {
+  id: string;
+  /** World units of ground travel per full 2-step cycle (phase 0..1). */
+  strideLength: number;
+  /** Foot bones to place. Default ["foot_l","foot_r"]. */
+  feetBones?: [string, string];
+  /** Knee pole hint, actor-local {fwd,right,up}. */
+  kneePole?: { fwd: number; right: number; up: number };
+  /** One foot's forward-walk trajectory over its own phase 0..1. */
+  forward: GaitKeyframe[];
+  /** Overrides the derived backward track (see class doc). */
+  backward?: GaitKeyframe[];
+  /** Overrides the derived rightward-strafe track (see class doc). */
+  strafe?: GaitKeyframe[];
+}
+
+/**
  * Physics definition for one weapon archetype (melee or ranged).
  * Drives the three-phase swing (windup → active → winddown), the swing
  * animation clip, and the blade-capsule geometry attached to the holding
  * hand.
  *
- * For melee: the SM combat layer plays `clipId`; on each active tick,
- * ActionSystem evaluates the clip on the attacker's skeleton, reads the
+ * For melee: the combat animation layer plays `clipId`; on each active tick,
+ * the weapon_trace resolver evaluates the clip on the attacker's skeleton, reads the
  * holding hand's world transform, and sweeps a capsule between
  * `blade.baseLocal` → `blade.tipLocal` at this tick and last tick. Same
  * lag-comp rewind mechanism as before — just with a clip-driven blade
@@ -638,6 +1091,9 @@ export interface WeaponActionDef {
   actionType?: "melee" | "ranged";
   /** Projectile spawn parameters. Required for ranged, absent for melee. */
   projectile?: ProjectileActionConfig;
+  /** ParticleEmitterDef fired client-side at the muzzle on this ranged
+   *  action's active-phase rising edge (T-340). Ignored for melee. */
+  muzzleParticleId?: string;
   /**
    * Root-motion forward impulse applied while the named phase is active
    * (T-199). The character is pushed forward along its facing direction at
@@ -671,10 +1127,27 @@ export interface WeaponActionDef {
  * Movement permission during a phase. The runtime physics layer (T-232)
  * consults the current action's per-phase value to throttle locomotion:
  *   "free"   — full intent passes through
- *   "slowed" — multiplied by a global slow factor
+ *   0.5 — multiplied by a global slow factor
  *   "locked" — zero
  */
-export type ActionMovement = "free" | "slowed" | "locked";
+/**
+ * What a phase does to the actor's movement.
+ *
+ *   "free"    — no restriction (the default when a phase names nothing).
+ *   "locked"  — physics ignores movement input entirely (a dodge dash holds its
+ *               committed velocity; a swing's active frames plant you).
+ *   number    — a SPEED MULTIPLIER in (0, 1]: you may still move, at this
+ *               fraction of your normal speed, for as long as the phase lasts.
+ *
+ * The number replaces the old `0.5` string, which named a mode nobody
+ * implemented — `isMovementLocked` treated it as `"free"`, so every ActionDef
+ * that declared it was lying about its own behaviour. Making it a number is what
+ * lets the penalty DEPEND on what is being done: a shield block barely slows you,
+ * a crossbow reload roots you to a shuffle, and a heavy overhead is somewhere
+ * between. One knob, per phase, per action — no parallel "slowFactor" field to
+ * keep in sync.
+ */
+export type ActionMovement = "free" | "locked" | number;
 
 /**
  * One phase of an Action. Iteration order follows declared key order in
@@ -818,11 +1291,47 @@ export interface ActionDef {
    */
   committed?: boolean;
   /**
+   * Hitstop (T-296): ticks to freeze attacker + target movement on a landed
+   * `weapon_trace` hit — a brief, readable "thump" on contact. 0/absent =
+   * no freeze (default). Consumed by `WeaponTraceResolver` (writes the
+   * freeze window into its resolver-local scratch, no new component) and
+   * `PhysicsSystem` (holds position/velocity for any entity in that set).
+   */
+  hitStopTicks?: number;
+  /**
+   * Telegraph lead clip (T-297): an optional tell played for `ticks` at the
+   * START of the action's first phase (windup), before crossfading to that
+   * phase's normal `animation` clip. Client-only projection — the server
+   * sends no extra field; the client derives the lead purely from the
+   * already-networked `ActiveActions.phase` + `ticksInPhase` plus this
+   * content id. `ticks` must be < the first phase's own `ticks` so there is
+   * room left for the real windup motion after the tell.
+   */
+  preWindup?: { clipId: string; ticks: number };
+  /**
    * Gates evaluated at initiation. The action starts only if every gate
    * passes (plus resource `costs` are affordable). Closed-vocabulary typed
    * predicates — see `ActionGate`. (T-226)
    */
   preconditions?: ActionGate[];
+  /**
+   * Hold-to-aim pairing (T-337): names the action id `PrimaryIntentResolver`
+   * requests when the triggering input (ACTION_USE_SKILL) drops while this
+   * action's CURRENT phase is perpetual (`ticks: -1`). Only meaningful on a
+   * `kind: "ambient"` def that reaches a perpetual phase — the dispatcher's
+   * existing "hold" idiom (see `block`) — since `ticks: -1` is otherwise
+   * illegal (`validateActionDef` requires `kind === "ambient"` for it).
+   * Absent → releasing just lets intent re-resolve normally (nothing special
+   * happens on release; this is what every non-hold action does today).
+   *
+   * The windup phase(s) leading up to the perpetual phase are ordinary
+   * finite phases — "the action winds up and HOLDS at full charge" is one
+   * ActionDef with a finite phase followed by a `ticks: -1` phase, not two
+   * actions. Releasing during the finite windup is NOT gated by this field —
+   * it's an ordinary cancel-into (`cancel.<phase>.into`), same as any
+   * mid-swing interrupt.
+   */
+  releaseActionId?: string;
   effects: ActionEffect[];
   animation?: Record<string, ActionAnimation>;
 }
@@ -931,6 +1440,23 @@ export interface TriggerDef {
   effects: TriggerEffect[];
 }
 
+// ---- puzzles (T-212 v2) ----
+
+/**
+ * A puzzle TEMPLATE — the shared mechanics of one puzzle `kind`
+ * (`data/puzzles/{id}.json`). A `puzzle` POI's `activity.puzzleId`
+ * references one of these; per-instance tuning (lever count, hints) lives
+ * on the POI's own `activity.params`, not here — the template names the
+ * MECHANISM (dispatched through `puzzle_kinds/mod.ts`'s registry), the POI
+ * instance supplies the PARAMS, same split `ActionDef`/per-use params use.
+ */
+export interface PuzzleDef {
+  id: string;
+  /** Registry key dispatched in `poi/puzzle_kinds/mod.ts`. v1 ships exactly
+   * one: "lever_sequence". */
+  kind: string;
+}
+
 // ---- procedural models (T-285) ----
 
 /**
@@ -949,6 +1475,25 @@ export interface ProcModelDef {
   /** Generator-specific parameter object — opaque to the loader. */
   // deno-lint-ignore no-explicit-any
   params: any;
+  /**
+   * Corruption-morph tiers (T-311 P4): up to THREE param-override objects,
+   * deep-merged over `params` (tier 0 = base `params`, tier i = merge of
+   * `morphTiers[i-1]`) — so a fern's corrupted form is DATA (darker material,
+   * fewer blades, more droop), not generator code. A ScatterDef's `morphField`
+   * buckets the server field into `1 + morphTiers.length` tiers (≤ 4).
+   */
+  // deno-lint-ignore no-explicit-any
+  morphTiers?: ReadonlyArray<Record<string, any>>;
+  /**
+   * Design-language class marker (T-301, DESIGN_LANGUAGE.md §6 item 4).
+   * `"character"` opts this generator into the boot coherence check's
+   * ground-plane invariant: its emitted atoms must root at model-space
+   * `z ≈ 0` (ADR: a generated body always anchors at its placement point).
+   * Absent = an environment-scale generator (tree/boulder/foliage today),
+   * not checked against the ground-plane invariant. First real consumer is
+   * T-302's `humanoid_grammar`.
+   */
+  class?: "character";
 }
 
 /**
@@ -962,8 +1507,26 @@ export interface ProcModelDef {
  */
 export interface ScatterDef {
   id: string;
-  /** KindGrid boundary kind that drives the cell walk (e.g. forest = 2). */
-  kind: number;
+  /** KindGrid boundary kind that drives the cell walk (e.g. forest = 2).
+   *  Required when `material` is absent; ignored (may be omitted) when
+   *  `material` is present — the two are mutually exclusive dispatch keys,
+   *  never both consumed. */
+  kind?: number;
+  /** Optional: match the per-cell GROUND material NAME(s) instead of the KindGrid
+   *  kind, so plants/rocks scatter on the walkable floor (dirt forest-floor, grass,
+   *  moss, …) which is KindGrid=OPEN(0). A list matches any of the named materials.
+   *  Resolved to material ids at decoration time. */
+  material?: string | string[];
+  /** Optional placement probability [0,1] per candidate cell (default 1). A
+   *  per-cell hash gate so floor scatter reads natural/sparse, not lock-step.
+   *  Superseded by `densityField` when present. */
+  density?: number;
+  /** Per-cell DENSITY as a FieldExpr over the VegFieldGrid/SurfaceStateGrid planes
+   *  (T-311 P4). When present it REPLACES `density` — placement keep-probability
+   *  VARIES per cell (dense in fertile/shade, sparse on dry rock / worn paths),
+   *  the organic-vs-uniform-carpet lever. Boot-cross-checked against FIELD_NAMES.
+   *  A hash still only decorrelates the keep ROLL, never decides density. */
+  densityField?: import("./field_expr.ts").FieldExpr;
   /** ProcModelDef id → boot-cross-checked. */
   procModel: string;
   /** Variant pool size K — the tile-declared "I need K variants". */
@@ -976,6 +1539,223 @@ export interface ScatterDef {
   scaleJitter: [number, number];
   /** Whether each instance gets a random Y rotation. */
   rotate: boolean;
+  /** Optional CLUMP behaviour (T-311 P4 — the density lever). When present, a
+   *  matching cell seeds a clump of instances scattered in a disk of `radius`
+   *  (world units) rather than a single prop; the count LERPS `count[0]→count[1]`
+   *  by the cell's field density (so fertile/shaded cells read DENSE and dry rock
+   *  thins to nothing — "combine primitives into a dense scene"). Absent = the
+   *  classic single-per-cell keep-probability placement. */
+  cluster?: { count: [number, number]; radius: number };
+  /** Corruption-morph selector (T-311 P4): a FieldExpr over the render fields
+   *  whose value buckets the cell into one of the procModel's morph tiers
+   *  (`1 + morphTiers.length`, ≤ 4) — corrupted ground grows the corrupted
+   *  form. The SERVER field decides the tier, never a hash (the doctrine's
+   *  hash-only-dithers rule). Requires the procModel to author `morphTiers`. */
+  morphField?: import("./field_expr.ts").FieldExpr;
+}
+
+// ---- decals ----
+
+/**
+ * An EPHEMERAL combat decal (T-311 P4 — designer decision: in-memory + decay,
+ * never saved, no wire component). The client's decal-source registry maps a
+ * wire GameEvent (closed catalog: "damage" | "death") to a spawn point +
+ * intensity; the DecalDef says what grows there: a splat of thin voxel slabs
+ * in the splat material, scattered in a disk, decaying slab-by-slab after
+ * `ttlSeconds`. The WHERE/WHAT traces to the server event + this content —
+ * only the sub-splat scatter is random (transient presentation).
+ */
+export interface DecalDef {
+  id: string;
+  /** Decal-source id → client decal-source registry (closed event catalog);
+   *  boot-cross-checked. */
+  source: string;
+  /** Splat material NAME (palette colour + render look via buildVoxelMaterial). */
+  material: string;
+  /** Slab count [min,max] — lerped by the source's intensity. */
+  count: [number, number];
+  /** Scatter disk radius (world units). */
+  radius: number;
+  /** Slab edge length [min,max] (world units). */
+  sizeRange: [number, number];
+  /** Full-strength lifetime; after this the splat decays slab-by-slab. */
+  ttlSeconds: number;
+  /** Decay window — slabs vanish one by one across this span. */
+  fadeSeconds: number;
+  /** damage source only: a hit at/above this amount → intensity 1 (splat
+   *  count maxes out). Absent → the damageSource default (30). Ignored by
+   *  every other source (e.g. death). */
+  fullIntensityAt?: number;
+}
+
+/**
+ * DissolveProfileDef (T-311 P5c, grammar G6 + I3b) — how a corrupted
+ * creature frays and sheds voxels as it dissolves on death. Referenced by a
+ * dissolve-style `DeathStyleDef.dissolveProfileId` (T-339), boot-cross-checked.
+ *
+ * Rendering is fully in-shader: static per-voxel attributes (which voxels
+ * are "loose", their drift seed) are baked once at model build from each
+ * voxel's bone-relative extremity distance, gated by `frayBandWidth`; the
+ * ONE networked scalar (`AnimationStateData.dissolutionPhase`) plus these
+ * uniforms drive a per-vertex position offset in the vertex shader. NO
+ * per-frame geometry rewrite, NO CPU re-bake.
+ *
+ * `maxSeparatedVoxels` / `maxSeparationDistance` are the I3b hard caps —
+ * content fields (not client constants) so the Studio devtool can display
+ * them and an author can tune per-archetype without a code change. Drifting
+ * voxels are individually outlined by the Sobel/SSAO EdgePass, so these caps
+ * are the whole cost-control story; see VISUAL_DATAMODEL_PLAN.md §I3b.
+ */
+export interface DissolveProfileDef {
+  id: string;
+  /** Fraction (0..1) of the model's extent, measured from each voxel's bone
+   *  outward to the skeleton's root, counted as "loose" (frayed). 0 = only
+   *  the very extremities (fingertips/toes) fray; 1 = the whole body. */
+  frayBandWidth: number;
+  /** Drift speed in world units/second at dissolutionPhase=1 (scales
+   *  linearly with phase below that). */
+  driftSpeed: number;
+  /** I3b hard cap: at most this many voxels (by loose01 descending) ever
+   *  get a nonzero drift offset, regardless of model voxel count. */
+  maxSeparatedVoxels: number;
+  /** I3b hard cap: no drifting voxel may translate further than this many
+   *  world units from its rest position. */
+  maxSeparationDistance: number;
+  /** Ticks the death-dissolve takes end to end — seeds the `dissolve_timer`
+   *  Resource's max (and starting value) on the shed_dissolve DeathHook. */
+  durationTicks: number;
+  /** Easing applied to the raw linear timer fraction before it becomes
+   *  dissolutionPhase. Default "linear" when absent. */
+  phaseCurve?: "linear" | "smoothstep";
+}
+
+/**
+ * DeathStyleDef (T-339) — "what happens to a body on death", dispatched by
+ * `style` through a registry on both server (DeathHooks) and client (a
+ * `registerDeathStyle` registry mirroring decal_sources.ts/particle_sources.ts)
+ * — never a hardcoded switch. Two styles exist: `dissolve` (the T-311 P5c
+ * fray/shed, now driven THROUGH this def instead of a bare
+ * `NpcTemplate.dissolveProfileId`) and `crumble` (the body breaks apart into
+ * its bone parts and falls, T-339). Active ragdoll is a later style in this
+ * same registry — not built here (no rigid-body solver exists yet).
+ *
+ * Referenced by `NpcTemplate.deathStyleId`, boot-cross-checked.
+ */
+export interface DeathStyleDef {
+  id: string;
+  style: "dissolve" | "crumble";
+  /**
+   * Resource id (`data/resources/{id}.json`) this style's DeathHook seeds on
+   * death (`{value: durationTicks, max: durationTicks}`) to linger the
+   * corpse for the effect's duration — the SAME id the client's death-style
+   * dispatch scans for on the dying entity's already-networked `Resource`
+   * component to decide which style (if any) is active and for how long
+   * (`rv.max`, wire-authoritative). Naming the key here — rather than each
+   * side separately hardcoding a `"${style}_timer"` convention — means
+   * server and client can never drift on what string to look for. Must
+   * resolve in `ContentService.resources` (boot-cross-checked).
+   */
+  resourceKey: string;
+  /** style==="dissolve" only: which DissolveProfileDef drives the fray/shed
+   *  shader (bake-time fray attributes + the networked `dissolutionPhase`
+   *  scalar). Must resolve in `ContentService.dissolveProfiles`
+   *  (boot-cross-checked). */
+  dissolveProfileId?: string;
+  /** style==="crumble" only: physical break-apart tuning. */
+  crumble?: CrumbleStyleParams;
+}
+
+/** Crumble-style tuning (T-339) — content, never hardcoded TS tuning. Each
+ *  bone piece launches outward from the corpse's centroid, falls under the
+ *  shared `ballisticStep` (the SAME integrator projectiles/particles use —
+ *  never a second one), settles on the terrain, and fades over the
+ *  linger window's final `fadeTicks`. */
+export interface CrumbleStyleParams {
+  /** Outward launch speed [min,max] world units/second per bone piece. */
+  impulseSpeed: [number, number];
+  /** Cone half-angle (degrees) blended with each piece's outward-from-
+   *  centroid direction — same idiom as `ParticleEmitterDef.spreadDeg`. */
+  spreadDeg: number;
+  /** Multiplies `GameConfig.physics.gravity` — mirrors
+   *  `ParticleEmitterDef.gravityScale`'s naming. */
+  gravityScale: number;
+  /** Tumble angular speed [min,max] rad/s, rolled per piece around a random
+   *  axis; frozen once the piece settles on the ground. */
+  spinSpeed: [number, number];
+  /** Ticks the corpse lingers before teardown — seeds this def's
+   *  `resourceKey` Resource's max (and starting value). */
+  durationTicks: number;
+  /** Trailing ticks (of `durationTicks`) over which every piece shrinks to
+   *  nothing — a voxel-honest size-curve fade (never alpha), matching
+   *  `ParticleEmitterDef.size` / decal_renderer.ts's established fade idiom. */
+  fadeTicks: number;
+  /** `ParticleEmitterDef` id fired once per piece the instant it first
+   *  touches terrain height. Must resolve in `ContentService.particles`
+   *  (boot-cross-checked). */
+  impactParticleId: string;
+}
+
+// ---- particles ----
+
+/**
+ * ParticleEmitterDef (T-340) — the ONE content-driven particle primitive,
+ * covering both one-shot combat bursts (spell muzzle flash, hit sparks) and
+ * continuous ambience (drifting embers). Phase-1 experiment picked voxel
+ * SHARDS over sprite billboards (see the T-340 closing notes) — a burst is a
+ * handful of shrinking unit cubes in `material`'s look (palette-snapped
+ * colour + flatShading via the same `bakeVoxels`/`buildVoxelMaterial` path
+ * DecalDef splats already use), instanced through the shared InstancePool
+ * (one archetype per def — never a draw call per particle). Fade is a size
+ * curve (shrink-to-nothing), not alpha — the same voxel-honest decay
+ * decal_renderer.ts already established ("slabs vanish whole, no fading
+ * opacity against the Sobel ink").
+ */
+export interface ParticleEmitterDef {
+  id: string;
+  /** Particle-source id → client particle-source registry (closed event
+   *  catalog, mirrors DecalDef.source); boot-cross-checked. Absent for
+   *  emitters triggered by a fixed mechanism instead of a wire GameEvent
+   *  (muzzle flash: WeaponActionDef.muzzleParticleId; ambience:
+   *  AtmosphereDef.ambienceParticleId; crumble impact:
+   *  CrumbleStyleParams.impactParticleId). */
+  source?: string;
+  /** Splat material NAME — palette-snapped colour + flatShaded look via
+   *  buildVoxelMaterial, same idiom as DecalDef.material (not a raw palette
+   *  token: this reuses the material's emissive→HDR-bloom glow for free). */
+  material: string;
+  /** Burst particle count [min,max]. Ignored when `ambience` is set (the
+   *  ambience population size is `ambience.count` instead). */
+  count: [number, number];
+  /** Launch speed, world units/second, [min,max]. Also seeds an ambience
+   *  particle's drift velocity when `ambience` is set. */
+  speed: [number, number];
+  /** Cone half-angle (degrees) around the caller-supplied base direction
+   *  (event-sourced bursts default to "up"; the muzzle-flash trigger
+   *  supplies the caster's facing). Also shapes ambience drift spread. */
+  spreadDeg: number;
+  /** Lifetime seconds [min,max], rolled per particle. Ignored when
+   *  `ambience` is set (ambience particles persist via box-wrap, not decay). */
+  lifetime: [number, number];
+  /** Multiplies GameConfig.physics.gravity (mirrors
+   *  ProjectileActionConfig.gravityScale's naming). 0 = no gravity (e.g. an
+   *  ember that only rises). */
+  gravityScale: number;
+  /** Shard edge length, world units, lerped start→end over the particle's
+   *  lifetime fraction. `end` is typically 0 — shrink-to-nothing IS the
+   *  fade. */
+  size: { start: number; end: number };
+  /**
+   * Present ⇒ this def drives a continuous ambience population instead of a
+   * one-shot burst: `count` particles drift inside a box (±boxHalfExtent
+   * horizontal, [0,boxHeight] vertical) centred on the camera target,
+   * wrapping at the edges — DustMotes' replacement. Selected per-tile via
+   * `AtmosphereDef.ambienceParticleId`.
+   */
+  ambience?: {
+    count: number;
+    boxHalfExtent: number;
+    boxHeight: number;
+  };
 }
 
 // ---- biomes ----
@@ -1052,15 +1832,6 @@ export interface ZoneDef {
   priority: number;
   classifyRules: ZoneClassifyRule[];
   dangerLevel: number;
-  /** Expected NPC spawns per zone cell; fractional values are probabilistic. */
-  npcSpawnDensity: number;
-  /** Expected resource-node spawns per zone cell. */
-  nodeSpawnDensity: number;
-  /** Expected decorative prop spawns per zone cell. */
-  propSpawnDensity: number;
-  npcWeights: Record<string, number>;
-  entityWeights: Record<string, number>;
-  propWeights: Record<string, number>;
 }
 
 // ---- behavior trees ----
@@ -1147,12 +1918,33 @@ export interface NpcTemplate {
   /** Item type to equip as weapon at spawn (e.g. "wolf_bite"). Null/absent = unarmed. */
   weaponItemType?: string;
   /**
+   * Armor item prefabs to equip at spawn, keyed by EquipmentData slot name
+   * (T-306; mirrors the player's `startingEquipment`, which is per-instance
+   * data on PrefabPlayerData — NPCs have no per-spawn override for this, so
+   * it lives on the archetype template instead). Each entry spawns its own
+   * item entity (spawnEquipEntity) with its own EntityId, so an armor piece
+   * naming a `generatorPreferences`/`armor_grammar`-backed model renders a
+   * seed-unique plate per NPC instance even when many NPCs share one
+   * NpcTemplate. Absent/omitted slots stay unequipped.
+   */
+  armorItemTypes?: Partial<Record<"head" | "chest" | "legs" | "feet" | "back", string>>;
+  /**
    * Trigger ids this archetype carries innately (T-259c) — the
    * `npc_template` TriggerSource reads them live via NpcTag.npcType.
    * Signature procs (a cornered wolf's frenzy) without any item. Each id
    * must resolve in `ContentService.triggers` (boot-cross-checked).
    */
   triggers?: string[];
+  /**
+   * Death style (T-339) — `data/death_styles/{id}.json`. Absent = this
+   * archetype's corpse just vanishes on death (the pre-existing default
+   * behaviour). Must resolve in `ContentService.deathStyles`
+   * (boot-cross-checked). Read by the `shed_dissolve`/`shed_crumble`
+   * DeathHooks to decide which corpse-lifetime Resource to seed; a
+   * dissolve-styled entity's client bake path also derives fray/coreness
+   * per voxel from the named `DissolveProfileDef`.
+   */
+  deathStyleId?: string;
 }
 
 // ---- resource nodes ----
@@ -1237,6 +2029,18 @@ export interface Prefab {
   modelId?: string;
   /** Multiplier applied on top of the base entity scale at spawn. Defaults to 1. */
   modelScale?: number;
+  /**
+   * T-302 — documents that `modelId` names a model whose body is procedurally
+   * GENERATED (`ModelDefinition.procModelId` names a `class: "character"`
+   * ProcModel generator) rather than authored. Purely declarative — spawning
+   * and rendering read `modelId` exactly as before; this field exists so a
+   * prefab's own JSON is self-describing (and greppable) about which path
+   * its body takes, without needing to cross-reference the model file. Not
+   * boot-cross-checked against the model's actual `procModelId` (the model
+   * file is the single source of truth for the wiring; this is prefab-level
+   * documentation of intent, same spirit as a `_comment` field but typed).
+   */
+  generated?: boolean;
   /**
    * Per-prefab animation slot map: AnimationSystem slot name → clipId on the
    * entity's skeleton.  Lets two prefabs sharing the same skeleton play
@@ -1326,25 +2130,46 @@ export interface Prefab {
    */
   components: Record<string, unknown>;
   /**
-   * Child prefabs spawned as scene-graph descendants of this entity (T-217).
-   * Spawning this prefab spawns the root, then recursively spawns each child
-   * and wires `world.setParent(child, root)`; each child's `local` transform
-   * is its offset relative to the parent. Recurses arbitrarily deep — a
-   * child may itself declare `children`. Absent = a flat single entity.
-   * Loader rejects refs to unknown or abstract (`_`-prefixed) prefab ids.
+   * Child prefabs spawned as scene-graph descendants of this entity (T-217;
+   * seeded pool/probability selection T-334). Spawning this prefab spawns
+   * the root, then recursively spawns each RESOLVED child (see
+   * `ChildPrefabRef`) and wires `world.setParent(child, root)`; each child's
+   * `local` transform is its offset relative to the parent. Recurses
+   * arbitrarily deep — a child may itself declare `children`. Absent = a
+   * flat single entity. Loader rejects refs to unknown or abstract
+   * (`_`-prefixed) prefab ids — both the fixed `prefabId` form and every
+   * `pool` entry.
    */
   children?: ChildPrefabRef[];
 }
 
 /**
- * A child entry in `Prefab.children` (T-217). `prefabId` must resolve to a
- * concrete (non-abstract) prefab. `local` is the child's transform relative
- * to the parent entity; omitted fields default to identity (0 / scale 1).
- * Structurally `Partial<Transform>` so the engine consumes it without a
- * dependency on this package.
+ * A child entry in `Prefab.children` (T-217; seeded pool/probability
+ * T-334). `local` is the child's transform relative to the parent entity;
+ * omitted fields default to identity (0 / scale 1). Structurally
+ * `Partial<Transform>` plus the engine's `SeededPoolEntry` so the engine
+ * consumes it without a dependency on this package.
+ *
+ * `prefabId` and `pool`/`probability` mirror `SubObjectRef.modelId`/`.pool`/
+ * `.probability` exactly — the same seeded-random vocabulary that already
+ * resolves a model's sub-objects (`resolveSubObjects`) now resolves which
+ * child prefabs get spawned:
+ *   - `prefabId` — fixed single prefab, always spawned (unless `probability`
+ *     excludes it). Mutually exclusive with `pool`; `pool` wins if both are set.
+ *   - `pool` — variant pool; one entry is drawn at spawn time.
+ *   - `probability` — 0–1 odds this entry is spawned at all. Omitted/1.0 =
+ *     always spawned.
+ * Resolution happens once per prefab spawn, off one seeded PRNG stream
+ * shared across the whole `children` list, via `resolveSeededPick`
+ * (`@voxim/engine`) — the engine's `spawnPrefab` subtree walk is the sole
+ * consumer of the raw (unresolved) form.
  */
 export interface ChildPrefabRef {
-  prefabId: string;
+  prefabId?: string;
+  /** Variant pool of prefab ids — one is picked at random when present. */
+  pool?: string[];
+  /** 0–1 probability this entry is spawned at all. Omit for always-spawned. */
+  probability?: number;
   local?: { x?: number; y?: number; z?: number; scale?: number };
 }
 
@@ -1404,9 +2229,21 @@ export interface LoreFragment {
  * to its members. `op` mirrors the Status/Modifier primitive's fold
  * (`(base + Σadd) × Πmul`); `stat` must be a stat the server queries through
  * `effective()` (currently `moveSpeed`, `armorReduction`) for the trait to bite.
+ *
+ * `morphValues` (T-085) is the species' visual archetype: since T-179/T-180
+ * retired the per-creature skeleton files, every humanoid — species included —
+ * shares the one `biped` skeleton and differentiates purely through
+ * `SkeletonDef.morphParams`-keyed proportions (same mechanism drowner/
+ * rotten_knight already use). A dwarf is "shorter and wider" as
+ * `legLength`/`torsoHeight` down + `shoulderWidth`/`hipWidth` up on the same
+ * bones and clips a human plays — no new skeleton, no new animations. Keys
+ * must match the player model's skeleton `morphParams[].id`; boot-checked in
+ * server.ts alongside the existing default-species check. Absent/omitted →
+ * no species-driven proportion bias (human has none, the baseline body).
  */
 export interface SpeciesDef {
   modifiers: Array<{ stat: string; op: "add" | "mul"; value: number }>;
+  morphValues?: Record<string, number>;
 }
 
 /**
@@ -1478,6 +2315,17 @@ export interface GameConfig {
     blockArcHalfRadians: number;
     knockbackImpulseXY: number;
     knockbackImpulseZ: number;
+    /**
+     * Knockback emphasis (T-292): scales `knockbackImpulseXY`/`Z` by how hard
+     * the hit landed relative to `referenceDamage` (clamped to
+     * [minMult, maxMult]) — a heavy swing shoves harder than a light poke.
+     */
+    knockback: {
+      /** Damage value that maps to multiplier 1.0. */
+      referenceDamage: number;
+      minMult: number;
+      maxMult: number;
+    };
     /** WeaponActionDef id used when no weapon is equipped. */
     unarmedWeaponAction: string;
     /** Base damage dealt by an unarmed swing's active phase. */
@@ -1488,6 +2336,19 @@ export interface GameConfig {
     unarmedBladeRadius: number;
     unarmed: DerivedItemStats;
     /**
+     * Soft aim-assist (T-320): on an attack's active tick the combat resolver
+     * orients the swing (+ the actor's Facing) toward the best enemy inside a
+     * frontal cone — nearest by a distance-dominant cost with angular offset as
+     * the tiebreak. No hard lock-on; if no enemy is in cone the swing goes
+     * straight ahead. Server-authoritative (identical for mouse and pad).
+     */
+    aimAssist: {
+      /** Max distance (world units) an enemy can be and still be snapped to. */
+      rangeUnits: number;
+      /** Half-angle (degrees) of the frontal cone about the actor's facing. */
+      halfAngleDeg: number;
+    };
+    /**
      * Fallback projectile spawn parameters used only when a ranged weapon
      * action has no explicit ProjectileActionConfig.spawnOffset. Values are
      * entity-local (fwd, right, up) coordinates applied via localToWorld
@@ -1495,8 +2356,26 @@ export interface GameConfig {
      */
     projectileDefaults: {
       spawnOffset: { fwd: number; right: number; up: number };
-      /** For projectiles with gravity, multiplies speed to seed an upward arc. */
-      arcFactor: number;
+    };
+    /**
+     * Hold-to-aim pitch → elevation mapping (T-337). `InputState.pitch`
+     * (radians, accumulated client-side while a hold-to-aim cast is
+     * charging) is clamped to [pitchMinDeg, pitchMaxDeg] (degrees) and fed
+     * DIRECTLY as the elevation angle into `launchVelocity(facing, pitch,
+     * speed)` — up = farther, down = nearer, monotonic for a fixed launch
+     * speed as long as pitchMaxDeg stays <= 45deg (beyond 45deg more
+     * elevation REDUCES range for a fixed speed, which would invert the
+     * "up = farther" mapping the ticket requires — do not raise
+     * pitchMaxDeg past 45 without re-deriving the monotonic bound).
+     * Replaces the old flat `arcFactor` (a fixed seed-upward-velocity
+     * fraction with no player control) outright — every ranged/thrown
+     * weapon's launch direction is now pitch-driven, gravity or not (a
+     * gravityScale:0 magic bolt still points along the aimed elevation in
+     * a straight line; only its FLIGHT arc ignores gravity).
+     */
+    aim: {
+      pitchMinDeg: number;
+      pitchMaxDeg: number;
     };
     /**
      * Poise — the staggering resource (T-197). Damage reduces poise; when
@@ -1526,6 +2405,17 @@ export interface GameConfig {
     partMultipliers: {
       attacker: { tip: number; mid: number; haft: number };
       victim:   Record<string, number>;
+      /**
+       * Global rear-hit multiplier (T-299, 1.25-1.5): damage is scaled by
+       * this when the attacker struck from behind the target's facing (the
+       * SAME front/back dot-product test the hit handler already computes
+       * for hit_front/hit_back reaction selection, reused rather than
+       * recomputed). Applies to every actor equally — a Shield-Knight's
+       * frontal block arc already gives it a flanking weakness for free
+       * (an attack outside `blockArcHalfRadians` disables `isBlocking`), so
+       * this multiplier needs no archetype-specific override.
+       */
+      rearMultiplier: number;
     };
   };
   dodge: {
@@ -1592,6 +2482,8 @@ export interface GameConfig {
     minDigHeight: number;
     /** Max distance (world units) from digger to target cell centre. */
     digReach: number;
+    /** How far ahead of the digger, along facing, the target cell sits (world units). */
+    digTargetDistance: number;
     /** Maps material ID → item type dropped when a cell is dug. */
     materialDrops: Record<string, string>;
   };
@@ -1630,6 +2522,10 @@ export interface GameConfig {
       /** Radius around a deployed workstation that captures enemy-owned ones (world units). */
       radiusWorldUnits: number;
     };
+    /** Client roof rendering (T-066): height above interior floor a roof
+     *  quad sits at — matches atlas's WALL_HEIGHT so the roof reads as
+     *  resting on top of the walls that seal the enclosure. */
+    roofHeightAboveFloor: number;
   };
   items: {
     /** Auto-pickup radius (world units) — ItemData entities within this range are collected. */
@@ -1703,12 +2599,16 @@ export interface GameConfig {
     /** Radius in world units within which entities are visible to a client. */
     aoiRadius: number;
   };
-  /** Client-side prediction correction smoothing. */
+  /** Client-side prediction/interpolation smoothing — local-player correction
+   *  plus remote-entity render interpolation delay (T-356). */
   prediction: {
     /** Half-life of the render-offset correction in milliseconds. Lower = snappier. */
     correctionHalfLifeMs: number;
     /** Divergences above this (world units) snap immediately instead of smoothing. */
     hardSnapThresholdUnits: number;
+    /** Milliseconds behind the latest received state remote entities are
+     *  rendered, for smooth linear interpolation between server ticks. */
+    remoteInterpDelayMs: number;
   };
   /** Global fallback defaults for NPC AI tuning. Per-type overrides live on NpcTemplate. */
   npcAiDefaults: {
@@ -1783,6 +2683,166 @@ export interface GameConfig {
      * `LoudNoise` event (T-040) — a sprint is loud enough to be heard, a
      * crouch-walk is not. */
     loudNoiseThreshold: number;
+    /**
+     * T-338: ticks an NPC holds a hold-to-aim weapon's perpetual charge
+     * phase (bow_draw's "hold", etc.) before `attackTargetJob` emits one
+     * release pulse (actions: 0 for a tick) so the shot actually fires.
+     * Weapon-agnostic — the job reads the RUNNING action's own shape
+     * (releaseActionId + a perpetual current phase), never branches on
+     * "is this a bow". Must exceed the longest hold-to-aim weapon's own
+     * windup (crossbow_draw's 30 ticks is the longest today) or the release
+     * pulse would land before the draw ever reaches its perpetual phase.
+     */
+    rangedHoldTicks: number;
+  };
+  /** Client render look-tuning that doesn't fit MaterialRenderDef/GradeDef
+   *  (T-315 D3) — foliage wind + camera-occlusion fade-cylinder geometry, the
+   *  shared drawNoise `amount` coefficient for the organic/dirt/sand
+   *  procedural texture styles, plus the renderer's supersample band and
+   *  secondary-motion pose easing (T-356). */
+  render: {
+    /** Foliage sway (canopy_fade.ts's wind uniforms). */
+    canopyWind: {
+      /** Horizontal wind direction (three-space XZ), roughly normalized. */
+      dirX: number;
+      dirY: number;
+      /** World units of sway per unit of voxel height. */
+      strength: number;
+    };
+    /** Camera-occlusion fade-cylinder geometry (canopy_fade.ts). Anything
+     *  above the player inside this cylinder fades/discards so the camera
+     *  isn't blocked by overhead canopy. */
+    canopyFade: {
+      /** Height above the player's feet where fade begins. */
+      minHeight: number;
+      /** Height above the player's feet where fade is fully complete. */
+      maxHeight: number;
+      /** Horizontal radius where fade is fully active. */
+      innerRadius: number;
+      /** Horizontal radius of the transition band outside innerRadius. */
+      outerRadius: number;
+      /** Discard threshold on (vertFade × horizFade). */
+      cutoff: number;
+    };
+    /** Camera-occlusion fade extended to SIDE occluders (T-314) — tall
+     *  walls/buildings/cliffs the rigid over-the-shoulder camera (T-328)
+     *  ends up on the far side of. Same discard mechanism as canopyFade
+     *  (shares its uFadeCutoff), but the horizontal test is the voxel's
+     *  distance from the camera→player LINE SEGMENT (clamped to the
+     *  segment, not a radial blob) so only the sliver of geometry actually
+     *  between camera and player is affected, and the vertical test starts
+     *  just above the player's feet (not the head) so a wall fades along
+     *  its whole height while the floor the player stands on never does. */
+    wallFade: {
+      /** Height above the player's feet where fade begins — keep small and
+       *  positive so ground/floor voxels at foot level are never eaten. */
+      minHeight: number;
+      /** Height above the player's feet where fade is fully complete. */
+      maxHeight: number;
+      /** Perpendicular distance from the camera-player segment where fade
+       *  is fully active — deliberately tight (a wall's footprint), unlike
+       *  canopyFade's wide canopy-dome radius. */
+      innerRadius: number;
+      /** Perpendicular distance of the transition band outside innerRadius. */
+      outerRadius: number;
+    };
+    /** Per-style ±fraction fine-grain amount for the organic/dirt/sand
+     *  procedural texture generators (material_textures.ts's drawNoise). */
+    textureStyle: {
+      organicAmount: number;
+      dirtAmount: number;
+      sandAmount: number;
+    };
+    /** SSAA supersample factor band: clamp(devicePixelRatio, min, max). The
+     *  whole post chain (SSAO + edge taps + bloom) renders at this × the CSS
+     *  resolution — THE PRIMARY PERF KNOB, cost scales with the square of it.
+     *  Resolved ONCE, at VoximRenderer construction (content is hydrated by
+     *  then); a mid-session edit needs a page reload, since the post-FX
+     *  render-target set is sized from it (T-356). */
+    supersample: {
+      min: number;
+      max: number;
+    };
+    /** Secondary-motion pose easing, read every render() frame (T-356). */
+    pose: {
+      /** Pelvis drop (skeleton rest units) at full crouch; scaled per entity. */
+      crouchDropAmount: number;
+      /** Crouch ease rate (1/s) — snappy (~150ms settle), not a one-frame jolt. */
+      crouchEaseOmega: number;
+      /** Head/gaze stabilization blend (applyLookAtPose) — 0 fully follows the
+       *  spine's lean, 1 fully cancels it. Partial keeps organic follow-through. */
+      lookAtGain: number;
+      /** Spine/head follow-through spring ease rate (1/s) — the bones eased
+       *  toward the composed pose each frame (NOT the IK'd hands/arms).
+       *  Higher = snappier; ~32 settles in ~90ms, organic but never floaty. */
+      springOmega: number;
+    };
+  };
+  /** Free-look pointer-lock camera (T-320; rotation ownership inverted by
+   *  T-328): rig geometry + look feel. Mouse-X drives the player's FACING
+   *  directly (a pad right-stick would use the same seam) and camera yaw is
+   *  rigidly DERIVED from it; mouse-Y still drives camera pitch directly —
+   *  no follow controller, no deadzone/spring on either axis. Geometry knobs
+   *  make the framing (top-down tactical vs. lower over-the-shoulder) pure
+   *  content tuning. Pitch is clamped to a narrow band around the shipped
+   *  rest gaze so the horizon never floods in (keeps the T-310 F telephoto
+   *  property). Client-side presentation only (`mouseSensitivity` also
+   *  drives the client-only facing accumulator — no wire change). */
+  /**
+   * Keyboard bindings (T-335). Action id → the `KeyboardEvent.code`s that
+   * trigger it (several allowed, e.g. WASD + arrows). Content, not code, so a
+   * rebind is a JSON edit.
+   *
+   * **A binding may never be a MODIFIER key** (`Control*`/`Alt*`/`Meta*`) — not
+   * as a matter of taste but of physics: a browser cannot `preventDefault` its
+   * own reserved chords, so the moment crouch sat on Ctrl, crouch-walking
+   * forward (Ctrl+W) *closed the tab*. Binding a modifier turns every ordinary
+   * movement key into a browser chord. `Tab` and the F-keys are out for the same
+   * reason. `validateInputBindings` (loader.ts) enforces this at boot, so the
+   * bug cannot come back by accident — which is the actual deliverable of T-335,
+   * not the rebind itself.
+   */
+  input: {
+    bindings: Record<string, string[]>;
+  };
+  camera: {
+    /** Metres behind the player along the yaw direction (at rest pitch). */
+    backDistance: number;
+    /** Metres above the player's ground position (at rest pitch). Rest gaze
+     *  angle below horizontal is atan2(heightAbove − lookAtBias, backDistance). */
+    heightAbove: number;
+    /** Look-at point this many metres above the player root (the "chest"). */
+    lookAtBias: number;
+    /** Vertical field of view in degrees (narrow telephoto at defaults). */
+    fovDeg: number;
+    /** Radians of yaw/pitch applied per look-delta pixel (mouse sensitivity). */
+    mouseSensitivity: number;
+    /** When true, moving the mouse up pitches the gaze down (flight invert). */
+    invertY: boolean;
+    /** Rest pitch (degrees below horizontal) — reproduces the T-317 gaze. */
+    pitchRestDeg: number;
+    /** Lower pitch clamp (degrees below horizontal) — smaller = flatter. */
+    pitchMinDeg: number;
+    /** Upper pitch clamp (degrees below horizontal) — larger = steeper. Keep
+     *  the band narrow: a wide pitch floods the horizon in and reopens
+     *  fog/draw-distance issues (T-310 F). */
+    pitchMaxDeg: number;
+  };
+  /** Fog-of-war LOS gameplay tuning (T-315 D5) — moved out of
+   *  `@voxim/protocol`'s fog.ts, which now keeps only wire-shape constants
+   *  (grid size, cell packing). Server (FogOfWarSystem) and client
+   *  (FogOfWar.updateLocalLOS) each run their own copy of the same LOS
+   *  raycast against these same numbers — byte-parity between the two is
+   *  load-bearing, same as the shared PRNG/noise primitives (T-315 C5). */
+  fogOfWar: {
+    /** Half-angle of the LOS cone in radians (≈55°, total ≈110°). */
+    losHalfAngleRad: number;
+    /** LOS radius in world units. */
+    losRadius: number;
+    /** Number of rays in the cone — 1 ray per degree gives 110 rays. */
+    losRayCount: number;
+    /** Ray walk step in world units. Smaller = fewer cell skips at oblique angles. */
+    losStep: number;
   };
 }
 
@@ -1806,7 +2866,9 @@ export interface TileEntityConfig {
   prefabId: string;
   x: number;
   y: number;
-  /** World-unit height. Defaults to 4.0 (slightly above ground). */
+  /** World-unit height. Omit to snap to the terrain surface at (x,y) — the
+   *  default for structural props (they have no physics to settle them). Set
+   *  explicitly only to deliberately pin a prop off the ground. */
   z?: number;
   /** Display name override applied to NPC entities after spawn. */
   name?: string;
@@ -1820,19 +2882,12 @@ export interface TileEntityConfig {
  * entities — persistent: resource nodes, workstations, static props.
  *            Only spawned when the tile has no saved world state.
  * npcs     — transient: NPCs are re-spawned on every server start from this
- *            list (or procedurally if absent/empty), so they are never stale.
- *
- * proceduralNodes — when true, procedural zone-based node scatter runs in
- *   addition to the explicit entities list (default false).
- * proceduralNpcs  — when true, procedural zone-based NPC scatter runs in
- *   addition to the explicit npcs list (default false).
+ *            list, so they are never stale.
  */
 export interface TileLayout {
   tileId: string;
   entities: TileEntityConfig[];
   npcs: TileEntityConfig[];
-  proceduralNodes?: boolean;
-  proceduralNpcs?: boolean;
 }
 
 // ---- skeleton system ----
@@ -1911,6 +2966,58 @@ export interface SkeletonDef {
    * without authoring separate skeleton files per variant.
    */
   morphParams?: MorphParamDef[];
+  /**
+   * T-186 Layer 2 — recipe-driven body volumes. When present, `evaluateBodyRecipe()`
+   * (body_recipe.ts) fills each part's shape from the resolved morphParams instead of
+   * authored sub-object voxel positions. Replaces authored `bone_segment`-style voxels
+   * for every bone this recipe covers — see entity_mesh.ts / hitbox_derive.ts call sites.
+   */
+  bodyRecipe?: BodyRecipeDef;
+  /**
+   * Procedural gait catalogue id (T-308) — names a GaitDef in
+   * `data/gaits/`. The client's pose pipeline uses it to generate the
+   * LOWER body + feet from interpolated key poses (phase driven by ground
+   * distance, not time) instead of the locomotion clip's leg track; absent
+   * = no procedural gait, the locomotion clip drives the legs as before
+   * (e.g. the wolf archetype, which has no biped leg-bone naming).
+   * Cross-checked against `content.gaits` at load (loader.ts).
+   */
+  gaitId?: string;
+}
+
+/**
+ * One body part's volume, attached to a bone. Each numeric field is either a
+ * constant or a formula.ts expression string evaluated against the skeleton's
+ * resolved morphParams (e.g. "torsoHeight * 0.6") — see body_recipe.ts.
+ *
+ * Entity-local axes: x = right, y = forward, z = up. Volumes are authored
+ * along local +Z (the same convention `bone_segment.json` used), centered on
+ * the bone origin, so they slot into `upgradeToSkeletonModel`'s existing
+ * per-bone Group exactly like the sub-objects they replace.
+ */
+export interface BodyPartRecipeDef {
+  /** Bone this part attaches to — must exist in the owning SkeletonDef.bones. */
+  boneId: string;
+  shape: "capsule" | "tapered_box";
+  /** Extent along local +Z (bone axis), in model units. */
+  length: number | string;
+  /** Radius (capsule) or half-width at the bone-origin end (tapered_box). */
+  radiusOrWidthTop: number | string;
+  /** tapered_box only — half-width at the far end. Ignored for capsule. */
+  radiusOrWidthBot?: number | string;
+  /** Material NAME (resolved via a resolveMaterial(name)->id callback, ProcModel-style). */
+  material: string;
+}
+
+/**
+ * T-186 Layer 2 recipe — one volume declaration per body part. A voxelizer
+ * (`evaluateBodyRecipe`) fills each part at `voxelSize` grain from the
+ * skeleton's resolved morph values, replacing authored body voxels.
+ */
+export interface BodyRecipeDef {
+  /** Voxel edge length in model units — every part fills at this grain. */
+  voxelSize: number;
+  parts: BodyPartRecipeDef[];
 }
 
 /**
@@ -2027,6 +3134,15 @@ export interface AnimationStateData {
   weaponActionId: string;
   /** Elapsed ticks since the current attack started. 0 when not attacking. */
   ticksIntoAction: number;
+  /**
+   * Corrupted-creature death-dissolve phase (T-311 P5c). 0 = intact, 1 =
+   * fully dissolved. DERIVED each tick by `AnimationSystem` from
+   * `Resource.values["dissolve_timer"]` (see `systems/animation.ts`) — the
+   * server writes it, the client drives ALL fray/drift presentation from
+   * this one scalar + the entity's `DissolveProfileDef`. Stays 0 for every
+   * entity that never carries a `dissolve_timer` Resource.
+   */
+  dissolutionPhase: number;
 }
 
 // =============================================================================

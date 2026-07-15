@@ -120,6 +120,12 @@ export function bakeDisplacedVoxel(
   px: number, py: number, pz: number,
   scale: { x: number; y: number; z: number },
   mag?: number,
+  /** Decorrelation seed (VoxelAtom.dispSeed): shifts the displacement sample
+   *  space so THIS voxel's corners warp independently of every neighbour —
+   *  coincident vertices no longer weld; the voxel pokes out of the merged
+   *  mesh and may clip into its neighbours (deliberate — the individual-stone
+   *  look). Omitted ⇒ shared world-position seeding (welded, byte-identical). */
+  seed?: number,
 ): BakedVoxel {
   const positions = new Float32Array(BOX_VERT_COUNT * 3);
   const normals = new Float32Array(BOX_VERT_COUNT * 3);
@@ -127,6 +133,8 @@ export function bakeDisplacedVoxel(
   // across all its atoms (T-283) — variable-`sz` column boxes would otherwise get
   // different per-voxel mag at a shared cliff-edge corner and crack hairline-wide.
   const m = mag ?? 0.10 * Math.min(scale.x, scale.y, scale.z);
+  // Large odd strides keep the shifted samples on distinct lattice cells.
+  const sx = seed ? seed * 53.25 : 0, sy = seed ? seed * 91.5 : 0, sz = seed ? seed * 37.75 : 0;
   for (let i = 0; i < BOX_VERT_COUNT; i++) {
     // Scale unit-box (±0.5) to actual voxel extents in Three.js space.
     // Coordinate mapping: model x → three x (scale.x),
@@ -135,7 +143,7 @@ export function bakeDisplacedVoxel(
     const lx = UNIT_BOX_POSITIONS[i * 3]     * scale.x;
     const ly = UNIT_BOX_POSITIONS[i * 3 + 1] * scale.z;
     const lz = UNIT_BOX_POSITIONS[i * 3 + 2] * scale.y;
-    const [dx, dy, dz] = vertexDisp(px + lx, py + ly, pz + lz, m);
+    const [dx, dy, dz] = vertexDisp(px + lx + sx, py + ly + sy, pz + lz + sz, m);
     positions[i * 3]     = lx + dx;
     positions[i * 3 + 1] = ly + dy;
     positions[i * 3 + 2] = lz + dz;
@@ -150,7 +158,129 @@ export interface BakedMesh {
   normals: Float32Array;
   uvs: Float32Array;
   voxelCenter: Float32Array;
+  /** Per-vertex RGB tint (~1.0) — a deterministic per-VOXEL brightness + warm/cool
+   *  jitter so every voxel is a slightly different shade of its material. This
+   *  mottled mosaic (vs one flat colour) is a core source of the reference look.
+   *  All 24 verts of a voxel share its tint. Consumed via material.vertexColors. */
+  colors: Float32Array;
   indices: Uint32Array;
+  /** Per-vertex wetness 0..1 (T-311 P4, G6 sidecar) — present only when some
+   *  atom carried `wet01`; becomes the `aWetness` attribute consumed by the
+   *  `wet_specular` surface treatment. All 24 verts of a voxel share its value. */
+  wetness?: Float32Array;
+  /** Per-vertex death-dissolve fray amount 0..1 (T-311 P5c, G6 sidecar) —
+   *  present only when some atom carried `fray01`; becomes the `aFray`
+   *  attribute the dissolve-drift vertex shader multiplies its offset by.
+   *  All 24 verts of a voxel share its value. */
+  fray?: Float32Array;
+  /** Per-vertex death-dissolve drift direction (T-311 P5c, G6 sidecar), a
+   *  static unit vec3 in model space — present only when some atom carried
+   *  `driftDir`; becomes the `aDriftDir` attribute. All 24 verts of a voxel
+   *  share the same 3 components. */
+  driftDir?: Float32Array;
+}
+
+/** Deterministic position hash → [0,1). Independent per `salt`. Exported as
+ *  THE per-voxel identity hash (tint, warp) so consumers never drift. */
+export function voxHash(x: number, y: number, z: number, salt: number): number {
+  // snap to a coarse lattice so a whole voxel hashes to one value regardless of
+  // which corner is sampled; quantise to 0.5u.
+  const xi = Math.round(x * 2), yi = Math.round(y * 2), zi = Math.round(z * 2);
+  let n = (Math.imul(xi, 374761393) ^ Math.imul(yi, 668265263) ^ Math.imul(zi, 2246822519) ^ Math.imul(salt, 3266489917)) | 0;
+  n = Math.imul(n ^ (n >>> 13), 1274126177) | 0;
+  return ((n ^ (n >>> 16)) >>> 0) / 4294967296;
+}
+
+/** Per-voxel colour-mottle amplitude — content-authored via
+ *  `MaterialDef.render.tintJitter` (T-311 Phase 0a, grammar G6). The default
+ *  reproduces the pre-T-311 hardcoded mottle EXACTLY, so a material that declares
+ *  no tintJitter bakes byte-identically. */
+export interface TintJitter {
+  /** Brightness multiplier range [min,max], sampled by a per-voxel hash. */
+  brightness: [number, number];
+  /** Warm↔cool tilt amplitude (red up / blue down). */
+  warmCool: number;
+}
+
+const DEFAULT_TINT: TintJitter = { brightness: [0.80, 1.20], warmCool: 0.14 };
+
+/**
+ * Resolved moss-creep colour response (T-311 P4) — the renderer derives this
+ * ONCE per material from `MaterialDef.render.mossBlend` + the target moss
+ * material's palette colour. `ratio` is moss÷base per channel (so baseColour ×
+ * ratio ≈ mossColour on the vertex-colour multiplier), `shift` an additive
+ * tint nudge. Applied per voxel, scaled by the atom's `moss01`.
+ */
+export interface MossResponse {
+  ratio: readonly [number, number, number];
+  shift: readonly [number, number, number];
+}
+
+/**
+ * Derive the per-channel colour response that lerps `baseColor` toward
+ * `mossColor` on the vertex-colour MULTIPLIER (which scales the material's
+ * base colour/texture). Ratio clamps to [0,4] so a near-black base can't
+ * blow the multiplier out. Pure — unit-testable without THREE.
+ */
+export function resolveMossResponse(
+  baseColor: number,
+  mossColor: number,
+  shift: readonly [number, number, number],
+): MossResponse {
+  const ch = (hex: number, s: number) => ((hex >> s) & 0xff) / 255;
+  const ratio1 = (m: number, b: number) => Math.min(4, m / Math.max(b, 1 / 255));
+  return {
+    ratio: [
+      ratio1(ch(mossColor, 16), ch(baseColor, 16)),
+      ratio1(ch(mossColor, 8), ch(baseColor, 8)),
+      ratio1(ch(mossColor, 0), ch(baseColor, 0)),
+    ],
+    shift,
+  };
+}
+
+/**
+ * Death-dissolve fray/coreness (T-311 P5c, G6). A voxel's `loose01` is how
+ * far it sits into the "frayed" extremity band, measured as its distance
+ * from the skeleton's root bone divided by the model's overall extent from
+ * that root — 0 at the root (torso core, never frays), ramping to 1 at the
+ * model's farthest extremity (fingertips/toes/head). `band` (content:
+ * `DissolveProfileDef.frayBandWidth`) is the fraction of that normalised
+ * distance where fray starts: below `1 - band` the voxel is fully rigid
+ * (fray01 = 0); above it, fray01 ramps 0→1 linearly out to the extremity.
+ * Pure — unit-testable without THREE, mirrors `resolveMossResponse`'s shape
+ * (a pure numeric response derived from content + geometry, no side effects).
+ */
+export function resolveFrayCoreness(boneDistance: number, modelExtent: number, band: number): number {
+  if (modelExtent <= 0 || band <= 0) return 0;
+  const normalised = Math.min(1, Math.max(0, boneDistance / modelExtent));
+  const start = Math.max(0, 1 - band);
+  if (normalised <= start) return 0;
+  return (normalised - start) / (1 - start);
+}
+
+/** Deterministic per-voxel drift direction (T-311 P5c) — a unit vector in
+ *  model space, seeded by `voxHash` off the voxel's own bake-time position so
+ *  every voxel of a dissolving creature drifts a fixed direction (no
+ *  per-frame randomness). Salts 10/11/12 are reserved for this — distinct
+ *  from tint's 1/2 and any other voxHash consumer. */
+export function driftDirFor(cx: number, cy: number, cz: number): readonly [number, number, number] {
+  const dx = voxHash(cx, cy, cz, 10) * 2 - 1;
+  const dy = voxHash(cx, cy, cz, 11) * 2 - 1;
+  const dz = voxHash(cx, cy, cz, 12) * 2 - 1;
+  const len = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
+  return [dx / len, dy / len, dz / len];
+}
+
+/** Per-voxel tint (rgb multipliers around 1.0): brightness jitter + a warm/cool
+ *  tilt. Tuned subtle — mottles the surface without losing the material's identity.
+ *  The hash stays sub-voxel dither; the AMPLITUDE is the content knob, so richness
+ *  is authored not hardcoded (the doctrine's position-hash rule). */
+function voxelTint(cx: number, cy: number, cz: number, t: TintJitter): [number, number, number] {
+  const [lo, hi] = t.brightness;
+  const bright = lo + (hi - lo) * voxHash(cx, cy, cz, 1);
+  const warm = (voxHash(cx, cy, cz, 2) - 0.5) * t.warmCool;
+  return [bright * (1 + warm), bright, bright * (1 - warm)];
 }
 
 /**
@@ -168,14 +298,34 @@ export function bakeVoxels(
   /** Optional constant displacement magnitude for every atom (T-283 terrain);
    *  omitted → each voxel uses 10 % of its own smallest edge. */
   mag?: number,
+  /** Per-voxel colour-mottle amplitude (content: MaterialDef.render.tintJitter).
+   *  Omitted/undefined → the engine default (byte-identical to pre-T-311). */
+  tint: TintJitter = DEFAULT_TINT,
+  /** Moss-creep colour response (content: MaterialDef.render.mossBlend, resolved
+   *  by the caller). Only read where an atom carries `moss01` — omitted or no
+   *  mossy atoms → byte-identical. */
+  moss?: MossResponse,
 ): BakedMesh {
-  const voxels: { px: number; py: number; pz: number; baked: BakedVoxel }[] = [];
+  const voxels: { px: number; py: number; pz: number; moss01: number; wet01: number; tintScale: number; fray01: number; driftDir: readonly [number, number, number]; baked: BakedVoxel }[] = [];
+  let anyWet = false;
+  let anyFray = false;
   for (const a of atoms) {
     if (a.materialId !== materialId) continue;
     // model center → three center (x, z, y); size stays in model axes — the
     // displaced-box bake applies the same swap to the extents internally.
     const px = a.cx, py = a.cz, pz = a.cy;
-    voxels.push({ px, py, pz, baked: bakeDisplacedVoxel(px, py, pz, { x: a.sx, y: a.sy, z: a.sz }, mag) });
+    if (a.wet01 !== undefined) anyWet = true;
+    if (a.fray01 !== undefined && a.fray01 > 0) anyFray = true;
+    // driftDir is model-space (x,y,z); swap to three-space (x,z,y) the same
+    // way the voxel center does, so the shader's offset stays consistent
+    // with the geometry it's nudging.
+    const [dmx, dmy, dmz] = a.driftDir ?? [0, 0, 0];
+    voxels.push({
+      px, py, pz,
+      moss01: a.moss01 ?? 0, wet01: a.wet01 ?? 0, tintScale: a.tintScale ?? 1,
+      fray01: a.fray01 ?? 0, driftDir: [dmx, dmz, dmy],
+      baked: bakeDisplacedVoxel(px, py, pz, { x: a.sx, y: a.sy, z: a.sz }, a.dispMag ?? mag, a.dispSeed),
+    });
   }
 
   const vCount = voxels.length * BOX_VERT_COUNT;
@@ -183,10 +333,28 @@ export function bakeVoxels(
   const normals = new Float32Array(vCount * 3);
   const uvs = new Float32Array(vCount * 2);
   const voxelCenter = new Float32Array(vCount * 3);
+  const colors = new Float32Array(vCount * 3);
   const indices = new Uint32Array(voxels.length * BOX_INDEX_COUNT);
+  const wetness = anyWet ? new Float32Array(vCount) : undefined;
+  const fray = anyFray ? new Float32Array(vCount) : undefined;
+  const driftDirOut = anyFray ? new Float32Array(vCount * 3) : undefined;
 
   let vOff = 0, iOff = 0;
-  for (const { px, py, pz, baked } of voxels) {
+  for (const { px, py, pz, moss01, wet01, tintScale, fray01, driftDir, baked } of voxels) {
+    // One tint per voxel; `tintScale` (the disturbance axis) collapses the
+    // mottle amplitude toward flat for worked/trodden cells.
+    const t = tintScale >= 1 ? tint : {
+      brightness: [1 + (tint.brightness[0] - 1) * tintScale, 1 + (tint.brightness[1] - 1) * tintScale] as [number, number],
+      warmCool: tint.warmCool * tintScale,
+    };
+    let [tr, tg, tb] = voxelTint(px, py, pz, t);
+    if (moss && moss01 > 0) {
+      // Lerp the multiplier toward the moss response: base×ratio ≈ moss colour.
+      const k = moss01 > 1 ? 1 : moss01;
+      tr = tr * (1 - k + k * moss.ratio[0]) + k * moss.shift[0];
+      tg = tg * (1 - k + k * moss.ratio[1]) + k * moss.shift[1];
+      tb = tb * (1 - k + k * moss.ratio[2]) + k * moss.shift[2];
+    }
     for (let i = 0; i < BOX_VERT_COUNT; i++) {
       const v = vOff + i;
       // Translate the voxel's local geometry to its model-space center.
@@ -201,6 +369,16 @@ export function bakeVoxels(
       voxelCenter[v * 3]     = px;
       voxelCenter[v * 3 + 1] = py;
       voxelCenter[v * 3 + 2] = pz;
+      colors[v * 3]     = tr;
+      colors[v * 3 + 1] = tg;
+      colors[v * 3 + 2] = tb;
+      if (wetness) wetness[v] = wet01;
+      if (fray) fray[v] = fray01;
+      if (driftDirOut) {
+        driftDirOut[v * 3]     = driftDir[0];
+        driftDirOut[v * 3 + 1] = driftDir[1];
+        driftDirOut[v * 3 + 2] = driftDir[2];
+      }
     }
     for (let i = 0; i < BOX_INDEX_COUNT; i++) {
       indices[iOff + i] = UNIT_BOX_INDEX[i] + vOff;
@@ -209,7 +387,12 @@ export function bakeVoxels(
     iOff += BOX_INDEX_COUNT;
   }
 
-  return { positions, normals, uvs, voxelCenter, indices };
+  return {
+    positions, normals, uvs, voxelCenter, colors, indices,
+    ...(wetness && { wetness }),
+    ...(fray && { fray }),
+    ...(driftDirOut && { driftDir: driftDirOut }),
+  };
 }
 
 /**
@@ -218,16 +401,23 @@ export function bakeVoxels(
  * into model space and whose size is the entity scale (uniform). Kept so the
  * existing merged-prop path (`voxel_geo.buildSubModelGeo`) is one call away from
  * the unified pipeline; byte-identical to the pre-T-281 bakeSubModel.
+ *
+ * `dispMag` (T-326): the material's authored `render.relief.dispMag` — THE one
+ * warp-amplitude knob shared by every voxel-baked class (terrain already read
+ * it; this is the static-prop path's wire, closing the "walls/built structures
+ * read no content warp at all" gap). Omitted ⇒ `bakeVoxels`'s own per-voxel
+ * default (byte-identical to before this parameter existed).
  */
 export function bakeSubModel(
   nodes: ReadonlyArray<{ x: number; y: number; z: number; materialId: number }>,
   materialId: number,
   scale: { x: number; y: number; z: number },
+  dispMag?: number,
 ): BakedMesh {
   const atoms: VoxelAtom[] = nodes.map((n) => ({
     cx: n.x * scale.x, cy: n.y * scale.y, cz: n.z * scale.z,
     sx: scale.x, sy: scale.y, sz: scale.z,
     materialId: n.materialId,
   }));
-  return bakeVoxels(atoms, materialId);
+  return bakeVoxels(atoms, materialId, dispMag);
 }

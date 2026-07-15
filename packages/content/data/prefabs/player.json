@@ -23,22 +23,6 @@
           "quantity": 5
         },
         {
-          "itemType": "workbench_kit",
-          "quantity": 1
-        },
-        {
-          "itemType": "chopping_block_kit",
-          "quantity": 1
-        },
-        {
-          "itemType": "furnace_kit",
-          "quantity": 1
-        },
-        {
-          "itemType": "anvil_kit",
-          "quantity": 1
-        },
-        {
           "itemType": "campfire_kit",
           "quantity": 1
         },
@@ -48,7 +32,7 @@
         }
       ],
       "startingEquipment": {
-        "weapon":  "stone_axe",
+        "weapon": "stone_axe",
         "offHand": "iron_sword"
       }
     }

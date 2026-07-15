@@ -15,21 +15,5 @@
       "probability": 0.06
     }
   ],
-  "dangerLevel": 8,
-  "npcSpawnDensity": 0.22,
-  "nodeSpawnDensity": 0.5,
-  "propSpawnDensity": 1.5,
-  "npcWeights": {
-    "rotten_knight": 4,
-    "bandit": 3,
-    "archer": 2
-  },
-  "entityWeights": {
-    "iron_ore_vein": 5
-  },
-  "propWeights": {
-    "model_building_ruin_wall": 8,
-    "model_building_ruin_tower": 5,
-    "model_dead_tree": 3
-  }
+  "dangerLevel": 8
 }

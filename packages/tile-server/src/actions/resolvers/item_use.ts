@@ -51,11 +51,12 @@ import { adjustResourceKey } from "../../resources/mutate.ts";
 import { Inventory, ItemData } from "../../components/items.ts";
 import type { InventorySlot } from "../../components/items.ts";
 import { ItemEffects } from "../../components/instance.ts";
+import { findByIdentity, removeAt, slotIdentity } from "../../inventory_ops.ts";
 import { createLogger } from "../../logger.ts";
 
 const log = createLogger("item_use");
 
-function slotPrefabId(slot: InventorySlot, world: World): string | null {
+export function slotPrefabId(slot: InventorySlot, world: World): string | null {
   if (slot.kind === "stack") return slot.prefabId;
   return world.get(slot.entityId as EntityId, ItemData)?.prefabId ?? null;
 }
@@ -79,18 +80,6 @@ function findUsableSlot(world: World, content: ContentService, entityId: EntityI
   const inv = world.get(entityId, Inventory);
   if (!inv) return -1;
   return inv.slots.findIndex((s) => slotEffects(world, content, s).length > 0);
-}
-
-function consumeOne(world: World, slots: InventorySlot[], idx: number): InventorySlot[] {
-  const slot = slots[idx];
-  if (slot.kind === "stack") {
-    if (slot.quantity <= 1) return slots.filter((_, i) => i !== idx);
-    return slots.map((s, i) => i === idx
-      ? { kind: "stack" as const, prefabId: slot.prefabId, quantity: slot.quantity - 1 }
-      : s);
-  }
-  world.destroy(slot.entityId as EntityId);
-  return slots.filter((_, i) => i !== idx);
 }
 
 export const slotHasUsableGate: GateHandler = {
@@ -136,6 +125,17 @@ export class ApplyItemEffectsResolver implements EffectResolver {
  * items that don't are reusable. Re-derives the used slot (the item is
  * still present — no prior effect removes it), tolerating the same
  * raced-away case as the others.
+ *
+ * T-344: two effect resolutions targeting different slots of the SAME
+ * entity's Inventory in one tick (e.g. two action slots crossing a phase
+ * edge together) used to clobber under plain world.set. Captures the
+ * slot's identity outside (world.get is still legal there), destroys the
+ * unique-kind backing entity eagerly (irreversible, ahead of the mutate —
+ * residual: if the mutate below declines because a same-tick race already
+ * moved/consumed this exact slot, the original slot is left pointing at a
+ * now-dead entityId; StaleSlotCleanupSystem, also fixed in this ticket,
+ * scrubs exactly that class of dangling ref the very next tick), then
+ * re-locates by identity inside the closure — pure, no world access.
  */
 export const spendItemResolver: EffectResolver = {
   id: "spend_item",
@@ -145,7 +145,14 @@ export const spendItemResolver: EffectResolver = {
     if (!inv) return;
     const idx = findUsableSlot(world, content, entityId);
     if (idx === -1) return;
-    world.set(entityId, Inventory, { ...inv, slots: consumeOne(world, inv.slots, idx) });
+    const slot = inv.slots[idx];
+    const identity = slotIdentity(slot);
+    if (slot.kind === "unique") world.destroy(slot.entityId as EntityId);
+    world.mutate(entityId, Inventory, (cur) => {
+      const i = findByIdentity(cur.slots, identity, idx);
+      if (i === -1) return cur;
+      return { ...cur, slots: removeAt(cur.slots, i) };
+    });
   },
 };
 

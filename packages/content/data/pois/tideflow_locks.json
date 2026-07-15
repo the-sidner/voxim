@@ -5,8 +5,8 @@
 
   "type": "puzzle",
   "activity": {
-    "puzzleId":        "valve_sequence",
-    "params":          { "valves": 7, "flowGoal": "drain", "showHints": true },
+    "puzzleId":        "lever_sequence",
+    "params":          { "length": 7, "showHints": true },
     "failurePenalty":  "reset"
   },
 

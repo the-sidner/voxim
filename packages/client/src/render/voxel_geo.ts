@@ -27,6 +27,15 @@ export function geometryFromBaked(baked: BakedMesh): THREE.BufferGeometry {
   out.setAttribute("normal",      new THREE.BufferAttribute(baked.normals,     3));
   out.setAttribute("uv",          new THREE.BufferAttribute(baked.uvs,         2));
   out.setAttribute("voxelCenter", new THREE.BufferAttribute(baked.voxelCenter, 3));
+  out.setAttribute("color",       new THREE.BufferAttribute(baked.colors,      3));
+  // Optional G6 sidecar (T-311 P4): per-vertex wetness for the wet_specular
+  // surface treatment. Only present when some atom carried `wet01`.
+  if (baked.wetness) out.setAttribute("aWetness", new THREE.BufferAttribute(baked.wetness, 1));
+  // Optional G6 sidecar (T-311 P5c): per-vertex death-dissolve fray amount +
+  // drift direction for the dissolve_drift vertex shader. Only present when
+  // some atom carried `fray01` (i.e. a profiled corrupted-creature model).
+  if (baked.fray) out.setAttribute("aFray", new THREE.BufferAttribute(baked.fray, 1));
+  if (baked.driftDir) out.setAttribute("aDriftDir", new THREE.BufferAttribute(baked.driftDir, 3));
   if (baked.indices.length > 0) out.setIndex(new THREE.BufferAttribute(baked.indices, 1));
   return out;
 }
@@ -36,6 +45,10 @@ export function geometryFromBaked(baked: BakedMesh): THREE.BufferGeometry {
  * model definition.  Vertex displacement is seeded from local (model-space)
  * position — identical for every instance placed in the world.
  *
+ * `dispMag` (T-326): the material's authored `render.relief.dispMag`, threaded
+ * straight through to `bakeSubModel` — see that function's doc for the
+ * one-knob-per-material contract. Omitted ⇒ engine default (byte-identical).
+ *
  * Synchronous fallback path: the bake math runs inline on the calling thread.
  * The worker path (`bake_pool.ts`) calls `bakeSubModel` off-thread and hands
  * the arrays straight to `geometryFromBaked`.
@@ -44,6 +57,7 @@ export function buildSubModelGeo(
   nodes: ModelDefinition["nodes"],
   materialId: number,
   scale: { x: number; y: number; z: number },
+  dispMag?: number,
 ): THREE.BufferGeometry {
-  return geometryFromBaked(bakeSubModel(nodes, materialId, scale));
+  return geometryFromBaked(bakeSubModel(nodes, materialId, scale, dispMag));
 }

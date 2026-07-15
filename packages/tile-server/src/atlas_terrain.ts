@@ -13,7 +13,7 @@
  */
 
 import type { AtlasTileInitRepo, AtlasWorldRepo, WorldRow, WorldsRepo } from "@voxim/db";
-import type { GatePosition } from "@voxim/protocol";
+import type { GatePosition } from "./gate.ts";
 import type { ContentService } from "@voxim/content";
 import {
   tileInitFromWire,
@@ -21,9 +21,12 @@ import {
   applyStairUnlock,
   markStairAnchor,
   findRegion,
+  mergeGenParams,
+  biomeTag,
   MATERIAL_GRASS, MATERIAL_DIRT, MATERIAL_STONE, MATERIAL_SAND, MATERIAL_WATER,
   MATERIAL_GRAVEL, MATERIAL_MUD, MATERIAL_MOSS, MATERIAL_PATH, MATERIAL_SNOW,
-  type TileInitWire, type LevelDef,
+  type TileInitWire, type LevelDef, type FieldPlanes, type CliffPlanes, type DeepPartialGenParams,
+  type BiomeParams,
 } from "@voxim/atlas";
 import {
   TILE_SIZE,
@@ -36,6 +39,14 @@ import type { ZoneGridData } from "@voxim/world";
 export interface AtlasTerrainResult {
   heightBuffer: Float32Array;
   materialBuffer: Uint16Array;
+  /**
+   * The world's actual wall-step height (GenParams.terrain.wallHeight,
+   * T-315 C1) — derived once here via `mergeGenParams(world.params)` so
+   * every downstream consumer (poi_placer's room-POI walls included)
+   * matches the wall step atlas generation actually used, instead of
+   * assuming the DEFAULT_GEN_PARAMS 2.0.
+   */
+  wallHeight: number;
   /**
    * Per-cell openness at TILE_SIZE² resolution. 1 = open, 0 = closed.
    * Drives openMask-based collision in tile-server's physics; closed
@@ -50,6 +61,10 @@ export interface AtlasTerrainResult {
    * (tree entities at forest pixels, etc.).
    */
   kindBuffer: Uint16Array;
+  /** T-311 P3 render-field planes at TILE_SIZE², sliced into the chunk grids. */
+  fields: FieldPlanes;
+  /** T-311 P6 cliff planes at TILE_SIZE², sliced into the CliffGrid chunk component. */
+  cliff: CliffPlanes;
   /**
    * Initial gate-summary u16 from atlas. Tile-server publishes this to
    * coordinator on boot so the world-graph aggregate gets seeded; phase
@@ -60,6 +75,14 @@ export interface AtlasTerrainResult {
   tileSeed: number;
   cellX: number;
   cellY: number;
+  /**
+   * The tile's single closed biome tag (T-311 P5a), computed from the cell's
+   * `WorldCellRecord.biome` via `biomeTag()`. One value per tile (BiomeParams
+   * is a per-worldmap-tile scalar) — the render-context selector
+   * AtmosphereDef/WaterStyleDef resolve against. Falls back to "plains" (the
+   * biomeTag() default) if the cell row is unavailable.
+   */
+  biomeTag: string;
   /** The active world the tile was loaded from. Drives save scoping + restart polling. */
   world: WorldRow;
   /**
@@ -74,7 +97,7 @@ export interface AtlasTerrainResult {
    * merged them.  Each carries a stable id and a world-unit centroid.
    * Used by `poi_placer.ts` as anchor points for room/mob POIs.
    */
-  chambers: Array<{ id: number; cx: number; cy: number; pixelCount: number }>;
+  chambers: Array<{ id: number; cx: number; cy: number; cellCount: number }>;
   /**
    * Per-voxel zone id at TILE_SIZE² resolution (T-211). 0xFFFF for
    * un-zoned voxels. Tile-server uses this for the "You are in:" HUD.
@@ -165,16 +188,19 @@ function buildMaterialMap(content: ContentService): {
   map.set(MATERIAL_GRAVEL, byName("gravel"));
   map.set(MATERIAL_MUD,    byName("mud"));
   map.set(MATERIAL_SNOW,   byName("snow"));
-  // No dedicated "moss" content material yet — closest neighbour visually
-  // is dark grass; falling back to grass keeps green patches readable.
-  map.set(MATERIAL_MOSS,   byName("grass"));
-  // Carved paths read as worn earth — gravel gives the trodden-trail feel
-  // without needing a new content asset. If we add a "path"/"clay"
-  // material later this is the place to switch it on.
-  map.set(MATERIAL_PATH,   byName("gravel"));
-  // Atlas's WATER falls back to mud — content has no water material yet.
-  // When phase 4 boundary kinds land, water boundaries will own their own
-  // visual instead of leaning on the ground material.
+  // Dedicated forest-floor materials (T-310 level pass): the atlas already
+  // paints MOSS veins in moist clearings and PATH along carved corridors —
+  // give them real distinct colour instead of collapsing to grass/gravel, so
+  // the level's paths + clearings + ground variety actually read.
+  map.set(MATERIAL_MOSS,   byName("moss"));
+  map.set(MATERIAL_PATH,   byName("path"));
+  // Atlas's WATER ground cell falls back to mud — this is the riverbed/
+  // lakebed floor rendered beneath the translucent water surface
+  // (water_renderer.ts derives the surface separately from KindGrid), not
+  // a placeholder for a missing water material. content/data/materials/
+  // water.json exists but has no render.relief block (authored as a bare
+  // physical-properties stub) and isn't a sane riverbed look — mud stays
+  // intentional.
   map.set(MATERIAL_WATER,  byName("mud"));
   return { materialMap: map, defaultMaterialId: byName("dirt") };
 }
@@ -231,28 +257,38 @@ export async function loadTerrainFromAtlas(
   // load it for THIS cell to derive GatePositions for the gate system.
   const cells = await cellsRepo.load(world.id);
   const cellRow = cells?.cells.find((c) => c.cellX === cellX && c.cellY === cellY);
+  // T-311 P5a: the tile's single closed biome tag — reuses biome_tag.ts's
+  // existing 8-value ladder (already computed atlas-side for zone naming).
+  // No re-bake needed: WorldCellRecord.biome is per-cell worldmap metadata,
+  // not baked into the tile_init buffer.
+  const tileBiomeTag = cellRow ? biomeTag(cellRow.biome as unknown as BiomeParams) : "plains";
   const gates = (cellRow?.gates ?? {}) as Record<string,
     { offset: number; toCellX: number; toCellY: number } | null>;
   const gatePositions: GatePosition[] = [];
   for (const edge of ["north", "east", "south", "west"] as const) {
     const g = gates[edge];
     if (!g) continue;
-    // Note: protocol's GatePosition is currently edge-only (offset lives
-    // inside atlas's tile_init.portals[]). Until tile-server's gate system
-    // honours per-edge offsets, gates spawn at edge midpoints — a small
-    // visual disagreement vs. the inspector's gate dots.
+    // g.offset is already world units (WorldCellRecord.gates[].offset /
+    // atlas Portal.offset — TILE_WORLD_SIZE === TILE_SIZE, no rescale) and
+    // is exactly where portal_placement.ts carved the gate's corridor to
+    // the edge (T-261). Passed straight through so the gate trigger and
+    // the mirrored arrival point both sit on the open corridor instead of
+    // the raw edge midpoint.
     gatePositions.push({
       edge,
       toTileId: `${g.toCellX}_${g.toCellY}`,
+      offset: g.offset,
     });
   }
 
   const tile = tileInitFromWire(row.payload as unknown as TileInitWire);
   const { materialMap, defaultMaterialId } = buildMaterialMap(content);
-  const { heightBuffer, materialBuffer, openBuffer, kindBuffer, zoneBuffer } = upsampleTile(tile, {
+  const genParams = mergeGenParams(world.params as unknown as DeepPartialGenParams);
+  const { heightBuffer, materialBuffer, openBuffer, kindBuffer, zoneBuffer, fields, cliff } = upsampleTile(tile, {
     targetSize: TILE_SIZE,
     materialMap,
     defaultMaterialId,
+    wallHeight: genParams.terrain.wallHeight,
   });
 
   // T-213: stair runtime application at boot (T-214: consumes LevelDef).
@@ -285,7 +321,9 @@ export async function loadTerrainFromAtlas(
       const touched = applyStairUnlock(heightBuffer, openBuffer, zoneBuffer, TILE_SIZE, {
         wildernessZoneId: toRegion.zoneId,
         anchor: { x: ax, y: ay },
-        wallHeight: 2.0,
+        wallHeight: genParams.terrain.wallHeight,
+        rampDepth: stair.rampDepth,
+        rampHalfWidth: stair.rampHalfWidth,
       });
       if (touched > 0) unlockedStairs.push(stair.id);
     }
@@ -298,16 +336,20 @@ export async function loadTerrainFromAtlas(
   return {
     heightBuffer,
     materialBuffer,
+    wallHeight: genParams.terrain.wallHeight,
     openBuffer,
     kindBuffer,
+    fields,
+    cliff,
     gateSummary: tile.gateSummary,
     tileSeed: Number(row.seed),
     cellX,
     cellY,
+    biomeTag: tileBiomeTag,
     world,
     gatePositions,
     chambers: tile.chambers.map((c) => ({
-      id: c.id, cx: c.cx, cy: c.cy, pixelCount: c.pixelCount,
+      id: c.id, cx: c.cx, cy: c.cy, cellCount: c.cellCount,
     })),
     zoneBuffer,
     level:     tile.level,

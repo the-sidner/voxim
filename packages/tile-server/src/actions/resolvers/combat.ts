@@ -24,14 +24,16 @@
  */
 
 import type { World, EntityId } from "@voxim/engine";
-import { newEntityId } from "@voxim/engine";
+import { newEntityId, launchVelocity } from "@voxim/engine";
 import {
   localToWorld,
   evaluateAnimationLayers, solveSkeleton, applyQuat, sampleSwingPath,
+  deriveBladeGeometry,
 } from "@voxim/content";
 import type {
   ContentService, DerivedItemStats, SwingableData, WeaponActionDef,
   AnimationLayer, AnimationClip, BoneMask, BoneDef, SkeletonDef, Vec3,
+  BladeGrammarParams,
 } from "@voxim/content";
 import { Position, Facing, Velocity, InputState, ModelRef } from "../../components/game.ts";
 import { Resource } from "../../components/resource.ts";
@@ -45,6 +47,7 @@ import { ActiveActions } from "../../components/action.ts";
 import type { HitHandler, HitContext } from "../../hit_handler.ts";
 import type { StateHistoryBuffer, TickSnapshot, EntitySnapshot } from "../../state_history.ts";
 import { dispatchSweepHit } from "../../combat/sweep.ts";
+import { pickAimAssistTarget, type AimCandidate } from "../../combat/aim_assist.ts";
 import type { EffectResolver, ResolveContext } from "../effect.ts";
 import { createLogger } from "../../logger.ts";
 
@@ -53,6 +56,36 @@ const log = createLogger("weapon_trace");
 interface TraceScratch {
   rewindTick: number;
   hits: { entityId: string; bodyPart: string }[];
+  /** Soft aim-assist (T-320): facing chosen on the active-enter tick and held
+   *  for the whole active phase so the swing/orientation doesn't drift back. */
+  aimFacing?: number;
+  /** Hitstop (T-296): tick until which THIS attacker is frozen (own swing's
+   *  contact freezes the attacker too, for a shared "thump"). */
+  hitStopUntilTick?: number;
+  /** Hitstop (T-296): targets this swing has frozen, each with their own
+   *  expiry tick. Deduped by entityId (scratch.hits already prevents
+   *  double-hitting the same target this swing, so this list only ever
+   *  grows by the hits that land). */
+  hitStopTargets?: { entityId: string; untilTick: number }[];
+}
+
+/**
+ * Deterministic string hash (FNV-1a) — derives an entity's procedural seed
+ * from its EntityId. Byte-identical to `spawner.ts`'s `hash32` (used for
+ * `installVisualShell`'s `ModelRef.seed`) and the client's copy in
+ * `scatter_renderer.ts` / `entity_mesh_registry.ts`'s equipment sync (T-306)
+ * — every consumer that needs "the seed this entity would have gotten"
+ * without a ModelRef component (equipped item entities don't carry one)
+ * re-derives it from the entityId string identically on both sides, so a
+ * generated weapon's blade is seed-unique with ZERO wire cost.
+ */
+function hash32(s: string): number {
+  let h = 0x811c9dc5 >>> 0;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h >>> 0;
 }
 
 /** Equipped-weapon geometry + stats for the wielder, or unarmed defaults. */
@@ -81,7 +114,21 @@ function weaponContext(world: World, entityId: EntityId, content: ContentService
     const entry = swingable.chain[(sc?.index ?? 0) % swingable.chain.length];
     weaponActionId = sc?.heavy ? entry.heavy : entry.light;
   }
-  return { stats, prefabId, weaponActionId };
+  // T-306: a generated blade overrides the authored swingPath's length/radius
+  // scalars with this SPECIFIC weapon instance's own geometry — same seed
+  // (hash32(weaponEnt)) and same pure `deriveBladeGeometry` call the client's
+  // registered blade_grammar generator uses to bake the held-model voxels, so
+  // the swept hit capsule always matches what the player sees in-hand.
+  let bladeOverride: { length: number; radius: number } | undefined;
+  if (swingable?.bladeGrammar && weaponEnt) {
+    const procModel = content.procModels.get(swingable.bladeGrammar);
+    if (procModel) {
+      const seed = hash32(weaponEnt);
+      const geo = deriveBladeGeometry(seed, procModel.params as BladeGrammarParams);
+      bladeOverride = { length: geo.length, radius: geo.radius };
+    }
+  }
+  return { stats, prefabId, weaponActionId, bladeOverride };
 }
 
 
@@ -98,7 +145,7 @@ export class WeaponTraceResolver implements EffectResolver {
     if (ctx.edge === "exit") return;
     const { world, events, entityId, content } = ctx;
 
-    const { stats, weaponActionId: derived } = weaponContext(world, entityId, content);
+    const { stats, weaponActionId: derived, bladeOverride } = weaponContext(world, entityId, content);
     // An action may pin its weapon geometry/timing via params (T-254 —
     // signature moves like sword_overhead trace their own arc regardless
     // of the equipped weapon's chain). Default: the equipped weapon.
@@ -142,7 +189,15 @@ export class WeaponTraceResolver implements EffectResolver {
     const maskIndex = content.getMaskIndex(skeleton.id);
     const boneIndex = content.getBoneIndex(skeleton.id);
     const handBone = action.holdHand ?? "hand_r";
-    const bladeRadius = action.swingPath?.radius ?? action.blade.radius;
+    // T-306: a generated blade's own length/radius (re-derived from the
+    // weapon entity's seed, same pure function the client's blade_grammar
+    // generator bakes voxels from) overrides the authored swingPath's
+    // scalars — the swept capsule always matches the specific weapon
+    // instance in-hand, not just the shared action's stock geometry.
+    const swingPath = action.swingPath && bladeOverride
+      ? { ...action.swingPath, length: bladeOverride.length, radius: bladeOverride.radius }
+      : action.swingPath;
+    const bladeRadius = swingPath?.radius ?? action.blade.radius;
 
     const totalTicks = action.windupTicks + action.activeTicks + action.winddownTicks;
     const tCurr = Math.min((action.windupTicks + ticksInPhase) / totalTicks, 1);
@@ -156,18 +211,43 @@ export class WeaponTraceResolver implements EffectResolver {
     const ax = attackerSnap?.x ?? world.get(entityId, Position)?.x ?? 0;
     const ay = attackerSnap?.y ?? world.get(entityId, Position)?.y ?? 0;
     const az = attackerSnap?.z ?? world.get(entityId, Position)?.z ?? 0;
-    const attackFacing = attackerSnap?.facing ?? world.get(entityId, InputState)?.facing ?? 0;
+    let attackFacing = attackerSnap?.facing ?? world.get(entityId, InputState)?.facing ?? 0;
     const origin: Vec3 = { x: ax, y: ay, z: az };
+
+    // Soft aim-assist (T-320): on the active-enter tick pick the best enemy in
+    // the frontal cone and orient the swing toward it; persist that facing so
+    // the whole (possibly multi-tick) active phase stays oriented without
+    // re-picking mid-swing. Candidates come from the SAME rewound snapshot the
+    // sweep uses so the chosen angle matches the swept geometry.
+    const aim = content.getGameConfig().combat.aimAssist;
+    if (ctx.edge === "enter" || scratch.aimFacing === undefined) {
+      const candidates: AimCandidate[] = snap.entities.map((e) => ({ entityId: e.entityId, x: e.x, y: e.y }));
+      const picked = pickAimAssistTarget(world, entityId, ax, ay, attackFacing, candidates, {
+        rangeUnits: aim.rangeUnits,
+        halfAngleRad: aim.halfAngleDeg * Math.PI / 180,
+      });
+      if (picked) scratch.aimFacing = picked.facing;
+    }
+    if (scratch.aimFacing !== undefined) {
+      attackFacing = scratch.aimFacing;
+      // Orient the actor for the active phase. world.set wins over PhysicsSystem's
+      // earlier deferred Facing set (ordered op-log, same tick); world.write to
+      // InputState makes next tick's physics re-derive the same facing so the
+      // snap persists across the whole active phase instead of reverting.
+      world.set(entityId, Facing, { angle: attackFacing });
+      const input = world.get(entityId, InputState);
+      if (input) world.write(entityId, InputState, { ...input, facing: attackFacing });
+    }
 
     // When the action carries an authored swingPath, the hit sweeps the capsule
     // along that arc directly (no clip sampling) — the SAME hilt→tip path the
     // client renders, so the blade you see is the blade that hits. Falls back to
     // clip-sampled blade geometry for actions still without an authored swing.
-    const bladeCurr = action.swingPath
-      ? computeSwingBladeWorld(action.swingPath, tCurr, modelRef.scaleX, origin, attackFacing)
+    const bladeCurr = swingPath
+      ? computeSwingBladeWorld(swingPath, tCurr, modelRef.scaleX, origin, attackFacing)
       : computeBladeWorld(action.clipId, action.blade.baseLocal, action.blade.tipLocal, handBone, skeleton, clipIndex, maskIndex, boneIndex, tCurr, modelRef.scaleX, modelRef.morphValues, origin, attackFacing);
-    const bladePrev = action.swingPath
-      ? computeSwingBladeWorld(action.swingPath, tPrev, modelRef.scaleX, origin, attackFacing)
+    const bladePrev = swingPath
+      ? computeSwingBladeWorld(swingPath, tPrev, modelRef.scaleX, origin, attackFacing)
       : computeBladeWorld(action.clipId, action.blade.baseLocal, action.blade.tipLocal, handBone, skeleton, clipIndex, maskIndex, boneIndex, tPrev, modelRef.scaleX, modelRef.morphValues, origin, attackFacing);
     if (!bladeCurr || !bladePrev) return;
 
@@ -202,7 +282,20 @@ export class WeaponTraceResolver implements EffectResolver {
           parryAllowed: true,
         }),
       );
-      if (hit) scratch.hits.push({ entityId: target.entityId, bodyPart: hit.partId });
+      if (hit) {
+        scratch.hits.push({ entityId: target.entityId, bodyPart: hit.partId });
+        // Hitstop (T-296): the action running THIS attacker's slot carries
+        // the freeze duration — read via ctx.state.actionId (the slot's
+        // live ActiveActionState), not the WeaponActionDef (geometry/timing
+        // only). A landed hit freezes both sides for the same window so the
+        // contact reads as one shared "thump".
+        const hitStopTicks = content.actions.get(ctx.state.actionId)?.hitStopTicks ?? 0;
+        if (hitStopTicks > 0) {
+          const untilTick = ctx.serverTick + hitStopTicks;
+          scratch.hitStopUntilTick = untilTick;
+          (scratch.hitStopTargets ??= []).push({ entityId: target.entityId, untilTick });
+        }
+      }
     }
 
     ctx.state.scratch = scratch as unknown as Record<string, unknown>;
@@ -244,14 +337,22 @@ export class ProjectileSpawnResolver implements EffectResolver {
     const muzzle = action.projectile.spawnOffset ?? combatCfg.projectileDefaults.spawnOffset;
     const spawn = localToWorld(muzzle.fwd, muzzle.right, muzzle.up, { x: pos.x, y: pos.y, z: pos.z }, facing);
 
+    // T-337: pitch drives the launch elevation for every ranged/thrown
+    // weapon alike, gravity or not — ONE formula (launchVelocity, shared
+    // with the client's aim indicator so the drawn arc and the fired shot
+    // can never diverge). Clamped to the content-tuned aim band; a magic
+    // bolt with gravityScale:0 still points along the aimed elevation in a
+    // straight line, only its FLIGHT arc ignores gravity.
+    const aimCfg = combatCfg.aim;
+    const pitchMin = aimCfg.pitchMinDeg * Math.PI / 180;
+    const pitchMax = aimCfg.pitchMaxDeg * Math.PI / 180;
+    const pitch = Math.min(pitchMax, Math.max(pitchMin, input.pitch));
+    const vel = launchVelocity(facing, pitch, speed);
+
     const projId = newEntityId();
     world.create(projId);
     world.write(projId, Position, { x: spawn.x, y: spawn.y, z: spawn.z });
-    world.write(projId, Velocity, {
-      x: Math.cos(facing) * speed,
-      y: Math.sin(facing) * speed,
-      z: gravityScale > 0 ? speed * combatCfg.projectileDefaults.arcFactor : 0,
-    });
+    world.write(projId, Velocity, vel);
     // T-241: lifetime is a Resource (cross@0 → destroy_self), not a
     // bespoke Lifetime countdown. Per-entity max seeded here.
     world.write(projId, Resource, {

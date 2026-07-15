@@ -1,0 +1,47 @@
+{
+  "id": "spell_draw",
+  "kind": "ambient",
+  "slot": "primary",
+  "limbs": [
+    "right_hand"
+  ],
+  "phases": {
+    "windup": {
+      "ticks": 12
+    },
+    "hold": {
+      "ticks": -1
+    }
+  },
+  "cancel": {
+    "windup": {
+      "into": [
+        "any"
+      ]
+    },
+    "hold": {
+      "into": [
+        "any"
+      ]
+    }
+  },
+  "movement": {
+    "windup": 0.45,
+    "hold": 0.4
+  },
+  "costs": {
+    "stamina": 4
+  },
+  "releaseActionId": "spell_release",
+  "effects": [],
+  "animation": {
+    "windup": {
+      "clipId": "standing_draw_arrow",
+      "loop": false
+    },
+    "hold": {
+      "clipId": "standing_aim_overdraw",
+      "loop": true
+    }
+  }
+}

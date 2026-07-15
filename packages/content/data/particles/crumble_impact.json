@@ -1,0 +1,10 @@
+{
+  "id": "crumble_impact",
+  "material": "dirt",
+  "count": [4, 6],
+  "speed": [0.8, 1.8],
+  "spreadDeg": 45,
+  "lifetime": [0.25, 0.4],
+  "gravityScale": 0.8,
+  "size": { "start": 0.18, "end": 0 }
+}

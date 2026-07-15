@@ -1,0 +1,56 @@
+{
+  "id": "composed_sword",
+  "modelId": "model_sword_basic",
+  "modelScale": 0.1,
+  "components": {
+    "equippable": {
+      "slots": ["weapon", "offHand"]
+    },
+    "swingable": {
+      "chain": [
+        {
+          "light": "slash_inward",
+          "heavy": "heavy_overhead"
+        },
+        {
+          "light": "slash_outward",
+          "heavy": "heavy_overhead"
+        },
+        {
+          "light": "thrust",
+          "heavy": "heavy_360"
+        },
+        {
+          "light": "slash_backhand",
+          "heavy": "heavy_360"
+        }
+      ],
+      "heavyChargeMs": 250,
+      "damage": 12
+    },
+    "weight": {
+      "baseWeight": 0.4
+    },
+    "composed": {
+      "slots": [
+        {
+          "id": "blade",
+          "materialCategories": ["metal"],
+          "statContributions": [
+            { "stat": "damage", "property": "hardness", "multiplier": 20 },
+            { "stat": "weight", "property": "density", "multiplier": 0.8 }
+          ],
+          "modelSlotId": "blade"
+        },
+        {
+          "id": "grip",
+          "materialCategories": ["wood", "leather"],
+          "statContributions": [
+            { "stat": "weight", "property": "density", "multiplier": 0.3 }
+          ],
+          "modelSlotId": "grip"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "_comment": "T-302: identical anchor role to biped_skeletal.json (empty nodes/subObjects, exists so a prefab has a modelId + skeletonId to resolve) but ALSO names procModelId: 'human' -- the generated:true marker. entity_mesh_registry.ts/hitbox_derive.ts still build this body via the same shared body_recipe.ts evaluator (biped.json's bodyRecipe is unchanged), reached through humanoid_grammar's humanoidGrammarByBone entry point rather than a bespoke path -- procModelId's job is purely declarative (this body is generator-sourced, boot-cross-checked to actually BE one), not a second rendering path.",
+  "id": "generated_human",
+  "version": 1,
+  "skeletonId": "biped",
+  "procModelId": "human",
+  "nodes": [],
+  "subObjects": [],
+  "materials": []
+}

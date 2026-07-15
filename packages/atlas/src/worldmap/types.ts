@@ -19,6 +19,16 @@ export type Edge = "north" | "east" | "south" | "west";
 export const EDGES: readonly Edge[] = ["north", "east", "south", "west"];
 
 /**
+ * Tile size in world units. Must match the runtime tile size (tile-server's
+ * TILE_SIZE, @voxim/world). Held locally so atlas stays decoupled from
+ * @voxim/world (charter: atlas stays world-free).
+ */
+export const TILE_WORLD_SIZE = 512;
+
+/** Margin from tile edges where gates are clamped, in world units. */
+export const GATE_INSET = 8;
+
+/**
  * One gate sitting on a specific edge of a tile.
  *
  * `offset` is in WORLD units along the edge's perpendicular axis:

@@ -15,5 +15,6 @@
   "weaponItemType": "wolf_bite",
   "triggers": [
     "desperate_frenzy"
-  ]
+  ],
+  "deathStyleId": "crumble"
 }

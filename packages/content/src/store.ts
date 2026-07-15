@@ -34,11 +34,22 @@ import type {
   BoneDef,
   AnimationLibrary,
   ItemPart,
+  ItemSlotDef,
+  ComposedData,
   DerivedItemStats,
   Recipe,
   NpcTemplate,
   BehaviorTreeSpec,
   BiomeDef,
+  GradeDef,
+  LightDef,
+  AtmosphereDef,
+  WaterStyleDef,
+  DecalDef,
+  ParticleEmitterDef,
+  DissolveProfileDef,
+  DeathStyleDef,
+  CliffProfileDef,
   ZoneDef,
   PoiDef,
   PoiRole,
@@ -51,8 +62,10 @@ import type {
   ActionDef,
   ResourceDef,
   TriggerDef,
+  PuzzleDef,
   ProcModelDef,
   ScatterDef,
+  GaitDef,
 } from "./types.ts";
 import type { HitboxContentAdapter, HitboxPartTemplate } from "./hitbox_derive.ts";
 import { deriveHitboxTemplate } from "./hitbox_derive.ts";
@@ -62,6 +75,7 @@ import type { RecipeGraph } from "./recipe_graph.ts";
 import { buildRecipeGraph } from "./recipe_graph.ts";
 import type { ContentRegistryReadonly } from "./registry.ts";
 import { ContentRegistry } from "./registry.ts";
+import { mulberry32, resolveSeededPick } from "@voxim/engine";
 
 /** Default max durability for an equippable/usable item whose prefab doesn't
  *  declare an explicit `durability` (T-086). */
@@ -90,6 +104,12 @@ export interface ContentService {
   readonly loreFragments:   ContentRegistryReadonly<LoreFragment>;
   readonly weaponActions:   ContentRegistryReadonly<WeaponActionDef>;
   /**
+   * Procedural gait catalogues (T-308), keyed by id. Loaded from
+   * `data/gaits/*.json`, referenced by `SkeletonDef.gaitId`. Client-only
+   * consumer (`applyGaitPose` in swing_pose.ts); the server never reads it.
+   */
+  readonly gaits:           ContentRegistryReadonly<GaitDef>;
+  /**
    * Action definitions (T-225) — the universal behavior primitive. Loaded
    * from `data/actions/*.json`. Consumed by the ActionDispatcher (T-226+)
    * which is the only writer of the `ActiveAction` component.
@@ -112,6 +132,79 @@ export interface ContentService {
   readonly resources: ContentRegistryReadonly<ResourceDef>;
 
   /**
+   * Colour grades keyed by id (T-311 Phase 2, grammar G7). Loaded from
+   * `data/grades/*.json`; the client lerps the EdgePass grade uniforms from the
+   * selected grade. Authoring a new look is a file drop.
+   */
+  readonly grades: ContentRegistryReadonly<GradeDef>;
+
+  /**
+   * Light definitions keyed by id (T-311 Phase 2). The server resolves a
+   * LightDef into the networked LightEmitter numbers; the client derives the
+   * presentation-only fields (flicker/family/castsPool). Authoring a light is a
+   * file drop. See VISUAL_DATAMODEL_PLAN.md (grammar G7-adjacent).
+   */
+  readonly lights: ContentRegistryReadonly<LightDef>;
+
+  /**
+   * Atmosphere definitions keyed by id (T-311 Phase 5a, grammar G7). Loaded
+   * from `data/atmospheres/*.json`; selected per-tile via `WorldClock.biomeTag`
+   * with a `"default"` fallback. Owns the sun path (sun_arc.ts params), ground
+   * mist band, and near-field god-ray params — NOT day/night colour (that
+   * stays on `Palette.phases`). Authoring a new atmosphere is a file drop.
+   */
+  readonly atmospheres: ContentRegistryReadonly<AtmosphereDef>;
+
+  /**
+   * Water style definitions keyed by id (T-311 Phase 5b, grammar G7). Loaded
+   * from `data/water_styles/*.json`; selected per-tile via the SAME
+   * `WorldClock.biomeTag` key AtmosphereDef uses, same `"default"` fallback.
+   * Owns wave/fresnel/specular shader params + base shallow/deep colour —
+   * water_renderer.ts reads it instead of hardcoded shader literals.
+   */
+  readonly waterStyles: ContentRegistryReadonly<WaterStyleDef>;
+
+  /**
+   * Ephemeral combat decals keyed by id (T-311 P4). Loaded from
+   * `data/decals/*.json`; the client's decal-source registry seeds splats
+   * from wire GameEvents and decays them — never saved, never networked.
+   */
+  readonly decals: ContentRegistryReadonly<DecalDef>;
+
+  /**
+   * Particle emitters keyed by id (T-340). Loaded from `data/particles/*.json`;
+   * dispatched through the client's particle-source registry (event-sourced
+   * bursts) or referenced directly by id (WeaponActionDef.muzzleParticleId,
+   * AtmosphereDef.ambienceParticleId).
+   */
+  readonly particles: ContentRegistryReadonly<ParticleEmitterDef>;
+
+  /**
+   * Corrupted-creature dissolve/fray profiles keyed by id (T-311 P5c).
+   * Loaded from `data/dissolve_profiles/*.json`; referenced by a
+   * dissolve-style `DeathStyleDef.dissolveProfileId` (T-339). Drives the
+   * shed_dissolve DeathHook's timer seeding and the client's fray/coreness
+   * bake + in-shader drift. See VISUAL_DATAMODEL_PLAN.md §I3b.
+   */
+  readonly dissolveProfiles: ContentRegistryReadonly<DissolveProfileDef>;
+
+  /**
+   * Death styles keyed by id (T-339) — "what happens to a body on death",
+   * dispatched by `style` through a registry on server + client. Loaded
+   * from `data/death_styles/*.json`; referenced by `NpcTemplate.deathStyleId`.
+   */
+  readonly deathStyles: ContentRegistryReadonly<DeathStyleDef>;
+
+  /**
+   * Cliff profiles keyed by id (T-311 Phase 6). Loaded from
+   * `data/cliff_profiles/*.json`; the atlas `cliffStage` resolves stone
+   * wilderness-perimeter cells against this table (stable alphabetical
+   * id→index) and the client `cliffVoxeliser` registry dispatches on the
+   * same id string. Authoring a new cliff look is a file drop.
+   */
+  readonly cliffProfiles: ContentRegistryReadonly<CliffProfileDef>;
+
+  /**
    * Triggers keyed by id (T-259). Reactive couplings loaded from
    * `data/triggers/*.json` — when event `on` occurs and the owner fills
    * role `as`, fire `effects` through the shared action-effect registry.
@@ -119,6 +212,15 @@ export interface ContentService {
    * See TRIGGER_PRIMITIVE_PLAN.md.
    */
   readonly triggers: ContentRegistryReadonly<TriggerDef>;
+
+  /**
+   * Puzzle templates keyed by id (T-212 v2). Loaded from `data/puzzles/*.json`
+   * — a `puzzle` POI's `activity.puzzleId` references one; the template names
+   * the mechanics `kind` dispatched through `poi/puzzle_kinds/mod.ts`'s
+   * registry. Per-instance tuning (lever count, hints) stays on the POI's own
+   * `activity.params`.
+   */
+  readonly puzzles: ContentRegistryReadonly<PuzzleDef>;
 
   /**
    * Procedural model families keyed by id (T-285). Each names a client
@@ -162,13 +264,33 @@ export interface ContentService {
   findPoisByTag(tag: string): readonly PoiDef[];
 
   // ---- derived caches ----
+  /**
+   * Derive an item's stat block from its prefab. When the prefab carries a
+   * `Composed` behaviour (`components.composed.slots`) AND the caller passes
+   * matching `parts` (one `ItemPart` per filled slot), each slot's
+   * `statContributions` are summed in: `stat += material.properties[property]
+   * × multiplier`, added on top of the base value derived from the prefab's
+   * other components (T-303). Materials are resolved by `ItemPart.materialName`
+   * against `this.materials`; a part naming an unknown material or a slot with
+   * no matching part is skipped (no throw — this is a runtime stat query, not
+   * boot validation). Voxels feed weight/damage/reach — swing speed stays a
+   * per-action design dial (DECISION, T-303).
+   */
   deriveItemStats(prefabId: string, parts?: ItemPart[], quality?: number): DerivedItemStats;
   /** Reverse index: producers by item, recipes by workstation, primitive items. */
   getRecipeGraph(): RecipeGraph;
   /** Cached bone index (Map<boneId, BoneDef>) — built once per skeleton type. */
   getBoneIndex(skeletonId: string): ReadonlyMap<string, BoneDef>;
-  /** Cached hitbox template per (modelId, seed, scale). */
-  getHitboxTemplate(modelId: string, seed: number, scale: number): HitboxPartTemplate[];
+  /**
+   * Cached hitbox template per (modelId, seed, scale, morphValues). morphValues
+   * only matters for skeletons carrying a bodyRecipe (T-186 Layer 2) — every
+   * other model's template is identical regardless of what's passed. Pass the
+   * SAME morphValues the entity's ModelRef carries (resolveMorphParams's raw
+   * override input, not the resolved output) so two entities sharing a
+   * modelId+seed+scale but different per-instance morphs never collide in
+   * the cache.
+   */
+  getHitboxTemplate(modelId: string, seed: number, scale: number, morphValues?: Record<string, number>): HitboxPartTemplate[];
   /** Cached clip lookup map (clipId → AnimationClip) per skeleton type. */
   getClipIndex(skeletonId: string): ReadonlyMap<string, AnimationClip>;
   /** Cached bone mask lookup map (maskId → BoneMask) per skeleton type. */
@@ -232,6 +354,10 @@ export class StaticContentStore implements ContentService {
     kind: "weaponAction",
     idOf: (w) => w.id,
   });
+  public readonly gaits = new ContentRegistry<GaitDef>({
+    kind: "gait",
+    idOf: (g) => g.id,
+  });
   public readonly actions = new ContentRegistry<ActionDef>({
     kind: "action",
     idOf: (a) => a.id,
@@ -244,9 +370,49 @@ export class StaticContentStore implements ContentService {
     kind: "resource",
     idOf: (r) => r.id,
   });
+  public readonly grades = new ContentRegistry<GradeDef>({
+    kind: "grade",
+    idOf: (g) => g.id,
+  });
+  public readonly lights = new ContentRegistry<LightDef>({
+    kind: "light",
+    idOf: (l) => l.id,
+  });
+  public readonly atmospheres = new ContentRegistry<AtmosphereDef>({
+    kind: "atmosphere",
+    idOf: (a) => a.id,
+  });
+  public readonly waterStyles = new ContentRegistry<WaterStyleDef>({
+    kind: "waterStyle",
+    idOf: (w) => w.id,
+  });
+  public readonly decals = new ContentRegistry<DecalDef>({
+    kind: "decal",
+    idOf: (d) => d.id,
+  });
+  public readonly particles = new ContentRegistry<ParticleEmitterDef>({
+    kind: "particle",
+    idOf: (p) => p.id,
+  });
+  public readonly dissolveProfiles = new ContentRegistry<DissolveProfileDef>({
+    kind: "dissolveProfile",
+    idOf: (d) => d.id,
+  });
+  public readonly deathStyles = new ContentRegistry<DeathStyleDef>({
+    kind: "deathStyle",
+    idOf: (d) => d.id,
+  });
+  public readonly cliffProfiles = new ContentRegistry<CliffProfileDef>({
+    kind: "cliffProfile",
+    idOf: (c) => c.id,
+  });
   public readonly triggers = new ContentRegistry<TriggerDef>({
     kind: "trigger",
     idOf: (t) => t.id,
+  });
+  public readonly puzzles = new ContentRegistry<PuzzleDef>({
+    kind: "puzzle",
+    idOf: (p) => p.id,
   });
   public readonly procModels = new ContentRegistry<ProcModelDef>({
     kind: "procModel",
@@ -353,6 +519,10 @@ export class StaticContentStore implements ContentService {
     this.weaponActions.register(def);
   }
 
+  registerGait(def: GaitDef): void {
+    this.gaits.register(def);
+  }
+
   registerAction(def: ActionDef): void {
     this.actions.register(def);
   }
@@ -368,8 +538,48 @@ export class StaticContentStore implements ContentService {
     this.resources.register(def);
   }
 
+  registerGrade(def: GradeDef): void {
+    this.grades.register(def);
+  }
+
+  registerLight(def: LightDef): void {
+    this.lights.register(def);
+  }
+
+  registerAtmosphere(def: AtmosphereDef): void {
+    this.atmospheres.register(def);
+  }
+
+  registerWaterStyle(def: WaterStyleDef): void {
+    this.waterStyles.register(def);
+  }
+
+  registerDecal(def: DecalDef): void {
+    this.decals.register(def);
+  }
+
+  registerParticle(def: ParticleEmitterDef): void {
+    this.particles.register(def);
+  }
+
+  registerDissolveProfile(def: DissolveProfileDef): void {
+    this.dissolveProfiles.register(def);
+  }
+
+  registerDeathStyle(def: DeathStyleDef): void {
+    this.deathStyles.register(def);
+  }
+
+  registerCliffProfile(def: CliffProfileDef): void {
+    this.cliffProfiles.register(def);
+  }
+
   registerTrigger(def: TriggerDef): void {
     this.triggers.register(def);
+  }
+
+  registerPuzzle(def: PuzzleDef): void {
+    this.puzzles.register(def);
   }
 
   registerProcModel(def: ProcModelDef): void {
@@ -464,17 +674,18 @@ export class StaticContentStore implements ContentService {
 
   // ---- derived ----
 
-  deriveItemStats(prefabId: string, _parts?: ItemPart[], quality = 1): DerivedItemStats {
+  deriveItemStats(prefabId: string, parts?: ItemPart[], quality = 1): DerivedItemStats {
     const prefab = this.prefabs.get(prefabId);
     if (!prefab) return { weight: 1 };
 
     const c = prefab.components;
     const weight = c["weight"] as { baseWeight?: number } | undefined;
     const armor = c["armor"] as { reduction?: number; staminaPenalty?: number } | undefined;
-    const illuminator = c["illuminator"] as { radius?: number; color?: number; intensity?: number; flicker?: number } | undefined;
+    const illuminator = c["illuminator"] as { radius?: number; color?: number; intensity?: number; lightDefId?: string } | undefined;
     const tool = c["tool"] as { toolType?: string; durability?: number } | undefined;
     const swingable = c["swingable"] as { damage?: number; durability?: number } | undefined;
     const armorDur = c["armor"] as { durability?: number } | undefined;
+    const composed = c["composed"] as ComposedData | undefined;
 
     const stats: DerivedItemStats = { weight: weight?.baseWeight ?? 1 };
     // Durability (T-086): equippable/usable items get a per-instance ceiling.
@@ -502,10 +713,49 @@ export class StaticContentStore implements ContentService {
       stats.lightRadius = illuminator.radius;
       stats.lightColor = illuminator.color;
       stats.lightIntensity = illuminator.intensity * quality;
-      stats.lightFlicker = illuminator.flicker;
+      if (illuminator.lightDefId) stats.lightDefId = illuminator.lightDefId;
     }
     if (tool?.toolType) stats.toolType = tool.toolType;
     if (swingable?.damage !== undefined) stats.damage = swingable.damage * quality;
+
+    // Composed material slots (T-303): each filled slot sums
+    // `material.properties[property] × multiplier` into the named stat, on
+    // top of whatever base value the behaviour components above already set
+    // (e.g. a Composed sword still keeps its hardcoded swingable.damage as a
+    // base — the blade material ADDS to it, it doesn't replace it). A slot
+    // with no matching part, or a part naming an unknown material, is
+    // skipped — this derivation never throws at query time.
+    if (composed && parts && parts.length > 0) {
+      const partBySlot = new Map(parts.map((p) => [p.slot, p.materialName]));
+      for (const slot of composed.slots) {
+        const materialName = partBySlot.get(slot.id);
+        if (materialName === undefined) continue;
+        const material = this.materials.get(materialName);
+        if (!material) continue;
+        for (const contrib of slot.statContributions) {
+          const propValue = material.properties[contrib.property];
+          const delta = propValue * contrib.multiplier * quality;
+          (stats[contrib.stat] as number) = ((stats[contrib.stat] as number) ?? 0) + delta;
+        }
+      }
+    }
+
+    // Reach (T-303, optional): a Composed item's overall model AABB length
+    // (its longest axis, in model-local units × modelScale) stands in for
+    // blade+grip reach until a per-slot sub-model exists. Only set when the
+    // prefab is Composed — a plain item's swingable geometry is whatever the
+    // WeaponActionDef's swingPath already authors, and reach staying absent
+    // there is correct (no regression for non-Composed weapons).
+    if (composed && prefab.modelId) {
+      const aabb = this.modelAabb.get(prefab.modelId);
+      if (aabb) {
+        const extX = aabb.maxX - aabb.minX;
+        const extY = aabb.maxY - aabb.minY;
+        const extZ = aabb.maxZ - aabb.minZ;
+        const scale = prefab.modelScale ?? 1;
+        stats.attackRange = Math.max(extX, extY, extZ) * scale;
+      }
+    }
 
     return stats;
   }
@@ -530,8 +780,16 @@ export class StaticContentStore implements ContentService {
     return idx;
   }
 
-  getHitboxTemplate(modelId: string, seed: number, scale: number): HitboxPartTemplate[] {
-    const key = `${modelId}:${seed}:${scale}`;
+  getHitboxTemplate(modelId: string, seed: number, scale: number, morphValues?: Record<string, number>): HitboxPartTemplate[] {
+    // T-186 Layer 2: fold morphValues into the cache key. Every pre-existing
+    // model (no bodyRecipe) ignores the resolved morphParams entirely inside
+    // deriveHitboxTemplate, so this only adds cache entries for skeletons
+    // that actually vary by morph — it never changes cached output for
+    // anything else.
+    const morphKey = morphValues
+      ? Object.keys(morphValues).sort().map((k) => `${k}=${morphValues[k]}`).join(",")
+      : "";
+    const key = `${modelId}:${seed}:${scale}:${morphKey}`;
     let tmpl = this.hitboxTemplateCache.get(key);
     if (!tmpl) {
       // Inline adapter — keeps the legacy `getModel` shape out of the public
@@ -542,7 +800,9 @@ export class StaticContentStore implements ContentService {
         getModelAabb: (id) => this.modelAabb.get(id) ?? null,
         getSkeleton: (id) => this.skeletons.get(id) ?? null,
       };
-      tmpl = deriveHitboxTemplate(modelId, seed, adapter, scale);
+      const skeleton = this.getSkeletonForModel(modelId);
+      const resolvedMorphParams = skeleton ? resolveMorphParams(skeleton, seed, morphValues) : undefined;
+      tmpl = deriveHitboxTemplate(modelId, seed, adapter, scale, resolvedMorphParams);
       this.hitboxTemplateCache.set(key, tmpl);
     }
     return tmpl;
@@ -590,16 +850,9 @@ export class StaticContentStore implements ContentService {
  * Tiny seeded PRNG (mulberry32).  Produces values in [0, 1).
  * Same seed always produces the same sequence — deterministic across server and client.
  * Exported (T-285) so client procmodel generators draw from the same stream.
+ * Re-exported under this name from @voxim/engine's shared mulberry32 (T-315 C5).
  */
-export function makePrng(seed: number): () => number {
-  let s = seed >>> 0;
-  return (): number => {
-    s = (s + 0x6D2B79F5) >>> 0;
-    let z = Math.imul(s ^ (s >>> 15), 1 | s);
-    z = (z + Math.imul(z ^ (z >>> 7), 61 | z)) ^ z;
-    return ((z ^ (z >>> 14)) >>> 0) / 4294967296;
-  };
-}
+export const makePrng = mulberry32;
 
 /**
  * Resolve a model's subObjects list against a seed, collapsing every pool
@@ -610,19 +863,19 @@ export function makePrng(seed: number): () => number {
  * produces the same result, so all clients converge on the same visual.
  *
  * Sub-objects with neither modelId nor pool are skipped.
+ *
+ * The per-entry draw goes through `resolveSeededPick` (T-334) — the ONE
+ * shared pool/probability primitive also used by the engine's `spawnPrefab`
+ * children walk and (still separately, since it drives a different output
+ * shape) by `hitbox_derive.ts`. Same function, same draw order, so a
+ * hitbox derived from this model's subObjects can never draw a different
+ * variant than the one actually rendered here.
  */
 export function resolveSubObjects(subObjects: SubObjectRef[], seed: number): ResolvedSubObject[] {
   const rand = makePrng(seed);
   const result: ResolvedSubObject[] = [];
   for (const sub of subObjects) {
-    const prob = sub.probability ?? 1.0;
-    if (prob < 1.0 && rand() >= prob) continue;
-    let modelId: string | undefined;
-    if (sub.pool && sub.pool.length > 0) {
-      modelId = sub.pool[Math.floor(rand() * sub.pool.length)];
-    } else {
-      modelId = sub.modelId;
-    }
+    const modelId = resolveSeededPick(sub, sub.modelId, rand);
     if (!modelId) continue;
     result.push({ modelId, transform: sub.transform, boneId: sub.boneId, materialSlot: sub.materialSlot });
   }

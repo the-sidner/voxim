@@ -12,5 +12,6 @@
   "fleeTicks": 0,
   "seekFoodTicks": 9999,
   "speedMultiplier": 0.85,
-  "weaponItemType": "rotten_knight_arm"
+  "weaponItemType": "rotten_knight_arm",
+  "deathStyleId": "crumble"
 }

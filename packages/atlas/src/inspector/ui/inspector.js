@@ -12,7 +12,9 @@
  *     - formMeta       — { name, seed, width, height } the bake form is editing
  *
  *   Bake flow:
- *     1. POST /world/bake with body { name, seed, width, height, params }.
+ *     1. POST /world/bake with body { name, seed, width, height, params } and
+ *        the x-voxim-service-secret header (control plane, T-258; the form's
+ *        Secret field, persisted to localStorage — T-316).
  *     2. Atlas inserts a new worlds row + cells + tile_init.
  *     3. Tile-server + coordinator's polling loops detect the new world
  *        within ~5s and exit; docker restarts them against the new world.
@@ -37,6 +39,14 @@ let defaults = null;      // GenParams from GET /genparams/defaults
 let presets = null;       // Record<key, {name, description, params}> from /genparams/presets
 let formParams = null;    // GenParams currently in the form (matches input values)
 let formMeta = { name: "", seed: 1, width: 2, height: 2 };
+
+// Control-plane secret for POST /world/bake (T-258/T-316): sent as the
+// x-voxim-service-secret header. Persisted per browser; defaults to the
+// well-known dev fallback so a secretless local stack works out of the box.
+// Stacks with VOXIM_SERVICE_SECRET set: paste that value into the form once.
+const SECRET_STORE_KEY = "voxim.atlas.serviceSecret";
+const DEV_FALLBACK_SECRET = "dev-local-only-do-not-use-in-prod-0000";
+let serviceSecret = localStorage.getItem(SECRET_STORE_KEY) ?? DEV_FALLBACK_SECRET;
 
 // ---- pipeline / inspector trace state (T-205) ---------------------------
 let stageMeta   = null;       // [{id, label, paramsKey}] from /pipeline/stages
@@ -85,7 +95,16 @@ const STAGE_VIEWER = {
   materials:       "materials",
   zoneGraph:       "zones",
   poiNetwork:      "dag",
+  fields:          "fields",
 };
+
+// T-311: which render-field plane the `fields` viewer draws. Cycled by the
+// plane <select> the viewer injects. surfaceLevel is the f32 water plane.
+const FIELD_PLANES = [
+  "canopyLight", "corruption", "fertility", "wetness", "overgrowth",
+  "wear", "variantIndex", "ruinAge", "traffic", "surfaceLevel",
+];
+let fieldsPlane = "canopyLight";
 
 // Topology-role palette. Path-class roles (T-208) get bright saturated
 // hues that pop on a dark backdrop. Wilderness roles (T-210) get muted
@@ -131,7 +150,7 @@ const KNOB_CONFIG = {
   river: {
     sourceAltitude: { step: 0.01, min: 0, max: 1 },
     minSeparation:  { step: 1, min: 0, integer: true },
-    widthPixels:    { step: 1, min: 1, max: 16, integer: true },
+    widthCells:     { step: 1, min: 1, max: 16, integer: true },
   },
   noise: {
     baseFrequency:               { step: 0.001, min: 0 },
@@ -189,7 +208,7 @@ const KNOB_HINT = {
   river: {
     sourceAltitude: "Min altitude to start a river. Lower → more rivers.",
     minSeparation:  "Cells between river sources. Lower → denser.",
-    widthPixels:    "River brush radius. Larger → wider rivers.",
+    widthCells:     "River brush radius. Larger → wider rivers.",
   },
   noise: {
     baseFrequency:               "Higher → finer noise detail (chamber walls more wiggly).",
@@ -394,6 +413,9 @@ function renderBakeForm() {
       <input id="f-width" type="number" step="1" min="1" max="32" value="${formMeta.width}"></div>
     <div class="row"><label>Height</label>
       <input id="f-height" type="number" step="1" min="1" max="32" value="${formMeta.height}"></div>
+    <div class="row"><label>Secret</label>
+      <input id="f-secret" type="password" class="full" value="${escape(serviceSecret)}"
+        title="x-voxim-service-secret for POST /world/bake — VOXIM_SERVICE_SECRET from .env, or the dev fallback on secretless stacks"></div>
   </section>`);
 
   // ---- per-slice knob sections ----
@@ -453,6 +475,10 @@ function renderBakeForm() {
       formMeta[m] = m === "name" ? e.target.value : parseFloat(e.target.value);
     });
   }
+  document.getElementById("f-secret").addEventListener("input", (e) => {
+    serviceSecret = e.target.value;
+    localStorage.setItem(SECRET_STORE_KEY, serviceSecret);
+  });
   bakeForm.querySelector("#bake").addEventListener("click", onBake);
   bakeForm.querySelector("#reset-all").addEventListener("click", () => {
     formParams = clone(defaults);
@@ -501,9 +527,18 @@ async function onBake() {
     };
     const res = await fetch("world/bake", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        "x-voxim-service-secret": serviceSecret,
+      },
       body: JSON.stringify(body),
     });
+    if (res.status === 401) {
+      throw new Error(
+        "401 unauthorized — the Secret field must match the atlas's " +
+        "VOXIM_SERVICE_SECRET (see .env; secretless dev stacks use the built-in fallback)",
+      );
+    }
     if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
     const { baked } = await res.json();
     toast("good", `Baked "${baked.name}". Services will restart in a few seconds…`);
@@ -776,15 +811,23 @@ async function loadTile(cellX, cellY, opts = {}) {
  * Decode an encoded-state wire object: { fieldName: { __ta, b64 } | JSON }
  * → { fieldName: TypedArray | JSON value }.
  */
+function decodeTAWire(v) {
+  const bytes = bytesFromB64(v.b64);
+  if      (v.__ta === "u8")  return bytes;
+  else if (v.__ta === "u16") return new Uint16Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 2);
+  else if (v.__ta === "f32") return new Float32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4);
+  return v;
+}
 function decodeStateWire(payload) {
   const out = {};
   for (const [k, v] of Object.entries(payload)) {
     if (v && typeof v === "object" && "__ta" in v && "b64" in v) {
-      const bytes = bytesFromB64(v.b64);
-      if      (v.__ta === "u8")  out[k] = bytes;
-      else if (v.__ta === "u16") out[k] = new Uint16Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 2);
-      else if (v.__ta === "f32") out[k] = new Float32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4);
-      else out[k] = v;
+      out[k] = decodeTAWire(v);
+    } else if (v && typeof v === "object" && "__planes" in v) {
+      // T-311 fields bundle: { __planes: { canopyLight: {__ta,b64}, … } }
+      const planes = {};
+      for (const [ik, iv] of Object.entries(v.__planes)) planes[ik] = decodeTAWire(iv);
+      out[k] = planes;
     } else {
       out[k] = v;
     }
@@ -812,6 +855,7 @@ function renderContextTile(cellX, cellY) {
       <select id="preset-select" class="full">${presetOptions}</select>
     </section>
     ${renderTracePanel()}
+    ${renderFieldsPanel()}
     ${renderLayersPanel()}
     ${renderParamsPanel()}
     <section>
@@ -866,6 +910,12 @@ function renderContextTile(cellX, cellY) {
       else enabledLayers.delete(id);
       drawTile();
     });
+  }
+  // T-311: field-plane picker — redraw in place (the plane is already decoded
+  // in the snapshot; no pipeline rerun).
+  const fieldsSel = aside.querySelector("#fields-plane");
+  if (fieldsSel) {
+    fieldsSel.addEventListener("change", (e) => { fieldsPlane = e.target.value; drawTile(); });
   }
   // Wire view-this-stage radios in the trace panel.
   for (const radio of aside.querySelectorAll("[data-view-stage]")) {
@@ -951,6 +1001,19 @@ function renderContextTile(cellX, cellY) {
 
 function stageLabel(id) {
   return stageMeta?.find(s => s.id === id)?.label ?? id;
+}
+
+// T-311: plane picker, shown only when the `fields` stage view is active.
+function renderFieldsPanel() {
+  if (STAGE_VIEWER[viewStage] !== "fields") return "";
+  const opts = FIELD_PLANES.map((p) =>
+    `<option value="${p}"${p === fieldsPlane ? " selected" : ""}>${p}</option>`
+  ).join("");
+  return `
+    <section>
+      <h2>Field plane</h2>
+      <select id="fields-plane" class="full">${opts}</select>
+    </section>`;
 }
 
 function renderLayersPanel() {
@@ -1240,6 +1303,38 @@ function viewData() {
   };
 }
 
+// T-311: render one render-field plane as a heatmap. u8 planes draw grayscale
+// (0=black … 255=white); surfaceLevel (f32) draws NaN as dark, water as a blue
+// ramp by level. The plane is chosen by the Field-plane select.
+function drawTileFields({ px, originX, originY, g }, vd) {
+  const planes = vd.fields;
+  if (!planes) return;
+  const plane = planes[fieldsPlane];
+  if (!plane) return;
+  const isWater = fieldsPlane === "surfaceLevel";
+  let min = Infinity, max = -Infinity;
+  if (isWater) {
+    for (let i = 0; i < plane.length; i++) {
+      const v = plane[i];
+      if (!Number.isNaN(v)) { if (v < min) min = v; if (v > max) max = v; }
+    }
+  }
+  const range = Math.max(1e-6, max - min);
+  rasterLayer({ px, originX, originY, g }, (idx, buf, p) => {
+    if (isWater) {
+      const v = plane[idx];
+      if (Number.isNaN(v)) { buf[p] = 12; buf[p+1] = 14; buf[p+2] = 22; buf[p+3] = 0xff; }
+      else {
+        const t = (v - min) / range;
+        buf[p] = Math.round(40 + 60 * t); buf[p+1] = Math.round(90 + 80 * t); buf[p+2] = Math.round(170 + 85 * t); buf[p+3] = 0xff;
+      }
+    } else {
+      const v = plane[idx];
+      buf[p] = v; buf[p+1] = v; buf[p+2] = v; buf[p+3] = 0xff;
+    }
+  });
+}
+
 function drawTile() {
   ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
   const layout = tileLayout(); if (!layout) return;
@@ -1259,6 +1354,7 @@ function drawTile() {
   else if (viewer === "openMask")  drawTileOpenMask(layout, vd);
   else if (viewer === "zones")     drawTileZones(layout, vd);
   else if (viewer === "dag")       drawTileDag(layout, vd);
+  else if (viewer === "fields")    drawTileFields(layout, vd);
 
   // 2. LevelDef overlays — additive layers on top of the primary view.
   //    Each reads from `vd.level` (the per-stage snapshot), so a stage

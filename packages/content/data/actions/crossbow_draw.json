@@ -1,0 +1,55 @@
+{
+  "id": "crossbow_draw",
+  "kind": "ambient",
+  "slot": "primary",
+  "limbs": [
+    "right_hand"
+  ],
+  "phases": {
+    "windup": {
+      "ticks": 30
+    },
+    "hold": {
+      "ticks": -1
+    }
+  },
+  "cancel": {
+    "windup": {
+      "into": [
+        "any"
+      ]
+    },
+    "hold": {
+      "into": [
+        "any"
+      ]
+    }
+  },
+  "movement": {
+    "windup": 0.3,
+    "hold": 0.25
+  },
+  "costs": {
+    "stamina": 5
+  },
+  "releaseActionId": "crossbow_loose",
+  "preconditions": [
+    {
+      "gate": "has_item",
+      "params": {
+        "prefabId": "crossbow_bolt"
+      }
+    }
+  ],
+  "effects": [],
+  "animation": {
+    "windup": {
+      "clipId": "standing_draw_arrow",
+      "loop": false
+    },
+    "hold": {
+      "clipId": "standing_aim_overdraw",
+      "loop": true
+    }
+  }
+}

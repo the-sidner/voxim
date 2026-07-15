@@ -1,0 +1,9 @@
+{
+  "id": "wave_timer",
+  "scope": "entity",
+  "bounds": { "min": 0, "max": 100000 },
+  "rate": -20,
+  "thresholds": [
+    { "at": 0, "dir": "below", "edge": "cross", "effect": "spawn_next_wave" }
+  ]
+}

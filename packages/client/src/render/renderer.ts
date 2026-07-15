@@ -3,7 +3,9 @@
  * Voxim renderer — Three.js scene management.
  *
  * Visual grammar:
- *   - Post-process pipeline: scene → pixelTarget → depth-blit → heightTarget → EdgePass (Sobel + AO + sRGB) → canvas.
+ *   - Post-process pipeline: scene → pixelTarget → shadow-cascade darken
+ *     (T-313, far-field raking shadows) → bloom + god-rays → depth-blit →
+ *     heightTarget → EdgePass (Sobel + AO + sRGB) → canvas.
  *   - Flat shading: all geometry uses MeshPhongMaterial with flatShading:true.
  *   - Strong directional sun with hard shadows; dim hemisphere ambient.
  *
@@ -14,39 +16,57 @@
  * radius from the player have their groups hidden.
  */
 import * as THREE from "three";
-import type { HeightmapData, MaterialGridData } from "@voxim/codecs";
-import type { EntityState } from "../state/client_world.ts";
+import { lerp } from "@voxim/engine";
+import type { ClientChunk, ClientWorld, EntityState } from "../state/client_world.ts";
 import type { ContentCache } from "../state/content_cache.ts";
-import type { WeaponActionDef, Prefab } from "@voxim/content";
-import { buildChunkAtoms, TERRAIN_DISP_MAG } from "./terrain_voxels.ts";
-import { bakeVoxels } from "./voxel_bake.ts";
+import type { WeaponActionDef, Prefab, AtmosphereDef, ParticleEmitterDef } from "@voxim/content";
+import { buildChunkAtoms, TERRAIN_DISP_MAG, type CliffFieldInput } from "./terrain_voxels.ts";
+import { bakeVoxels, resolveMossResponse } from "./voxel_bake.ts";
+import { applySurfaceTreatment, setWetReflectSkyColor } from "./surface_treatments.ts";
+import { sampleField } from "./field_sample.ts";
 import { geometryFromBaked } from "./voxel_geo.ts";
-import { buildVoxelMaterial } from "./voxel_material.ts";
+import { buildVoxelMaterial, setEmissiveHdrScale } from "./voxel_material.ts";
 import { canopyFade } from "./canopy_fade.ts";
+import { setTextureStyleParams } from "./material_textures.ts";
 import { setClientPalette, paletteToken } from "./palette.ts";
 import { WeaponTrailRenderer } from "./weapon_trail.ts";
 import { GateMarkerRenderer } from "./gate_marker.ts";
 import { EntityMeshRegistry } from "./entity_mesh_registry.ts";
 import { EnvironmentLighting } from "./environment_lighting.ts";
 import { updateSkeletonPose, blendAnimationLayers, type EntityMeshGroup } from "./entity_mesh.ts";
-import type { InteractionSystem } from "../interaction/interaction_system.ts";
+import { computeTelegraphLayer } from "./telegraph.ts";
+import { computeIframeFlash, applyIframeFlash } from "./iframe_flash.ts";
 import { InstancePool } from "./instance_pool.ts";
+import type { CrumbleController } from "./crumble_controller.ts";
+import { getDeathStyleHandler } from "./death_style_registry.ts";
 import { evaluatePose } from "./skeleton_evaluator.ts";
-import { solveSwingPose, applyLocomotionPose, applyCrouchPose } from "@voxim/content";
+import { composePose } from "./pose_composer.ts";
+import { timeOfDay01 } from "@voxim/content";
 import type { BoneRotation, LocoState } from "@voxim/content";
+import { CHUNK_SIZE } from "@voxim/world";
 
-// Pelvis drop (skeleton rest units) at full crouch; scaled per entity.
-const CROUCH_DROP = 0.9;
-// Crouch ease rate — snappy (~150ms settle) but not a one-frame jolt.
-const CROUCH_OMEGA = 18;
+// Motion/pose tuning is content now (T-356): game_config's render.pose /
+// render.supersample / prediction.remoteInterpDelayMs. This pre-bootstrap-only
+// fallback (mirrors PRE_BOOTSTRAP_GRADE, edge_pass.ts) matches
+// game_config.json's shipped values exactly; setContentCache() overwrites the
+// instance fields once the bootstrap blob arrives, and it stays authoritative
+// in the (already-existing) no-bootstrap-blob degraded path.
+interface PreBootstrapRenderTuning {
+  supersample: { min: number; max: number };
+  pose: { crouchDropAmount: number; crouchEaseOmega: number; lookAtGain: number; springOmega: number };
+  remoteInterpDelayMs: number;
+}
+const PRE_BOOTSTRAP_RENDER_TUNING: PreBootstrapRenderTuning = {
+  supersample: { min: 1.2, max: 1.35 },
+  pose: { crouchDropAmount: 0.9, crouchEaseOmega: 18, lookAtGain: 0.6, springOmega: 32 },
+  remoteInterpDelayMs: 100,
+};
 
 // ---- secondary motion (snappy organic ease) --------------------------------
 // The follow-through chain that gets eased — spine + head. NOT the IK'd hands/
 // arms (they must stay locked to the hilt so the blade == the hit). Other
 // skeletons (wolf) lack the torso bones — the ease just no-ops on missing bones.
 const SPRING_BONES = ["torso_lower", "torso_mid", "torso_upper", "head"] as const;
-// Higher = snappier. ~32 rad/s settles in ~90ms — organic, but never floaty.
-const SPRING_OMEGA = 32;
 const _springTargetQ = new THREE.Quaternion();
 
 /**
@@ -57,8 +77,8 @@ const _springTargetQ = new THREE.Quaternion();
  * the spine/head settle organically instead of snapping. Mutates the THREE.Euler
  * values already in `pose`. Seeds to target on first sight (no startup lurch).
  */
-function applyBoneSprings(mesh: EntityMeshGroup, pose: Map<string, THREE.Euler>, dtMs: number) {
-  const a = 1 - Math.exp(-SPRING_OMEGA * (Math.min(dtMs, 100) / 1000));
+function applyBoneSprings(mesh: EntityMeshGroup, pose: Map<string, THREE.Euler>, dtMs: number, springOmega: number) {
+  const a = 1 - Math.exp(-springOmega * (Math.min(dtMs, 100) / 1000));
   for (const bone of SPRING_BONES) {
     const target = pose.get(bone);
     if (!target) continue;
@@ -75,12 +95,16 @@ import { BladeDebugOverlay } from "./blade_debug_overlay.ts";
 import { HitboxDebugOverlay, HITBOX_OVERLAY_LAYER } from "./hitbox_debug_overlay.ts";
 import { DebugOverlayManager } from "./debug_overlay_manager.ts";
 import type { DebugUpdateContext } from "./debug_overlay_manager.ts";
-import { HitSparkRenderer } from "./hit_spark_renderer.ts";
+import { ParticleSystem } from "./particle_system.ts";
 import { LightManager } from "./light_manager.ts";
-import { EdgePass } from "./edge_pass.ts";
+import { EdgePass, PRE_BOOTSTRAP_GRADE } from "./edge_pass.ts";
+import { BloomPass } from "./bloom_pass.ts";
+import { GodRayPass } from "./god_ray_pass.ts";
+import { ShadowCascadePass } from "./shadow_cascade_pass.ts";
 import { CameraRig } from "./camera_rig.ts";
 import type { FogOfWar } from "../state/fog_of_war.ts";
 import { FOG_GRID_SIZE, FOG_CELL_SIZE } from "@voxim/protocol";
+import type { GameEvent } from "@voxim/protocol";
 
 
 /**
@@ -132,29 +156,12 @@ const DEPTH_BLIT_FRAG = /* glsl */`
   }
 `;
 
-/** Terrain chunk size in world units. Must match CHUNK_SIZE in @voxim/world. */
-const CHUNK_SIZE = 32;
-
 /**
  * Entities further than this squared distance from the local player have
  * their Three.js group hidden each frame. Sized for the pulled-back camera
  * (~35m slant distance) — visible ground footprint can reach ~50m forward.
  */
 const CULL_RADIUS_SQ = 160 * 160;
-
-/** 3rd-person camera vertical sample range above/below player Y for height shading. */
-const HEIGHT_SHADE_BELOW = 8.0;
-const HEIGHT_SHADE_ABOVE = 24.0;
-
-
-/**
- * How many milliseconds behind the latest received state remote entities
- * are rendered, to allow smooth linear interpolation between server ticks.
- */
-const INTERP_DELAY_MS = 100;
-
-/** Lerp a number toward target, returning new value. */
-function lerpN(a: number, b: number, t: number): number { return a + (b - a) * t; }
 
 /** Short-path angle lerp (handles ±π wrap). */
 function lerpAngle(a: number, b: number, t: number): number {
@@ -192,10 +199,17 @@ export class VoximRenderer {
 
   /** Per-chunk terrain: one voxel Mesh per material present in the chunk (T-283). */
   private readonly terrainMeshes  = new Map<string, THREE.Mesh[]>();
+  /** Chunk keys whose bake was deferred because content wasn't hydrated yet
+   *  (T-331) — `onContentHydrated()` rebuilds every one of these once the
+   *  bootstrap ContentService is wired, so no chunk ever bakes with an
+   *  unresolvable material and silently falls back to a flat/white voxel. */
+  private readonly pendingChunkRebuilds = new Set<string>();
   /** Gate marker pillars (T-145), keyed by entityId. World-space group containing pillar mesh. */
   private gateMarkers!: GateMarkerRenderer; // set in constructor (needs camera + renderer)
-  private readonly terrainHmaps   = new Map<string, HeightmapData>();
-  private readonly terrainMats    = new Map<string, MaterialGridData>();
+  /** Single chunk-grid owner (T-315 E2) — heightmap/materialGrid/surfaceStateGrid/
+   *  vegFieldGrid/waterGrid all read through here now; the renderer keeps no
+   *  parallel copy of any of them, only the built THREE.Mesh output. */
+  private world: ClientWorld | null = null;
   /** Entity-mesh lifecycle — live animated meshes + pooled-prop positions + the
    *  async spawn→build state machine (T-282). The renderer reaches the meshes
    *  through `entities.all` / `entities.get(id)` for its per-frame pose loop. */
@@ -234,21 +248,64 @@ export class VoximRenderer {
   // Typed refs for event-driven calls (trackEntity, addChunk, etc.)
   private readonly _skeletonOverlay: SkeletonOverlay;
   private readonly _chunkOverlay:    ChunkOverlay;
-  private readonly hitSparkRenderer: HitSparkRenderer;
+  private readonly particles: ParticleSystem;
+  /** "crumble" death-style handler (T-339) — injected from game.ts, which
+   *  registers it under that style id before the content cross-check runs;
+   *  `onEntityDied`/`render()` drive it. */
+  private readonly crumbleController: CrumbleController;
+  /** Physics gravity constant (T-340/T-339) — pre-hydration placeholder
+   *  only, overwritten by setParticlePhysics() the moment content loads.
+   *  Never authored tuning (that's content); mirrors ParticleSystem's own
+   *  `gravity` field so crumble's ballistic integration shares the exact
+   *  same constant the particle system uses, without a second lookup path. */
+  private gravity = 20;
   private readonly lightManager = new LightManager();
 
   private cameraTarget = new THREE.Vector3(256, 4, 256);
   private localPlayerId: string | null = null;
   private content: ContentCache | null = null;
+  /** Atmosphere id currently applied to envLighting/EdgePass/water — re-checked
+   *  each frame against the live WorldClock.biomeTag (T-311 P5a) so a tile
+   *  transition or a biome change re-selects without a special-cased hook;
+   *  null until the first successful apply so the very first frame always runs. */
+  private appliedAtmosphereId: string | null = null;
+  /** The currently-applied AtmosphereDef (T-311 P5a) — GroundMistLayer reads
+   *  its mist params off here each frame (EdgePass.setMist). */
+  private currentAtmosphere: AtmosphereDef | null = null;
+  /** Current lerped mist density weight — smoothed toward
+   *  `mist.densityByPhase[currentDayPhase]` the same way envLighting's
+   *  lightCur lerps colors, so mist doesn't snap on a phase change. */
+  private mistWeightCur = 0;
+  /** Last day-phase name set via setDayPhase() (DayPhaseChanged events) —
+   *  mist's phase weight follows the same discrete-phase bucket the colour
+   *  ramp does, not a continuous curve (no second FieldExpr-shaped mechanism
+   *  for a 4-point lookup). */
+  private currentDayPhase = "noon";
 
   /** Smooth animation tick — advances at server tick rate (20 Hz) based on real time. */
   private smoothTick = 0;
   private lastKnownServerTick = -1;
   private lastServerTickMs = 0;
   private lastFrameMs = 0;
+  /** Hitstop (T-296+T-292): wall-clock ms until which the whole scene's
+   *  animation/pose advance is frozen — a brief punch-through on confirmed
+   *  contact, client-derived from the existing HitSpark/DamageDealt events
+   *  (no wire field). Server ticks/state keep flowing; only the visual
+   *  per-frame pose advance clamps to ~0 for the window. */
+  private hitStopUntilMs = 0;
+  /** Same smooth-tick extrapolation as smoothTick, for WorldClock.ticksElapsed
+   *  (T-311 P5a) — the sun arc advances at 60fps between the 20Hz server
+   *  ticks instead of stepping. */
+  private lastKnownWorldClockTicks = -1;
+  private lastWorldClockMs = 0;
 
   /** Full-res render target — 3D scene is drawn here before post-processing. */
   private readonly pixelTarget: THREE.WebGLRenderTarget;
+  /** `pixelTarget`'s depth attachment — kept as its own field (Three types
+   *  `WebGLRenderTarget.depthTexture` as nullable) since T-313's cascade
+   *  darken pass reads it directly in render(), same object as
+   *  `pixelTarget.depthTexture`, just non-null at the type level. */
+  private readonly depthTex: THREE.DepthTexture;
   /** Height target — world-Y encoded as grayscale, fed into EdgePass for height shading. */
   private readonly heightTarget: THREE.WebGLRenderTarget;
   /** Fullscreen scene + material for the depth → world-Y blit pass. */
@@ -256,6 +313,32 @@ export class VoximRenderer {
   private readonly depthBlitMat: THREE.ShaderMaterial;
   /** Screen-space edge detection — runs during the blit pass. */
   private readonly edgePass: EdgePass;
+  /** HDR bloom — bright-pass + separable blur, composited into the EdgePass. */
+  private readonly bloom: BloomPass;
+  /** Volumetric light shafts — radial scatter from the sun, into the EdgePass. */
+  private readonly godRay: GodRayPass;
+  /** T-313: far shadow-cascade darken — extends raking shadows past the near
+   *  sun's ±60u frustum; runs between Pass 1 and bloom so bloom/god-ray both
+   *  see the far-shadowed HDR colour too. */
+  private readonly shadowCascade: ShadowCascadePass;
+  private readonly _sunWorld = new THREE.Vector3();
+  private readonly _sunUV = new THREE.Vector2();
+  private readonly _sunDirScratch = new THREE.Vector3();
+  private readonly _skyColorScratch = new THREE.Color();
+  private readonly _nearShadowMatrixScratch = new THREE.Matrix4();
+  private readonly _farShadowMatrixScratch = new THREE.Matrix4();
+  /** 3rd-person camera vertical sample range above/below player Y for height
+   *  shading — content-driven via GradeDef.heightShadeBelow/Above (T-315 D2);
+   *  these hold the pre-bootstrap fallback until a grade arrives. */
+  private heightShadeBelow = PRE_BOOTSTRAP_GRADE.heightShadeBelow;
+  private heightShadeAbove = PRE_BOOTSTRAP_GRADE.heightShadeAbove;
+  // Motion/interp tuning — content-driven via game_config render.pose /
+  // prediction.remoteInterpDelayMs (T-356); fallback until the blob arrives.
+  private crouchDropAmount = PRE_BOOTSTRAP_RENDER_TUNING.pose.crouchDropAmount;
+  private crouchEaseOmega = PRE_BOOTSTRAP_RENDER_TUNING.pose.crouchEaseOmega;
+  private lookAtGain = PRE_BOOTSTRAP_RENDER_TUNING.pose.lookAtGain;
+  private springOmega = PRE_BOOTSTRAP_RENDER_TUNING.pose.springOmega;
+  private remoteInterpDelayMs = PRE_BOOTSTRAP_RENDER_TUNING.remoteInterpDelayMs;
   /** Hover mask: hovered entity rendered flat-white; fed into EdgePass for silhouette outline. */
   private readonly hoverMaskTarget: THREE.WebGLRenderTarget;
   /** Override material used during the hover mask pass — flat white, no lighting. */
@@ -300,7 +383,11 @@ export class VoximRenderer {
    *  Set in the constructor (mutates this.scene's lights + fog/background). */
   private envLighting!: EnvironmentLighting;
 
-  constructor(canvas: HTMLCanvasElement) {
+  constructor(
+    canvas: HTMLCanvasElement,
+    crumbleController: CrumbleController,
+    supersample: { min: number; max: number } = PRE_BOOTSTRAP_RENDER_TUNING.supersample,
+  ) {
     this.instancePool = new InstancePool(this.scene);
 
     // Build all debug overlays and register them with the manager.
@@ -313,12 +400,29 @@ export class VoximRenderer {
     this.debugOverlayManager.register("blade",     new BladeDebugOverlay(this.scene));
     this.debugOverlayManager.register("hitbox",    new HitboxDebugOverlay());
 
-    this.hitSparkRenderer = new HitSparkRenderer(this.scene);
+    this.particles = new ParticleSystem(this.instancePool);
+    this.crumbleController = crumbleController;
 
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, preserveDrawingBuffer: true });
-    this.renderer.setPixelRatio(1);
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
+    // Supersample: render the whole pipeline at clamp(devicePixelRatio, min,
+    // max) × the CSS resolution and downsample on the final blit. This is the
+    // AAA win for the comic look — the deliberate flat-shaded silhouettes +
+    // Sobel ink stay crisp lines instead of stair-stepped aliasing. SSAA (vs
+    // MSAA) also anti-aliases the shading and the depth-derived edge pass,
+    // which MSAA's edge-only coverage cannot. THE PRIMARY PERF KNOB: cost
+    // scales with the square of this — the post chain (SSAO + edge taps +
+    // bloom) is fill-rate bound, so every 0.1 here is real frames. The band
+    // comes from game_config render.supersample (T-356), resolved once here:
+    // every render target is sized from it, so a live change would be a
+    // pipeline restructure (T-353's territory).
+    this.renderer.setPixelRatio(
+      Math.min(Math.max(globalThis.devicePixelRatio || 1, supersample.min), supersample.max),
+    );
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.BasicShadowMap; // hard 1-pixel shadow edges → thin outline
+    // Soft-but-tight shadows: PCF penumbra at high resolution reads as clean
+    // contact shadowing under the comic look — not the old hard 1px stamp, but
+    // not a mushy realistic blur either (radius is kept small in EnvironmentLighting).
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     // Disable auto-reset so renderer.info accumulates draw calls / triangles
     // across every renderer.render() call within a single frame (shadow pass +
     // main scene + post-FX passes). render() resets manually at the top.
@@ -327,6 +431,8 @@ export class VoximRenderer {
     const aspect = (canvas.clientWidth || canvas.width || 320) / (canvas.clientHeight || canvas.height || 180);
     this.cameraRig = new CameraRig(aspect);
     this.camera = this.cameraRig.camera;
+    // Boot placement before the first frame: no facing target yet, so the yaw
+    // holds at its boot value (join screen / pre-spawn).
     this.cameraRig.update(this.cameraTarget);
     this.gateMarkers = new GateMarkerRenderer(this.scene, this.camera, this.renderer.domElement);
     this.entities = new EntityMeshRegistry(
@@ -335,18 +441,27 @@ export class VoximRenderer {
     );
 
     // ---- render target (with depth texture for the depth-blit pass) ----
-    const pw = Math.max(1, canvas.clientWidth  || canvas.width  || 320);
-    const ph = Math.max(1, canvas.clientHeight || canvas.height || 180);
+    // Targets are sized at the supersampled (DPR-scaled) drawing-buffer resolution
+    // so they map 1:1 to the final blit and the whole pipeline benefits from SSAA.
+    const ratio = this.renderer.getPixelRatio();
+    const pw = Math.max(1, Math.round((canvas.clientWidth  || canvas.width  || 320) * ratio));
+    const ph = Math.max(1, Math.round((canvas.clientHeight || canvas.height || 180) * ratio));
     // Float depth texture — more portable for shader sampling than UnsignedIntType
     // on WebGL2 (some drivers return undefined values for DEPTH_COMPONENT24 sampling).
     const depthTex = new THREE.DepthTexture(pw, ph, THREE.FloatType);
     depthTex.format = THREE.DepthFormat;
+    // HalfFloat (HDR) colour: the lit scene keeps radiance above 1.0 (sun disc,
+    // emissive embers/torches) instead of clamping at the buffer, so the EdgePass
+    // ACES curve tone-maps real highlights and the bloom pass has bright pixels to
+    // threshold. An LDR buffer here would clip all of that to flat white.
     this.pixelTarget = new THREE.WebGLRenderTarget(pw, ph, {
       minFilter: THREE.LinearFilter,
       magFilter: THREE.LinearFilter,
+      type: THREE.HalfFloatType,
       stencilBuffer: false,
     });
     this.pixelTarget.depthTexture = depthTex;
+    this.depthTex = depthTex;
 
     // ---- height target + depth-blit pass ----
     this.heightTarget = new THREE.WebGLRenderTarget(pw, ph, {
@@ -386,6 +501,12 @@ export class VoximRenderer {
       depthWrite: false,
     });
 
+    // ---- T-313 far shadow-cascade darken (before EdgePass — see that
+    // pass's header for why: bloom/god-ray must also see the far-shadowed
+    // colour, so this sits between Pass 1 and bloom, not folded into
+    // EdgePass at the end) ----
+    this.shadowCascade = new ShadowCascadePass(pw, ph);
+
     // ---- edge pass + fullscreen blit scene ----
     // EdgePass also applies fog-of-war modulation (T-157): it samples the
     // depth texture to reconstruct world XZ, looks up the fog cell, and
@@ -395,7 +516,10 @@ export class VoximRenderer {
     const fogPlaceholder = new THREE.DataTexture(new Uint8Array([255]), 1, 1, THREE.RedFormat, THREE.UnsignedByteType);
     fogPlaceholder.needsUpdate = true;
     this.edgePass = new EdgePass(
-      this.pixelTarget.texture,
+      // T-313: EdgePass's "scene colour" input is the shadow-cascade pass's
+      // OUTPUT, not the raw Pass-1 pixelTarget — pixelTarget.depthTexture
+      // (below) is still read directly, unaffected (only colour is darkened).
+      this.shadowCascade.texture,
       this.heightTarget.texture,
       this.hoverMaskTarget.texture,
       depthTex,
@@ -408,6 +532,18 @@ export class VoximRenderer {
     this.blitMesh = new THREE.Mesh(blitGeo, this.edgePass.material);
     this.blitScene.add(this.blitMesh);
 
+    // ---- HDR bloom (bright-pass + blur of the HalfFloat scene) ----
+    // Threshold above the brightest sun-lit earth tones so the glow is mostly
+    // emissive (torches/embers) + the hottest highlights, not a haze over the
+    // whole lit ground. Tuned by eye against the HalfFloat radiance.
+    this.bloom = new BloomPass(pw, ph);
+    this.bloom.setThreshold(PRE_BOOTSTRAP_GRADE.bloomThreshold, PRE_BOOTSTRAP_GRADE.bloomKnee);
+    this.edgePass.setBloomTexture(this.bloom.texture);
+
+    // ---- volumetric god rays (radial scatter of the bloom toward the sun) ----
+    this.godRay = new GodRayPass(pw, ph);
+    this.edgePass.setGodRayTexture(this.godRay.texture);
+
     // ---- environment lighting (sun + hemi + sky/fog + day-night) ----
     this.envLighting = new EnvironmentLighting(this.scene);
 
@@ -417,6 +553,11 @@ export class VoximRenderer {
   setLocalPlayer(id: string): void {
     this.localPlayerId = id;
     this.entities.setLocalPlayer(id);
+  }
+
+  /** Register the local player's hotbar occupancy for body-anchor rendering (T-309). */
+  setHotbar(prefabIds: (string | null)[], activeIndex: number): void {
+    this.entities.setHotbar(prefabIds, activeIndex);
   }
 
   /**
@@ -430,9 +571,19 @@ export class VoximRenderer {
     this.edgePass.setTileSize(FOG_GRID_SIZE * FOG_CELL_SIZE);
   }
 
+  /** Wire the ClientWorld (T-315 E2) — the renderer reads chunk grid data
+   *  (heightmap/materialGrid/surfaceStateGrid/vegFieldGrid/waterGrid) through
+   *  it instead of keeping its own parallel copies. */
+  setClientWorld(world: ClientWorld): void {
+    this.world = world;
+    this.entities.setClientWorld(world);
+  }
+
   setContentCache(cache: ContentCache): void {
     this.content = cache;
     this.entities.setContent(cache);
+    this.lightManager.setContent(cache);
+    this.particles.setContent(cache);
     // Lighting + sky/fog come from the single palette source (T-280) once the
     // bootstrap arrives — replaces the hardcoded cyan noon sky with the
     // ash-hazed phase colors (EnvironmentLighting rebuilds its phase table).
@@ -444,17 +595,64 @@ export class VoximRenderer {
       // tint reads the `edgeInk` palette token instead of a hardcoded literal.
       this.edgePass.setEdgeColor(paletteToken("edgeInk"));
     }
+    // Colour grade is content now (T-311 Phase 2, grammar G7): the EdgePass grade
+    // uniforms read the authored `grades/default.json` instead of hardcoded
+    // constants. Absent → the EdgePass constructor fallback (identical values).
+    const grade = cache.getGrade("default");
+    if (grade) {
+      this.edgePass.setGrade(grade);
+      // Bloom threshold/knee, the height-shade band, and the emissive HDR
+      // scale aren't EdgePass uniforms — apply them to their own owners
+      // (T-315 D2).
+      this.bloom.setThreshold(grade.bloomThreshold, grade.bloomKnee);
+      this.heightShadeBelow = grade.heightShadeBelow;
+      this.heightShadeAbove = grade.heightShadeAbove;
+      setEmissiveHdrScale(grade.emissiveHdrScale);
+    }
+    // Canopy wind/fade-cylinder geometry + procedural texture-noise amounts
+    // are content now (T-315 D3): game_config.render instead of hardcoded
+    // module consts. Absent → each module's own pre-bootstrap fallback.
+    const cfg = cache.getGameConfig();
+    if (cfg) {
+      canopyFade.applyConfig(cfg.render);
+      setTextureStyleParams(cfg.render.textureStyle);
+      // Free-look camera geometry + sensitivity/pitch-band knobs (T-320) from
+      // game_config.camera.
+      this.cameraRig.configure(cfg.camera);
+      // Motion/interp tuning (T-356) — crouch/look-at/spring pose easing and
+      // the remote-entity interpolation delay. (The supersample band is also
+      // content, but construction-time only — see the constructor.)
+      this.crouchDropAmount = cfg.render.pose.crouchDropAmount;
+      this.crouchEaseOmega = cfg.render.pose.crouchEaseOmega;
+      this.lookAtGain = cfg.render.pose.lookAtGain;
+      this.springOmega = cfg.render.pose.springOmega;
+      this.remoteInterpDelayMs = cfg.prediction.remoteInterpDelayMs;
+    }
   }
 
 
   // ---- terrain ----
 
-  updateTerrain(heightmap: HeightmapData, materials: MaterialGridData): void {
-    const cx = heightmap.chunkX, cy = heightmap.chunkY;
-    const key = `${cx},${cy}`;
+  /**
+   * Rebuild every chunk whose bake was deferred by the content-hydration gate
+   * in `_rebuildChunk` (T-331). Call once the bootstrap ContentService is
+   * wired — on the initial join right after `setContentCache`, and again
+   * after a tile transition's content re-hydrates, since the renderer (and
+   * any chunks queued against it) survives the reconnect. No-op when nothing
+   * is pending, so it's safe to call unconditionally.
+   */
+  onContentHydrated(): void {
+    if (this.pendingChunkRebuilds.size === 0) return;
+    const pending = [...this.pendingChunkRebuilds];
+    this.pendingChunkRebuilds.clear();
+    for (const key of pending) {
+      const [cx, cy] = key.split(",").map(Number);
+      this._rebuildChunk(cx, cy);
+    }
+  }
 
-    this.terrainHmaps.set(key, heightmap);
-    this.terrainMats.set(key, materials);
+  updateTerrain(chunk: ClientChunk): void {
+    const cx = chunk.chunkX, cy = chunk.chunkY;
 
     // Each cell's column floors to the lowest of its FOUR neighbours, so the new
     // chunk changes the cliff depth along every shared edge — rebuild all four
@@ -468,9 +666,22 @@ export class VoximRenderer {
 
   private _rebuildChunk(cx: number, cy: number): void {
     const key = `${cx},${cy}`;
-    const hm = this.terrainHmaps.get(key);
-    const mat = this.terrainMats.get(key);
+    const chunk = this.world?.getChunk(cx, cy);
+    const hm = chunk?.heightmap;
+    const mat = chunk?.materialGrid;
     if (!hm || !mat) return;
+
+    // T-331: never bake a chunk before the bootstrap ContentService is wired —
+    // every material lookup below would silently miss and buildVoxelMaterial
+    // would fall back to a flat, textureless voxel colour (reads as a white/
+    // grey patch with hard edges under this scene's exposure). Defer instead;
+    // onContentHydrated() rebuilds every deferred chunk once content lands.
+    // Leaves any existing mesh for this chunk in place rather than tearing it
+    // down for a rebuild we can't yet complete.
+    if (!this.content?.isHydrated()) {
+      this.pendingChunkRebuilds.add(key);
+      return;
+    }
 
     // Tear down the chunk's previous mesh set as a unit — a rebuild can add or
     // drop a material, so the whole multi-material set is replaced.
@@ -483,19 +694,99 @@ export class VoximRenderer {
       }
     }
 
+    // Surface fields (T-311 P4): thread the chunk's SurfaceStateGrid planes +
+    // the per-material render responses into the atom build; atoms carry the
+    // G6 sidecar scalars (`moss01`, `wet01`).
+    const surf = chunk?.surfaceStateGrid;
+    const veg = chunk?.vegFieldGrid ?? null;
+    const water = chunk?.waterGrid ?? null;
+    const surfaceInput = surf
+      ? {
+        overgrowth: surf.overgrowth,
+        wetness: surf.wetness,
+        mossBiasFor: (matId: number) => {
+          const mb = this.content?.getMaterialSync(matId)?.render?.mossBlend;
+          return mb ? { floor: mb.floorBias, wall: mb.wallBias, joint: mb.jointBoost } : undefined;
+        },
+        wets: (matId: number) => this.content?.getMaterialSync(matId)?.render?.wetness !== undefined,
+        sample: (field: string, cellIdx: number) => sampleField(field, veg, surf, water, cellIdx),
+      }
+      : undefined;
+
+    // Cliff fields (T-311 P6): thread the chunk's CliffGrid planes + the
+    // client's stable profileId→CliffProfileDef.id index (I3c) into the atom
+    // build; profileOf/erosionOf resolve against the bootstrap content.
+    const cliffGrid = chunk?.cliffGrid;
+    const cliffInput: CliffFieldInput | undefined = cliffGrid
+      ? {
+        grid: cliffGrid,
+        profileOf: (profileId: number) => {
+          if (profileId === 0) return undefined;
+          return this.content?.getCliffProfileIndex()[profileId - 1];
+        },
+        erosionOf: (profileIdStr: string, erosionIdx: number) => {
+          const def = this.content?.getCliffProfile(profileIdStr);
+          if (!def) return undefined;
+          const key = erosionIdx === 0 ? "crisp" : erosionIdx === 1 ? "weathered" : "broken";
+          return def.erosionStates[key];
+        },
+      }
+      : undefined;
+
     // Re-express the chunk as voxel atoms (column boxes) bucketed by material,
     // then bake one mesh per material through the shared voxel pipeline (T-283).
     const byMat = buildChunkAtoms(hm, mat, {
-      N: this.terrainHmaps.get(`${cx},${cy - 1}`) ?? null,
-      E: this.terrainHmaps.get(`${cx + 1},${cy}`) ?? null,
-      S: this.terrainHmaps.get(`${cx},${cy + 1}`) ?? null,
-      W: this.terrainHmaps.get(`${cx - 1},${cy}`) ?? null,
-    });
+      N: this.world?.getChunk(cx, cy - 1)?.heightmap ?? null,
+      E: this.world?.getChunk(cx + 1, cy)?.heightmap ?? null,
+      S: this.world?.getChunk(cx, cy + 1)?.heightmap ?? null,
+      W: this.world?.getChunk(cx - 1, cy)?.heightmap ?? null,
+    }, surfaceInput,
+      // Per-material relief response (render.relief, T-311 P4).
+      (matId: number) => this.content?.getMaterialSync(matId)?.render?.relief,
+      cliffInput);
     const meshes: THREE.Mesh[] = [];
     for (const [matId, atoms] of byMat) {
-      const geo = geometryFromBaked(bakeVoxels(atoms, matId, TERRAIN_DISP_MAG));
-      const m = buildVoxelMaterial(this.content?.getMaterialSync(matId), matId);
-      canopyFade.register(m, { voxelMode: true });
+      // Content is guaranteed hydrated here (the gate above deferred otherwise) —
+      // an unresolved materialId at this point is a genuine content/data bug
+      // (a terrain cell referencing a materialId no MaterialDef registers), not
+      // a timing race. Throw rather than silently painting the chunk white/grey
+      // (T-331) — this exact silent-fallback shape has bitten three times now.
+      const matDef = this.content!.getMaterialSync(matId);
+      if (!matDef) {
+        throw new Error(
+          `[renderer] terrain chunk (${cx},${cy}) has a cell with materialId=${matId}, ` +
+          `which no MaterialDef resolves (content is hydrated — this is a real content gap, not a load race)`,
+        );
+      }
+      const mb = matDef.render?.mossBlend;
+      const mossTarget = mb ? this.content?.getMaterialByName(mb.material) : undefined;
+      const mossResp = mb && mossTarget
+        ? resolveMossResponse(matDef.color, mossTarget.color, mb.tintShift)
+        : undefined;
+      // T-326: render.relief.dispMag is THE one warp-amplitude knob every
+      // voxel-baked class reads (props/scatter/characters read it the same
+      // way — see entity_mesh.ts/scatter_renderer.ts/entity_mesh_registry.ts).
+      // Terrain alone additionally pins TERRAIN_DISP_MAG as its non-content
+      // floor (T-283/T-315 no-crack guarantee: every atom of one material
+      // MUST resolve the identical mag so shared cliff-edge corners weld).
+      const dispMag = matDef.render?.relief?.dispMag ?? TERRAIN_DISP_MAG;
+      const baked = bakeVoxels(atoms, matId, dispMag, matDef.render?.tintJitter, mossResp);
+      const geo = geometryFromBaked(baked);
+      const m = buildVoxelMaterial(matDef, matId);
+      canopyFade.register(m);
+      // Wetness response (G4): dispatch the wet_specular treatment AFTER
+      // canopyFade (treatments chain onBeforeCompile), only where the bake
+      // actually emitted the aWetness attribute.
+      const wet = matDef.render?.wetness;
+      if (wet && baked.wetness) {
+        applySurfaceTreatment("wet_specular", m, { gloss: wet.gloss, darken: wet.darken });
+      }
+      // Cheap wetness-weighted sky reflection (T-311 P5b): same aWetness
+      // input, a separate consumer (render.reflect, reserved since G4).
+      const reflect = matDef.render?.reflect;
+      if (reflect && baked.wetness) {
+        applySurfaceTreatment("wet_reflect", m, { strength: reflect.strength, tint: reflect.tint });
+      }
       const me = new THREE.Mesh(geo, m);
       me.name = "terrain";
       me.castShadow = true;
@@ -519,8 +810,6 @@ export class VoximRenderer {
         (me.material as THREE.Material).dispose();
       }
       this.terrainMeshes.delete(key);
-      this.terrainHmaps.delete(key);
-      this.terrainMats.delete(key);
       this._chunkOverlay.removeChunk(chunkX, chunkY);
     }
   }
@@ -546,6 +835,7 @@ export class VoximRenderer {
         layers: current?.layers ?? [],
         weaponActionId,
         ticksIntoAction: 0,
+        dissolutionPhase: current?.dissolutionPhase ?? 0,
       };
       mesh.lastAnimUpdateMs = performance.now();
     }
@@ -553,6 +843,11 @@ export class VoximRenderer {
 
   removeEntity(entityId: string): void {
     this.entities.removeEntity(entityId);
+    // T-339: the ONE choke point that covers both a crumble corpse's
+    // natural end-of-timer destroy AND an early AoI-exit/tile-transition —
+    // clearMeshContent's own dispose-traverse can't reach a crumble-
+    // detached bone subtree (it lives in the controller's own container).
+    this.crumbleController.dispose(entityId);
   }
 
   /**
@@ -569,6 +864,11 @@ export class VoximRenderer {
       const [cx, cy] = key.split(",").map(Number);
       this.removeTerrain(cx, cy);
     }
+    // Stale coordinates from the source tile (T-331) — the destination tile's
+    // state messages repopulate this.world from scratch, so any deferred
+    // rebuild queued against the old world would either no-op (chunk not
+    // loaded yet) or redo work a real spawn already triggered.
+    this.pendingChunkRebuilds.clear();
     this.attachedFog?.reset();
   }
 
@@ -594,10 +894,6 @@ export class VoximRenderer {
   }
 
   // ---- interaction system ----
-
-  setInteractionSystem(is: InteractionSystem | null): void {
-    this.entities.setInteraction(is);
-  }
 
   /**
    * Register the hover outline renderer.  The registry notifies it when an
@@ -626,17 +922,14 @@ export class VoximRenderer {
 
   // ---- camera ----
 
-  getPlayerScreenPos(): { x: number; y: number } {
-    return this.getEntityScreenPos(this.localPlayerId ?? "") ?? { x: 0, y: 0 };
-  }
-
   /**
    * Unproject canvas pixel coordinates onto the world ground plane.
    *
    * Coordinate mapping: world(x, y, z) → three(x, z, y).
    * The ground plane in Three.js space is y = groundHeight (= world z).
    * Returns world-space { x, y } of the intersection, or null if the ray
-   * is parallel to the plane (shouldn't happen for the fixed iso camera).
+   * is parallel to the plane (shouldn't happen for this steeply-angled camera,
+   * whatever its yaw).
    */
   getCursorWorldPos(canvasX: number, canvasY: number, groundHeight: number): { x: number; y: number } | null {
     const w = this.renderer.domElement.clientWidth  || this.renderer.domElement.width;
@@ -656,28 +949,6 @@ export class VoximRenderer {
     if (!result) return null;
     // three.x = world.x, three.z = world.y
     return { x: hit.x, y: hit.z };
-  }
-
-  /**
-   * Cursor-to-facing for the local player: raycast the cursor onto the ground
-   * plane at the player's current Y, then return atan2(dy, dx) from player to
-   * cursor in game-space (X, Y) — directly usable as `facing` on the wire.
-   * Returns null if the local player has no mesh yet or the ray misses.
-   */
-  getCursorFacing(canvasX: number, canvasY: number): number | null {
-    if (!this.localPlayerId) return null;
-    const mesh = this.entities.get(this.localPlayerId);
-    if (!mesh) return null;
-    // Ground plane = local player's current Y (Three.js y = game z = height).
-    const hit = this.getCursorWorldPos(canvasX, canvasY, mesh.group.position.y);
-    if (!hit) return null;
-    // Player position in game coords: three.x = game.x, three.z = game.y.
-    const px = mesh.group.position.x;
-    const py = mesh.group.position.z;
-    const dx = hit.x - px;
-    const dy = hit.y - py;
-    if (dx === 0 && dy === 0) return null;
-    return Math.atan2(dy, dx);
   }
 
   /** Project an entity's world position to canvas pixel coordinates, or null if not found. */
@@ -702,6 +973,7 @@ export class VoximRenderer {
    */
   setDayPhase(phase: string): void {
     this.envLighting.setPhase(phase);
+    this.currentDayPhase = phase;
   }
 
   // ---- debug ----
@@ -758,6 +1030,20 @@ export class VoximRenderer {
    */
   toggleShadows(): boolean {
     return this.envLighting.toggleShadows();
+  }
+
+  /** Live sun direction (T-311 P5a) — the single sun owner every other
+   *  consumer (water shader) reads instead of carrying its own constant.
+   *  Plain {x,y,z} (game.ts stays THREE-free) — valid after this frame's
+   *  render() has called envLighting.update(). */
+  getSunDirection(): { x: number; y: number; z: number } {
+    return this.envLighting.getSunDirection(this._sunDirScratch);
+  }
+
+  /** Current lerped sky colour (T-311 P5b) — the water sky-streak reflection
+   *  term reads this. Plain 0xRRGGBB number (game.ts stays THREE-free). */
+  getSkyColor(): number {
+    return this.envLighting.getSkyColor(this._skyColorScratch).getHex();
   }
 
   /**
@@ -839,9 +1125,36 @@ export class VoximRenderer {
     }
     const mag = Math.hypot(mx, my);
     if (mag < 0.05) return null;
-    // lateral fraction of the move direction relative to facing (right = facing − 90°)
+    // lateral / forward fractions of the move direction relative to facing
+    // (forward = (cos(facing),sin(facing)), right = forward rotated -90° —
+    // same convention as tile-server's velScope/locomotion_intent.ts) — with
+    // T-328 facing decouples from movement direction, so back-pedal/strafe
+    // become real, distinct locomotion states instead of always reading ≈+1.
     const strafe = (mx * Math.sin(facing) - my * Math.cos(facing)) / mag;
-    return { strafe: Math.max(-1, Math.min(1, strafe)), turn: 0 };
+    const moveFwd = (mx * Math.cos(facing) + my * Math.sin(facing)) / mag;
+    return {
+      strafe: Math.max(-1, Math.min(1, strafe)),
+      moveFwd: Math.max(-1, Math.min(1, moveFwd)),
+      turn: 0,
+    };
+  }
+
+  /**
+   * World ground-plane position (x,y) + facing (radians) for an entity —
+   * the wire's coordinate convention, NOT Three.js `group.position`/
+   * `rotation.y`. Local player prefers the client-predicted position/facing
+   * (matches `locoState`'s snappy-no-RTT-lag intent); remotes read off the
+   * mesh (one render frame stale vs this frame's interpolation pass below —
+   * same tolerance the pose pipeline already accepts elsewhere).
+   */
+  private entityGroundXY(
+    id: string, mesh: EntityMeshGroup,
+    localPredictedPos: { x: number; y: number; z: number } | null, localFacing: number | null,
+  ): { x: number; y: number; facing: number } {
+    if (id === this.localPlayerId && localPredictedPos) {
+      return { x: localPredictedPos.x, y: localPredictedPos.y, facing: localFacing ?? mesh.facingAngle };
+    }
+    return { x: mesh.group.position.x, y: mesh.group.position.z, facing: mesh.facingAngle };
   }
 
   render(serverTick: number, localPredictedPos?: { x: number; y: number; z: number } | null, localFacing?: number | null, localMovement?: { x: number; y: number } | null, localCrouch?: number): void {
@@ -859,24 +1172,56 @@ export class VoximRenderer {
     const tSkStart = performance.now();
     // Frame dt for the animation crossfade (T-291). lastFrameMs still holds the
     // PREVIOUS frame's timestamp here — it's advanced later in the post-FX block.
-    const animDtMs = this.lastFrameMs > 0 ? Math.min(now - this.lastFrameMs, 100) : 16;
+    // Hitstop (T-296+T-292): clamp toward ~0 while the freeze window is live —
+    // poses hold in place for a beat instead of advancing, reading as a punch
+    // landing. A small residual (not exactly 0) keeps eased springs/crossfades
+    // from dividing by zero elsewhere.
+    const rawDtMs = this.lastFrameMs > 0 ? Math.min(now - this.lastFrameMs, 100) : 16;
+    const animDtMs = now < this.hitStopUntilMs ? Math.min(rawDtMs, 1) : rawDtMs;
     // Drive skeleton poses for all animated entities.
     for (const [id, mesh] of this.entities.all) {
-      if (mesh.boneGroups && mesh.skeletonId && this.content) {
+      // T-339: a crumbling entity's bone groups have been detached out of
+      // this hierarchy into CrumbleController's own container — skip pose
+      // evaluation for it entirely (there is nothing left under mesh.group
+      // to pose). Never true for a living entity, so this is a no-op guard
+      // on the hot path for everyone else.
+      if (mesh.boneGroups && mesh.skeletonId && this.content && !mesh.crumbling) {
         const anim = mesh.animationState;
+        // Death-dissolve (T-311 P5c): push the server-derived phase into
+        // this entity's dissolve-drift uniforms every frame — no-op array
+        // for every entity that never resolved a DissolveProfileDef.
+        if (mesh.dissolveUniforms.length > 0) {
+          const phase = anim?.dissolutionPhase ?? 0;
+          for (const u of mesh.dissolveUniforms) u.uPhase.value = phase;
+        }
+        // Readable i-frame flash (T-298): a client-derived bone-shine while
+        // dodge_roll's dash phase (the i-frame window) is live — the player
+        // SEES why the dodge worked. Every entity's voxelMeshes carry their
+        // own material instances, so this never bleeds across entities.
+        applyIframeFlash(mesh, computeIframeFlash(mesh.activeActions, (id) => this.content!.getAction(id)));
         const skeleton   = this.content.getSkeletonSync(mesh.skeletonId);
         const clipIndex  = this.content.getClipIndex(mesh.skeletonId);
         const maskIndex  = this.content.getMaskIndex(mesh.skeletonId);
 
+        // Telegraph lead clip (T-297): an optional tell appended on top of the
+        // server-projected layers for the first `preWindup.ticks` of the
+        // primary slot's first phase — purely client-derived from the
+        // already-networked ActiveActions + the ActionDef's preWindup, no
+        // wire change. Absent for every action that doesn't author one.
+        const telegraph = this.content
+          ? computeTelegraphLayer(mesh.activeActions, (id) => this.content!.getAction(id), mesh.lastAnimUpdateMs, now)
+          : null;
+        const rawLayers = telegraph ? [...(anim?.layers ?? []), telegraph] : (anim?.layers ?? []);
+
         // Crossfade the raw 20Hz layer snapshot so state transitions (idle→walk,
         // swing in/out) ease in/out instead of hard-cutting the pose (T-291).
-        const layers = blendAnimationLayers(mesh.layerFades, anim?.layers ?? [], animDtMs);
-        const animForPose = anim ? { ...anim, layers } : null;
+        const layers = blendAnimationLayers(mesh.layerFades, rawLayers, animDtMs);
+        const animForPose = anim ? { ...anim, layers } : (telegraph ? { layers, weaponActionId: "", ticksIntoAction: 0, dissolutionPhase: 0 } : null);
 
-        // Fused pose pipeline: locomotion lean (base) → swing overlay → IK, all
-        // composed on one skeleton. The swing producer takes a basePose, so the
-        // locomotion lean feeds it and the two stack. Lower body keeps the
-        // locomotion clip; the swing clip is stripped so legs walk while arms swing.
+        // Fused pose pipeline (pose_composer.ts): gait/crouch (legs) →
+        // locomotion lean (spine) → swing overlay (arms) → foot-terrain IK →
+        // head stabilization, each producer taking the previous stage's pose
+        // as its basePose so they stack (T-308).
         const swingWA = anim?.weaponActionId
           ? this.weaponActionsMap.get(anim.weaponActionId)
           : undefined;
@@ -884,8 +1229,8 @@ export class VoximRenderer {
         // Crouch: eased toward the input target (local player; remotes have no
         // networked crouch yet → 0). The pelvis drop is a root-group translation.
         const crouchTarget = id === this.localPlayerId ? (localCrouch ?? 0) : 0;
-        mesh.crouchEased += (crouchTarget - mesh.crouchEased) * (1 - Math.exp(-CROUCH_OMEGA * (animDtMs / 1000)));
-        const dropY = mesh.crouchEased > 0.002 ? mesh.crouchEased * CROUCH_DROP * mesh.modelScale : 0;
+        mesh.crouchEased += (crouchTarget - mesh.crouchEased) * (1 - Math.exp(-this.crouchEaseOmega * (animDtMs / 1000)));
+        const dropY = mesh.crouchEased > 0.002 ? mesh.crouchEased * this.crouchDropAmount * mesh.modelScale : 0;
         // Only the local player crouches (remotes have no networked crouch), so
         // only its root is translated — leaves every other rig's root untouched.
         if (id === this.localPlayerId) {
@@ -893,19 +1238,58 @@ export class VoximRenderer {
           if (rootBone) rootBone.position.y = -dropY;
         }
 
+        // Ground-plane position — the gait phase accumulator and
+        // foot-terrain IK both need it; computed once per entity per frame
+        // and shared, rather than twice.
+        const ground = this.entityGroundXY(id, mesh, localPredictedPos ?? null, localFacing ?? null);
+        // Procedural gait (T-308): advance the phase by ACTUAL ground
+        // distance covered this frame (not intended speed), so an entity
+        // blocked by geometry correctly stops cycling its feet instead of
+        // sliding them in place — the "distance not time" property starts
+        // here, at the accumulator, not just inside applyGaitPose.
+        const gaitDef = skeleton?.gaitId ? this.content.getGaitSync(skeleton.gaitId) : undefined;
+        let gaitPhase = 0;
+        if (gaitDef) {
+          if (mesh.gaitGroundX === null || mesh.gaitGroundY === null) {
+            mesh.gaitGroundX = ground.x;
+            mesh.gaitGroundY = ground.y;
+          } else {
+            const d = Math.hypot(ground.x - mesh.gaitGroundX, ground.y - mesh.gaitGroundY);
+            // Clamp a single frame's delta to one full stride — a
+            // teleport/respawn/tile-transition shouldn't inject a giant
+            // phase jump (a visible leg-snap); a real step that large in
+            // one frame would itself be a bug.
+            mesh.gaitDistance = (mesh.gaitDistance + Math.min(d, gaitDef.strideLength)) % gaitDef.strideLength;
+            mesh.gaitGroundX = ground.x;
+            mesh.gaitGroundY = ground.y;
+          }
+          gaitPhase = mesh.gaitDistance / gaitDef.strideLength;
+        }
+
         let pose: Map<string, THREE.Euler>;
         if (skeleton && (swingWA?.swingPath || loco || dropY > 0)) {
           const boneIndex = this.content.getBoneIndex(mesh.skeletonId);
           const baseLayers = swingWA?.swingPath ? layers.filter((l) => l.clipId !== swingWA.clipId) : layers;
-          let rot: Map<string, BoneRotation> = evaluatePose(skeleton, clipIndex, maskIndex, anim ? { ...anim, layers: baseLayers } : null);
-          if (dropY > 0) rot = applyCrouchPose(skeleton, boneIndex, rot, mesh.modelScale, dropY, { morphParams: mesh.modelMorphs });
-          if (loco) rot = applyLocomotionPose(skeleton, boneIndex, rot, mesh.modelScale, loco, { morphParams: mesh.modelMorphs });
+          const base: Map<string, BoneRotation> = evaluatePose(skeleton, clipIndex, maskIndex, anim ? { ...anim, layers: baseLayers } : null);
+          // Normalised swing time — hoisted out of the swing producer because
+          // it reads per-mesh extrapolation state. `anim!` is safe: swingWA is
+          // looked up from anim.weaponActionId, so it resolving implies anim.
+          let swingT = 0;
           if (swingWA?.swingPath) {
             const total = swingWA.windupTicks + swingWA.activeTicks + swingWA.winddownTicks;
             const ticks = anim!.ticksIntoAction + (now - mesh.lastAnimUpdateMs) / 50;
-            const t = Math.max(0, Math.min(ticks / total, 1));
-            rot = solveSwingPose(skeleton, boneIndex, rot, mesh.modelScale, swingWA.swingPath, t, { morphParams: mesh.modelMorphs });
+            swingT = Math.max(0, Math.min(ticks / total, 1));
           }
+          const world = this.world;
+          const rot = composePose({
+            skeleton, boneIndex,
+            scale: mesh.modelScale, morphParams: mesh.modelMorphs,
+            loco, gaitDef, gaitPhase, dropY,
+            swingPath: swingWA?.swingPath, swingT,
+            ground,
+            heightAt: world ? (wx, wy) => world.getTerrainHeight(wx, wy) : null,
+            lookAtGain: this.lookAtGain,
+          }, base);
           // rewrap the mixed map (THREE.Euler for untouched bones, {x,y,z} for overridden) to THREE.Euler
           pose = new Map<string, THREE.Euler>();
           for (const [bone, r] of rot) pose.set(bone, r instanceof THREE.Euler ? r : new THREE.Euler(r.x, r.y, r.z));
@@ -915,7 +1299,7 @@ export class VoximRenderer {
 
         // Secondary motion: ease the spine/head toward the composed pose (snappy,
         // never floaty) so the body settles organically. IK'd hands are excluded.
-        applyBoneSprings(mesh, pose, animDtMs);
+        applyBoneSprings(mesh, pose, animDtMs, this.springOmega);
         updateSkeletonPose(mesh, pose);
 
         // Roll vertical lift — sin(πt) parabola peaking at clip mid-point so the
@@ -952,7 +1336,7 @@ export class VoximRenderer {
     }
 
     // Interpolate remote entity positions (local player snaps — no delay)
-    const renderTime = performance.now() - INTERP_DELAY_MS;
+    const renderTime = performance.now() - this.remoteInterpDelayMs;
     for (const [id, mesh] of this.entities.all) {
       if (id === this.localPlayerId) continue;
       const buf = mesh.posBuffer;
@@ -974,9 +1358,9 @@ export class VoximRenderer {
       } else {
         const alpha = Math.max(0, Math.min(1, (renderTime - buf[lo].t) / (buf[hi].t - buf[lo].t)));
         mesh.group.position.set(
-          lerpN(buf[lo].x, buf[hi].x, alpha),
-          lerpN(buf[lo].y, buf[hi].y, alpha) + mesh.rollLiftY,
-          lerpN(buf[lo].z, buf[hi].z, alpha),
+          lerp(buf[lo].x, buf[hi].x, alpha),
+          lerp(buf[lo].y, buf[hi].y, alpha) + mesh.rollLiftY,
+          lerp(buf[lo].z, buf[hi].z, alpha),
         );
         mesh.group.rotation.y = lerpAngle(buf[lo].ry, buf[hi].ry, alpha);
       }
@@ -985,9 +1369,10 @@ export class VoximRenderer {
 
     // Override the local player's transform with client-side prediction so the
     // body tracks input without a server round-trip. Position comes from the
-    // predictor; facing/rotation comes from the locally-tracked cursor angle
-    // (T-287) — updateEntityMesh only ever sets rotation from the networked
-    // facing, which lags by RTT and made swings sweep from a stale orientation.
+    // predictor; facing/rotation comes from the locally-tracked mouse-driven
+    // facing (T-328, was movement-derived under T-320) — updateEntityMesh
+    // only ever sets rotation from the networked facing, which lags by RTT
+    // and made swings sweep from a stale orientation.
     if (this.localPlayerId) {
       const localMesh = this.entities.all.get(this.localPlayerId);
       if (localMesh) {
@@ -1056,23 +1441,100 @@ export class VoximRenderer {
       emesh.group.visible = dx * dx + dz * dz <= CULL_RADIUS_SQ;
     }
 
+    // Frame dt (seconds), computed here — reused below for particles/motes.
+    // lastFrameMs is advanced here to hold this frame's timestamp.
+    const dt = this.lastFrameMs > 0 ? Math.min((now - this.lastFrameMs) / 1000, 0.1) : 0;
+    this.lastFrameMs = now;
+
+    // Camera yaw is DERIVED from the player's facing (T-328): mouse-X now
+    // rotates FACING (IntentTranslator owns the accumulator, fed the same
+    // raw pointer-lock deltas via game.ts), and the camera sits rigidly
+    // behind the character's heading — no independent camera-yaw
+    // accumulator anymore. Pitch stays camera-only (cameraRig.applyLookDelta,
+    // mouse-Y). update() re-places the camera from the current (yaw, pitch)
+    // each frame around the player target.
+    if (localFacing != null) this.cameraRig.setYaw(localFacing);
     this.cameraRig.update(this.cameraTarget);
 
     // Day/night lerp + shadow-frustum follow/snap + sky-locked sun disc — all
     // off the now-settled camera target. (After cameraRig.update so the sun disc
-    // tracks this frame's camera position.)
-    this.envLighting.update(this.cameraTarget, this.camera.position);
+    // tracks this frame's camera position.) T-311 P5a: the sun direction is a
+    // pure function of the server WorldClock's time-of-day — extrapolate
+    // smoothly between the 20 Hz server ticks via wall-clock elapsed time
+    // (same smoothTick idiom above) rather than stepping once per network
+    // update.
+    const clock = this.world?.getWorldClock();
+    let t01 = 0.5;
+    if (clock) {
+      if (clock.ticksElapsed !== this.lastKnownWorldClockTicks) {
+        this.lastKnownWorldClockTicks = clock.ticksElapsed;
+        this.lastWorldClockMs = now;
+      }
+      const smoothTicks = clock.ticksElapsed + (now - this.lastWorldClockMs) / 50;
+      t01 = timeOfDay01(smoothTicks, clock.dayLengthTicks);
+
+      // Re-select the atmosphere off the live biomeTag (T-311 P5a) — cheap
+      // Map lookups, re-checked every frame rather than special-cased into
+      // setContentCache/setClientWorld's differing call order per tile
+      // transition (WorldClock's entity spawn can decode after either).
+      if (this.content && clock.biomeTag !== this.appliedAtmosphereId) {
+        const atmo = this.content.getAtmosphere(clock.biomeTag) ?? this.content.getAtmosphere("default");
+        if (atmo) {
+          this.envLighting.applyAtmosphere(atmo);
+          this.currentAtmosphere = atmo;
+          this.appliedAtmosphereId = clock.biomeTag;
+          // God-ray params are static per atmosphere (unlike mist's per-phase
+          // weight) — applied once here, not every frame.
+          this.godRay.setParams(atmo.godRay);
+          this.edgePass.setGodRayParams(atmo.godRay.strength, atmo.godRay.color);
+          // T-340: the ambient drift population rides the same per-frame
+          // atmosphere re-selection — a tile transition or biome change
+          // picks up a different ambience (or none) for free.
+          this.particles.setAmbience(atmo.ambienceParticleId ?? null);
+        }
+      }
+    }
+    this.envLighting.update(this.cameraTarget, this.camera.position, t01);
+    // Cheap wetness-weighted sky reflection (T-311 P5b): every wet_reflect-
+    // treated ground material shares one uniform object, updated here once
+    // per frame (same shared-uniform idiom canopyFade uses for wind time).
+    setWetReflectSkyColor(this.getSkyColor());
+
+    // Ground mist (T-311 P5a, GroundMistLayer): lerp this frame's phase
+    // density weight toward the current AtmosphereDef's target the same way
+    // envLighting's lightCur lerps colors, so mist doesn't snap on a phase
+    // change; params (band/color) are static per atmosphere, only reapplied
+    // when they change.
+    if (this.currentAtmosphere) {
+      const target = this.currentAtmosphere.mist.densityByPhase[this.currentDayPhase] ?? 0;
+      this.mistWeightCur += (target - this.mistWeightCur) * this.currentAtmosphere.mist.easeRate;
+      this.edgePass.setMist(this.currentAtmosphere.mist, this.mistWeightCur);
+    }
 
     // Update weapon tip trail ribbons for all currently attacking entities.
     const tTrailStart = performance.now();
     this.weaponTrail.update(this.entities.all, this.weaponActionsMap, now);
     this.frameTimings.trailMs = performance.now() - tTrailStart;
 
-    // Advance hit spark particles and flicker lights.
-    const dt = this.lastFrameMs > 0 ? Math.min((now - this.lastFrameMs) / 1000, 0.1) : 0;
-    this.lastFrameMs = now;
-    this.hitSparkRenderer.update(dt);
-    this.lightManager.tick(now);
+    // T-340: muzzle-flash edge detection reads the same weapon-action phase
+    // math weaponTrail just applied this frame; burst/ambience particle
+    // physics integrate right after (replaces hitSparkRenderer/dustMotes).
+    this.particles.updateMuzzleFlashes(this.entities.all, this.weaponActionsMap, now);
+    this.particles.update(dt, this.cameraTarget);
+    // T-339: crumbling corpses fall/settle/fade — same dt this frame's
+    // particles just integrated with, same terrain-height lookup the aim
+    // indicator/foot-terrain IK already use.
+    if (this.world) {
+      const world = this.world;
+      this.crumbleController.update(
+        dt, this.gravity,
+        (x, y) => world.getTerrainHeight(x, y),
+        (defId, origin) => this.particles.spawnBurstAt(defId, origin),
+      );
+    }
+    canopyFade.setWindTime(now);
+    this.edgePass.setTime(now * 0.001);
+    this.lightManager.tick(now, this.camera.position);
 
     const tGlStart = performance.now();
     if (this.bypassPostFX) {
@@ -1082,9 +1544,39 @@ export class VoximRenderer {
       this.renderer.setRenderTarget(null);
       this.renderer.render(this.scene, this.camera);
     } else {
-      // Pass 1: render scene to low-res pixel target (writes colour + depth).
+      // Pass 1: render scene to the HDR pixel target (writes colour + depth).
       this.renderer.setRenderTarget(this.pixelTarget);
       this.renderer.render(this.scene, this.camera);
+
+      // T-313: extend raking shadows past the near sun's ±60u frustum via a
+      // second, wider, coarser cascade — darkens the HDR colour BEFORE
+      // bloom/god-ray read it, so canopy-gap light shafts shape correctly
+      // out there too (not just inside the near cascade's reach).
+      {
+        const farMap = this.envLighting.getFarShadowMap();
+        this.shadowCascade.render(
+          this.renderer,
+          this.pixelTarget.texture,
+          this.depthTex,
+          this.camera.projectionMatrixInverse,
+          this.camera.matrixWorld,
+          this.envLighting.getNearShadowMatrix(this._nearShadowMatrixScratch),
+          farMap,
+          farMap ? this.envLighting.getFarShadowMatrix(this._farShadowMatrixScratch) : null,
+        );
+      }
+
+      // Bloom: bright-pass + blur the HDR scene colour (torch/ember/sun glow).
+      // The EdgePass adds the result back before its ACES tonemap.
+      this.bloom.render(this.renderer, this.shadowCascade.texture);
+      this.edgePass.setBloomTexture(this.bloom.texture);
+
+      // God rays: project the sun to screen UV and radial-scatter the bloom
+      // bright-target toward it → canopy/mist light shafts.
+      this.envLighting.getSunWorldPosition(this._sunWorld).project(this.camera);
+      this._sunUV.set(this._sunWorld.x * 0.5 + 0.5, this._sunWorld.y * 0.5 + 0.5);
+      this.godRay.render(this.renderer, this.bloom.texture, this._sunUV);
+      this.edgePass.setGodRayTexture(this.godRay.texture);
 
       // Hover mask: render whatever's currently on HOVER_LAYER flat-white →
       // hoverMaskTarget.  HoverOutlineRenderer puts the hovered entity's meshes
@@ -1114,8 +1606,8 @@ export class VoximRenderer {
       this.depthBlitMat.uniforms.uViewInv.value.copy(this.camera.matrixWorld);
       // Recenter the height-shading band on the player so the perspective view's
       // broader Y range (sky, distant hills) doesn't compress contrast near the player.
-      this.depthBlitMat.uniforms.uHeightMin.value = playerPos.y - HEIGHT_SHADE_BELOW;
-      this.depthBlitMat.uniforms.uHeightMax.value = playerPos.y + HEIGHT_SHADE_ABOVE;
+      this.depthBlitMat.uniforms.uHeightMin.value = playerPos.y - this.heightShadeBelow;
+      this.depthBlitMat.uniforms.uHeightMax.value = playerPos.y + this.heightShadeAbove;
       this.renderer.setRenderTarget(this.heightTarget);
       this.renderer.render(this.depthBlitScene, this.blitCamera);
 
@@ -1148,9 +1640,66 @@ export class VoximRenderer {
     this.frameTimings.tris      = this.renderer.info.render.triangles;
   }
 
-  /** Spawn a hit spark burst at the given world-space position. */
-  spawnHitSpark(x: number, y: number, z: number): void {
-    this.hitSparkRenderer.spawn(x, y, z);
+  /** Feed a wire GameEvent to the particle system's source registry (T-340) —
+   *  replaces spawnHitSpark. */
+  onParticleEvent(ev: GameEvent): void {
+    this.particles.onEvent(ev);
+  }
+
+  /**
+   * Death-style dispatch (T-339) — consumes the EntityDied fact. Resolves
+   * WHICH style (if any) is active by scanning the dying entity's own,
+   * already-networked Resource component (ContentCache.getActiveDeathStyle
+   * — see its doc comment for the wire-correctness argument), then
+   * dispatches through the client death-style registry. A no-op for a
+   * player death or any entity whose corpse just vanishes (no DeathStyleDef
+   * matched) — dissolve's own handler is ALSO a no-op (its visual is
+   * already driven every frame off AnimationState.dissolutionPhase), so
+   * only a crumble death actually does anything here today.
+   */
+  onEntityDied(entityId: string): void {
+    if (!this.content || !this.world) return;
+    const mesh = this.entities.getEntityMesh(entityId);
+    const state = this.world.get(entityId);
+    if (!mesh || !state) return;
+    const active = this.content.getActiveDeathStyle(state.resource?.values);
+    if (!active) return;
+    const handler = getDeathStyleHandler(active.def.style);
+    if (!handler) return;
+    const world = this.world;
+    handler(entityId, mesh, active.def, active.durationTicks, {
+      scene: this.scene,
+      getTerrainHeight: (x, y) => world.getTerrainHeight(x, y),
+      spawnParticleBurst: (defId, origin) => this.particles.spawnBurstAt(defId, origin),
+      gravity: this.gravity,
+    });
+  }
+
+  /** Register particle emitter definitions (T-340), from the bootstrap-
+   *  delivered ContentService. */
+  setParticleDefs(defs: ParticleEmitterDef[]): void {
+    this.particles.setDefs(defs);
+  }
+
+  /** Wire the particle system's gravity constant to GameConfig.physics.gravity
+   *  (T-340) — never a hardcoded TS constant. Also stashes it for
+   *  CrumbleController (T-339), which shares the same constant. */
+  setParticlePhysics(gravity: number): void {
+    this.particles.setPhysics(gravity);
+    this.gravity = gravity;
+  }
+
+  /**
+   * Hitstop (T-296+T-292): freeze the whole scene's animation advance for
+   * `durationMs` — client-derived punch on a confirmed hit. The server's own
+   * per-entity freeze (movement-locked via PhysicsSystem) already holds the
+   * attacker+target in place for `hitStopTicks`; this is the visual
+   * counterpart so the WHOLE frame reads as a beat, not just the two
+   * bodies. Never shortens an already-running freeze (a second hit landing
+   * mid-freeze extends it, doesn't reset it shorter).
+   */
+  triggerHitStop(durationMs: number): void {
+    this.hitStopUntilMs = Math.max(this.hitStopUntilMs, performance.now() + durationMs);
   }
 
   /** Register weapon action definitions so the trail renderer can look up swing paths. */
@@ -1171,21 +1720,30 @@ export class VoximRenderer {
     this.renderer.setSize(w, h, false);
     const aspect = w / h;
     this.cameraRig.resize(aspect);
-    const npw = Math.max(1, w);
-    const nph = Math.max(1, h);
+    // Match the supersampled drawing-buffer resolution (CSS size × pixel ratio).
+    const ratio = this.renderer.getPixelRatio();
+    const npw = Math.max(1, Math.round(w * ratio));
+    const nph = Math.max(1, Math.round(h * ratio));
     this.pixelTarget.setSize(npw, nph);
     this.heightTarget.setSize(npw, nph);
     this.hoverMaskTarget.setSize(npw, nph);
+    this.shadowCascade.setSize(npw, nph);
     this.edgePass.setSize(npw, nph);
+    this.bloom.setSize(npw, nph);
+    this.godRay.setSize(npw, nph);
   }
 
   dispose(): void {
     this.debugOverlayManager.dispose();
-    this.hitSparkRenderer.dispose();
+    this.particles.dispose();
+    this.crumbleController.disposeAll();
     this.lightManager.dispose();
     this.weaponTrail.dispose();
     this.instancePool.dispose();
     this.edgePass.dispose();
+    this.bloom.dispose();
+    this.godRay.dispose();
+    this.shadowCascade.dispose();
     this.pixelTarget.dispose();
     this.heightTarget.dispose();
     this.hoverMaskTarget.dispose();

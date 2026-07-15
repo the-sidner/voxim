@@ -1,0 +1,23 @@
+{
+  "id": "shield_knight",
+  "displayName": "Shield Knight",
+  "maxHealth": 150,
+  "fleeHealthRatio": 0.0,
+  "behaviorTreeId": "shield_knight",
+  "aggroRange": 16,
+  "attackRange": 2.2,
+  "wanderRadius": 20,
+  "wanderTicks": 90,
+  "idleTicks": 60,
+  "attackTicks": 6000,
+  "fleeTicks": 0,
+  "seekFoodTicks": 9999,
+  "speedMultiplier": 0.9,
+  "weaponItemType": "procedural_sword",
+  "armorItemTypes": {
+    "chest": "plate_chest",
+    "head": "plate_helm",
+    "legs": "plate_greaves"
+  },
+  "deathStyleId": "crumble"
+}

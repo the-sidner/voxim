@@ -7,6 +7,11 @@ import type { ContentService } from "@voxim/content";
 import { registerGenerator, getGenerator, generatorIds } from "./registry.ts";
 import { treeGrammar } from "./generators/tree_grammar.ts";
 import { boulderGrammar } from "./generators/boulder_grammar.ts";
+import { foliageTuft } from "./generators/foliage_tuft.ts";
+import { mushroom } from "./generators/mushroom.ts";
+import { humanoidGrammar } from "./generators/humanoid_grammar.ts";
+import { bladeGrammar } from "./generators/blade_grammar.ts";
+import { armorGrammar } from "./generators/armor_grammar.ts";
 
 let _registered = false;
 
@@ -16,6 +21,11 @@ export function registerBuiltinGenerators(): void {
   _registered = true;
   registerGenerator("tree_grammar", treeGrammar);
   registerGenerator("boulder_grammar", boulderGrammar);
+  registerGenerator("foliage_tuft", foliageTuft);
+  registerGenerator("mushroom", mushroom);
+  registerGenerator("humanoid_grammar", humanoidGrammar);
+  registerGenerator("blade_grammar", bladeGrammar);
+  registerGenerator("armor_grammar", armorGrammar);
 }
 
 /**

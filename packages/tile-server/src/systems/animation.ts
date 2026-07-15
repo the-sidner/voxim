@@ -26,6 +26,7 @@ import { Crouched } from "../components/tags.ts";
 import { Equipment } from "../components/equipment.ts";
 import type { SwingableData } from "@voxim/content";
 import { AnimationSlots } from "../components/animation_slots.ts";
+import { Resource } from "../components/resource.ts";
 import { createLogger } from "../logger.ts";
 
 const log = createLogger("AnimationSystem");
@@ -75,7 +76,7 @@ export class AnimationSystem implements System {
   ): void {
     if (DEBUG_FORCE_REST_POSE) {
       const prev = world.get(entityId, AnimationState);
-      const next: AnimationStateData = { layers: [], weaponActionId: "", ticksIntoAction: 0 };
+      const next: AnimationStateData = { layers: [], weaponActionId: "", ticksIntoAction: 0, dissolutionPhase: 0 };
       if (!animStatesEqual(prev, next)) world.set(entityId, AnimationState, next);
       return;
     }
@@ -143,14 +144,23 @@ export class AnimationSystem implements System {
       const paDef = pa ? this.content.actions.get(pa.actionId) : undefined;
       const paSwing = !!paDef?.effects.some((e) => e.kind === "weapon_trace") && !!geomAction;
       const weaponActionId = paSwing ? geomAction!.id : "";
-      let ticksIntoAction = 0;
-      if (paSwing && pa) {
-        if (pa.phase === "active") ticksIntoAction = geomAction!.windupTicks + pa.ticksInPhase;
-        else if (pa.phase === "winddown") ticksIntoAction = geomAction!.windupTicks + geomAction!.activeTicks + pa.ticksInPhase;
-        // windup stays 0 — pre-active, no trail slices.
-      }
+      const ticksIntoAction = paSwing && pa
+        ? deriveTicksIntoAction(pa.phase, pa.ticksInPhase, geomAction!.windupTicks, geomAction!.activeTicks, geomAction!.winddownTicks)
+        : 0;
 
-      const next: AnimationStateData = { layers, weaponActionId, ticksIntoAction };
+      // Death-dissolve phase (T-311 P5c) — DERIVED, not mutated. A profiled
+      // corpse carries a `dissolve_timer` Resource (seeded by the
+      // shed_dissolve DeathHook) that counts DOWN from its max; the phase is
+      // just how far it has counted (0 = just died, 1 = about to despawn).
+      // Deriving here (rather than a ResourceSystem `world.mutate` on
+      // AnimationState) avoids a same-tick ordering hazard: ResourceSystem
+      // runs BEFORE AnimationSystem, but AnimationSystem fully REPLACES
+      // AnimationState every tick via world.set — a mutate from ResourceSystem
+      // would just get clobbered by this system's own write.
+      const dissolveRv = world.get(entityId, Resource)?.values["dissolve_timer"];
+      const dissolutionPhase = dissolveRv ? 1 - dissolveRv.value / dissolveRv.max : 0;
+
+      const next: AnimationStateData = { layers, weaponActionId, ticksIntoAction, dissolutionPhase };
       if (!animStatesEqual(prev, next)) {
         world.set(entityId, AnimationState, next);
       }
@@ -164,6 +174,38 @@ function velocityMagnitude(world: World, entityId: string): number {
   const v = world.get(entityId, Velocity);
   if (!v) return 0;
   return Math.sqrt(v.x * v.x + v.y * v.y);
+}
+
+/**
+ * Ticks elapsed into a swing's GEOMETRIC arc (WeaponActionDef windup/active/
+ * winddown — a separate timing source from the ActionDef's own `phases`),
+ * given which ActionDef phase the primary slot currently sits in. Drives the
+ * client's weapon-trail + attachment `t`.
+ *
+ *   "windup"          → 0 (pre-active; no trail slices yet)
+ *   "active"          → geomWindup + ticksInPhase
+ *   "winddown"        → geomWindup + geomActive + ticksInPhase
+ *   anything else     → geomWindup + geomActive + geomWinddown (held at the
+ *                       arc's END value)
+ *
+ * The last branch is what makes an authored trailing phase (T-298's optional
+ * `recovery`, appended after `winddown`) safe by construction: it's ANY
+ * phase name other than the three recognised ones, generic to however many
+ * such phases an action declares — never a hardcoded "recovery" check, and
+ * never falls through to 0 (which would snap the client's swing pose/trail
+ * back to the arc's START for the whole trailing window — a visible glitch).
+ */
+export function deriveTicksIntoAction(
+  phase: string,
+  ticksInPhase: number,
+  geomWindupTicks: number,
+  geomActiveTicks: number,
+  geomWinddownTicks: number,
+): number {
+  if (phase === "windup") return 0;
+  if (phase === "active") return geomWindupTicks + ticksInPhase;
+  if (phase === "winddown") return geomWindupTicks + geomActiveTicks + ticksInPhase;
+  return geomWindupTicks + geomActiveTicks + geomWinddownTicks;
 }
 
 /** The WeaponActionDef id for this actor's current combo step + heavy flag
@@ -312,6 +354,7 @@ function animStatesEqual(a: AnimationStateData | null, b: AnimationStateData): b
   if (!a) return false;
   if (a.weaponActionId !== b.weaponActionId) return false;
   if (a.ticksIntoAction !== b.ticksIntoAction) return false;
+  if (a.dissolutionPhase !== b.dissolutionPhase) return false;
   if (a.layers.length !== b.layers.length) return false;
   for (let i = 0; i < a.layers.length; i++) {
     const la = a.layers[i], lb = b.layers[i];

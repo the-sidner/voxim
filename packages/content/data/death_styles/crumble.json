@@ -1,0 +1,14 @@
+{
+  "id": "crumble",
+  "style": "crumble",
+  "resourceKey": "crumble_timer",
+  "crumble": {
+    "impulseSpeed": [1.5, 3.5],
+    "spreadDeg": 50,
+    "gravityScale": 1.0,
+    "spinSpeed": [1.0, 4.0],
+    "durationTicks": 200,
+    "fadeTicks": 40,
+    "impactParticleId": "crumble_impact"
+  }
+}

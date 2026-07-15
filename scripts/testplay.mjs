@@ -50,7 +50,7 @@ const token = await auth();
 console.log('auth ok (token len ' + token.length + ')');
 
 const browser = await chromium.launch({ headless: HEADLESS, executablePath: EXE, args: ['--no-sandbox'] });
-const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, ignoreHTTPSErrors: true });
+const ctx = await browser.newContext({ viewport: { width: Number(process.env.VW || 1280), height: Number(process.env.VH || 800) }, deviceScaleFactor: Number(process.env.DSF || 1), ignoreHTTPSErrors: true });
 await ctx.addInitScript((t) => { globalThis.VOXIM_SESSION_TOKEN = t; }, token);
 const page = await ctx.newPage();
 

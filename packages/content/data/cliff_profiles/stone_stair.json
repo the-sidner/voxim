@@ -1,0 +1,21 @@
+{
+  "id": "stone_stair",
+  "wallKind": "stone",
+  "erosionStates": {
+    "crisp": {
+      "tierCount": 1,
+      "jitterAmp": 0.0,
+      "edgeChinkiness": 0.0
+    },
+    "weathered": {
+      "tierCount": 1,
+      "jitterAmp": 0.04,
+      "edgeChinkiness": 0.05
+    },
+    "broken": {
+      "tierCount": 1,
+      "jitterAmp": 0.08,
+      "edgeChinkiness": 0.1
+    }
+  }
+}

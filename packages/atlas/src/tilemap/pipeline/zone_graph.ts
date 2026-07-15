@@ -1,30 +1,30 @@
 /**
  * Stage 10 — AnnotatedZoneGraph (T-208 + T-210 + sector refactor).
  *
- * Partitions every pixel of the tile into exactly one **sector**:
+ * Partitions every cell of the tile into exactly one **sector**:
  *
  *   PATH SECTORS (traversal: "path") — the connective tissue.
- *     · CHAMBERS — `chamberOf`-tagged open pixels (rooms grown by
+ *     · CHAMBERS — `chamberOf`-tagged open cells (rooms grown by
  *       the rooms stage). One sector per chamber id.
  *     · CROSSROADS — small disks painted around every network
- *       junction of degree ≥ 3, over corridor pixels (junctions
+ *       junction of degree ≥ 3, over corridor cells (junctions
  *       inside chambers don't carve — the chamber wins).
- *     · CORRIDOR SEGMENTS — remaining open pixels, flood-filled.
+ *     · CORRIDOR SEGMENTS — remaining open cells, flood-filled.
  *       Naturally split at the crossroads disks, so a corridor
  *       passing through three junctions becomes four segments.
  *
- *   WILDERNESS SECTORS (traversal: "wilderness") — closed-pixel
+ *   WILDERNESS SECTORS (traversal: "wilderness") — closed-cell
  *     blobs of a wilderness-eligible kind (STONE / FOREST /
  *     GRASS_MOUND). Reached only via stairs (T-210).
  *
- *   Every pixel maps to exactly one sector id — `zoneOf` is total
- *   over open + wilderness-closed pixels. Water blobs and OPEN-kind
+ *   Every cell maps to exactly one sector id — `zoneOf` is total
+ *   over open + wilderness-closed cells. Water blobs and OPEN-kind
  *   sentinels stay un-zoned (0xFFFF).
  *
  * Sectors are the working unit for everything downstream: the POI
  * matcher (T-209), stair placement (T-210), zone naming (T-211),
  * runtime POI triggers (T-212). No system below this stage thinks
- * in pixels — it walks the sector graph.
+ * in cells — it walks the sector graph.
  *
  * Role assignment per sector class:
  *   chamber zone   → existing rules (plaza/lobby/pocket/arena/...)
@@ -39,12 +39,9 @@
 
 import type { Transformer } from "@voxim/levelgen";
 import type { ZoneRole } from "@voxim/content";
+import { BoundaryKind } from "@voxim/protocol";
 import type { GenParams } from "../../genparams.ts";
 import { ROOM_ID_NONE } from "./room_detection.ts";
-import {
-  BOUNDARY_KIND_OPEN, BOUNDARY_KIND_STONE,
-  BOUNDARY_KIND_FOREST, BOUNDARY_KIND_GRASS_MOUND, BOUNDARY_KIND_WATER,
-} from "./boundary_kinds.ts";
 import {
   ZONE_ID_NONE, type AnnotatedZone, type AnnotatedZoneState, type MaterialsState,
 } from "./state.ts";
@@ -56,34 +53,14 @@ import type {
 
 /**
  * Kinds that segment into wilderness zones. Water now included as
- * "morass" sectors so river / pond pixels stop reading as un-segmented
+ * "morass" sectors so river / pond cells stop reading as un-segmented
  * gaps in the inspector. Players still can't traverse them (no bridge
  * mechanic), but they're first-class sectors in the data model.
  */
 const WILDERNESS_KINDS = new Set<number>([
-  BOUNDARY_KIND_STONE, BOUNDARY_KIND_FOREST, BOUNDARY_KIND_GRASS_MOUND,
-  BOUNDARY_KIND_WATER,
+  BoundaryKind.stone, BoundaryKind.forest, BoundaryKind.grassMound,
+  BoundaryKind.water,
 ]);
-
-/**
- * Disk radius (atlas pixels) used to carve a crossroads sector around
- * each network junction of qualifying degree. Tuned so 3-way + 4-way
- * intersections produce a visible, named "place" rather than getting
- * absorbed into the surrounding corridor.
- */
-const CROSSROADS_DISK_RADIUS = 3;
-const CROSSROADS_DEGREE_MIN  = 3;
-
-/**
- * Wilderness blobs smaller than this get absorbed into their largest
- * wilderness neighbour during phase 4b. Path-network carving fragments
- * the closed-pixel space into hundreds of tiny pockets (1-50 pixels);
- * those aren't perceived as "places" by the player. After merging,
- * the surviving wilderness sectors are uniformly substantial and
- * name-worthy. Tuned for the canonical fixtures — a tile typically
- * keeps 10-25 wilderness sectors instead of 137.
- */
-const WILDERNESS_MERGE_THRESHOLD = 400;
 
 export const zoneGraph: Transformer<MaterialsState, AnnotatedZoneState, GenParams["zoneGraph"]> =
   (state, _stageSeed, params) => {
@@ -99,7 +76,7 @@ export const zoneGraph: Transformer<MaterialsState, AnnotatedZoneState, GenParam
     const carvedAsCrossroads = new Set<number>();
     const carvedAsCorridor   = new Set<number>();
 
-    // ---- 1. CHAMBER SECTORS — chamberOf-tagged open pixels ------------
+    // ---- 1. CHAMBER SECTORS — chamberOf-tagged open cells ------------
     let maxChamberId = -1;
     for (let i = 0; i < N; i++) {
       if (openMask[i] !== 1) continue;
@@ -119,13 +96,13 @@ export const zoneGraph: Transformer<MaterialsState, AnnotatedZoneState, GenParam
     //         carve — chamber sector wins.
     if (state.seeds && state.degrees) {
       for (let i = 0; i < state.seeds.length; i++) {
-        if (state.degrees[i] < CROSSROADS_DEGREE_MIN) continue;
+        if (state.degrees[i] < params.crossroadsDegreeMin) continue;
         const j = state.seeds[i];
         const jx = j.x | 0;
         const jy = j.y | 0;
         if (jx < 0 || jy < 0 || jx >= gridSize || jy >= gridSize) continue;
         const jIdx = jy * gridSize + jx;
-        // Only carve if the junction pixel itself lies on a corridor
+        // Only carve if the junction cell itself lies on a corridor
         // (open AND not a chamber AND not already a sector).
         if (openMask[jIdx] !== 1) continue;
         if (chamberOf[jIdx] !== ROOM_ID_NONE) continue;
@@ -134,7 +111,7 @@ export const zoneGraph: Transformer<MaterialsState, AnnotatedZoneState, GenParam
         const zid = nextZoneId++;
         traversalOf[zid] = "path";
         carvedAsCrossroads.add(zid);
-        const R = CROSSROADS_DISK_RADIUS;
+        const R = params.crossroadsDiskRadius;
         const R2 = R * R;
         for (let dy = -R; dy <= R; dy++) {
           const ny = jy + dy;
@@ -144,8 +121,8 @@ export const zoneGraph: Transformer<MaterialsState, AnnotatedZoneState, GenParam
             const nx = jx + dx;
             if (nx < 0 || nx >= gridSize) continue;
             const idx = ny * gridSize + nx;
-            // Only repaint corridor pixels — chambers keep their tag,
-            // and already-assigned pixels (e.g. another junction's
+            // Only repaint corridor cells — chambers keep their tag,
+            // and already-assigned cells (e.g. another junction's
             // disk if junctions cluster) keep their first owner.
             if (openMask[idx] !== 1) continue;
             if (chamberOf[idx] !== ROOM_ID_NONE) continue;
@@ -156,7 +133,7 @@ export const zoneGraph: Transformer<MaterialsState, AnnotatedZoneState, GenParam
       }
     }
 
-    // ---- 3. CORRIDOR SEGMENTS — remaining open pixels -----------------
+    // ---- 3. CORRIDOR SEGMENTS — remaining open cells -----------------
     //         Bounded by chambers + crossroads disks, so each chain
     //         between junctions becomes its own sector.
     for (let pixelIdx = 0; pixelIdx < N; pixelIdx++) {
@@ -178,7 +155,7 @@ export const zoneGraph: Transformer<MaterialsState, AnnotatedZoneState, GenParam
       }
     }
 
-    // ---- 4. WILDERNESS SECTORS — closed-pixel blobs -------------------
+    // ---- 4. WILDERNESS SECTORS — closed-cell blobs -------------------
     for (let pixelIdx = 0; pixelIdx < N; pixelIdx++) {
       if (openMask[pixelIdx] !== 0) continue;
       if (zoneOf[pixelIdx] !== ZONE_ID_NONE) continue;
@@ -200,16 +177,16 @@ export const zoneGraph: Transformer<MaterialsState, AnnotatedZoneState, GenParam
 
     // ---- 4b. MERGE SMALL WILDERNESS BLOBS into largest neighbour -----
     //          Wilderness segmentation produces hundreds of tiny
-    //          fragments (1-50 pixels each) where the path network
+    //          fragments (1-50 cells each) where the path network
     //          chops up the forest. Players don't perceive those as
     //          distinct places. Merge any wilderness sector smaller
-    //          than `WILDERNESS_MERGE_THRESHOLD` into the largest
+    //          than `params.wildernessMergeThreshold` into the largest
     //          wilderness sector it touches. After merging, the
     //          surviving sectors are substantial and uniformly
     //          name-worthy.
     mergeSmallWildernessZones(
       zoneOf, openMask, gridSize, traversalOf, nextZoneId,
-      WILDERNESS_MERGE_THRESHOLD,
+      params.wildernessMergeThreshold, params.mergeProximityRadius,
     );
 
     // ---- 5. Allocate per-sector accumulators --------------------------
@@ -219,7 +196,7 @@ export const zoneGraph: Transformer<MaterialsState, AnnotatedZoneState, GenParam
     const oppositeBoundary = new Uint32Array(zoneCount);
     const totalBoundary    = new Uint32Array(zoneCount);
 
-    // ---- 6. Walk pixels, accumulate metrics + adjacency ---------------
+    // ---- 6. Walk cells, accumulate metrics + adjacency ---------------
     for (let idx = 0; idx < N; idx++) {
       const zid = zoneOf[idx];
       if (zid === ZONE_ID_NONE) continue;
@@ -271,7 +248,7 @@ export const zoneGraph: Transformer<MaterialsState, AnnotatedZoneState, GenParam
 
     // ---- 7. Portal-touching zones = entries ---------------------------
     for (const p of portals) {
-      const idx = p.pixelY * gridSize + p.pixelX;
+      const idx = p.cellY * gridSize + p.cellX;
       const zid = zoneOf[idx];
       if (zid !== ZONE_ID_NONE && zonesRaw[zid]) {
         zonesRaw[zid]!.isEntry = true;
@@ -318,7 +295,7 @@ export const zoneGraph: Transformer<MaterialsState, AnnotatedZoneState, GenParam
         isEntry: z.isEntry,
         isCorridor: z.startedAsCorridor,
         traversal: z.traversal,
-        name: nameZone(_stageSeed, zid, z.area, role, z.traversal, biome),
+        name: nameZone(_stageSeed, zid, z.area, role, z.traversal, biome, params),
       });
     }
     zones.sort((a, b) => a.id - b.id);
@@ -326,7 +303,7 @@ export const zoneGraph: Transformer<MaterialsState, AnnotatedZoneState, GenParam
     // T-214: write LevelDef regions in the same pass. Each AnnotatedZone
     // maps to one PathRegion or PlateauRegion; PlateauRegion carries the
     // gameplay-contract `jumpable: false` flag and every region owns
-    // its pixel set (sorted flat indices into the grid). The pixel
+    // its cell set (sorted flat indices into the grid). The cell
     // ownership is the source of truth — downstream `zoneOf` is derived
     // from `levelToZoneOf(level)`.
     const pixelsByZoneId = new Map<number, number[]>();
@@ -339,8 +316,8 @@ export const zoneGraph: Transformer<MaterialsState, AnnotatedZoneState, GenParam
     state.level.regions = zones.map(z => buildRegion(z, pixelsByZoneId.get(z.id) ?? []));
 
     // T-214: portals come from the prior portalPlacement stage as
-    // pixel anchors; resolve each to its host region now that regions
-    // exist. Portals whose anchor pixel sits in an un-zoned cell (e.g.
+    // cell anchors; resolve each to its host region now that regions
+    // exist. Portals whose anchor cell sits in an un-zoned cell (e.g.
     // a tile with no chambers carved) are dropped.
     const regionIdByZoneId = new Map<number, string>();
     for (const r of state.level.regions) regionIdByZoneId.set(r.zoneId, r.id);
@@ -352,21 +329,21 @@ export const zoneGraph: Transformer<MaterialsState, AnnotatedZoneState, GenParam
   };
 
 function buildPortalEdge(
-  p: { edge: "north"|"east"|"south"|"west"; pixelX: number; pixelY: number; roomId: number },
+  p: { edge: "north"|"east"|"south"|"west"; cellX: number; cellY: number; roomId: number },
   zoneOf: Uint16Array,
   gridSize: number,
   regionIdByZoneId: Map<number, string>,
 ): { id: string; hostRegion: string; edge: "north"|"east"|"south"|"west"; pixel: { x: number; y: number } } | null {
-  const idx = p.pixelY * gridSize + p.pixelX;
+  const idx = p.cellY * gridSize + p.cellX;
   const zid = zoneOf[idx];
   if (zid === 0xFFFF) return null;
   const host = regionIdByZoneId.get(zid);
   if (!host) return null;
   return {
-    id: `portal:${p.edge}:${p.pixelX},${p.pixelY}`,
+    id: `portal:${p.edge}:${p.cellX},${p.cellY}`,
     hostRegion: host,
     edge: p.edge,
-    pixel: { x: p.pixelX, y: p.pixelY },
+    pixel: { x: p.cellX, y: p.cellY },
   };
 }
 
@@ -411,14 +388,14 @@ function buildRegion(z: AnnotatedZone, pixels: number[]): Region {
 
 /**
  * Decide a plateau's wall material from its kind histogram. We pick the
- * majority closed-pixel kind; ties prefer the more "dungeon-feeling"
+ * majority closed-cell kind; ties prefer the more "dungeon-feeling"
  * one (stone > forest > grass > water).
  */
 function classifyWallKind(hist: Record<number, number>): PlateauRegion["wallKind"] {
-  const stone  = hist[BOUNDARY_KIND_STONE]       ?? 0;
-  const forest = hist[BOUNDARY_KIND_FOREST]      ?? 0;
-  const grass  = hist[BOUNDARY_KIND_GRASS_MOUND] ?? 0;
-  const water  = hist[BOUNDARY_KIND_WATER]       ?? 0;
+  const stone  = hist[BoundaryKind.stone]      ?? 0;
+  const forest = hist[BoundaryKind.forest]     ?? 0;
+  const grass  = hist[BoundaryKind.grassMound] ?? 0;
+  const water  = hist[BoundaryKind.water]      ?? 0;
   const max = Math.max(stone, forest, grass, water);
   if (max === 0) return "stone";
   if (stone  === max) return "stone";
@@ -464,11 +441,11 @@ function floodWilderness(
  * neighbouring (or proximate) wilderness zone:
  *
  *   1. Adjacency-based merge — small wilderness zone shares an
- *      open-pixel boundary with a larger wilderness zone? Merge.
+ *      open-cell boundary with a larger wilderness zone? Merge.
  *   2. Proximity-based merge — small wilderness zone has no direct
  *      adjacency (path corridors fully surround it) but a larger
- *      wilderness zone exists within `MERGE_PROXIMITY_RADIUS` pixels
- *      of any of its pixels? Merge across the thin path strip.
+ *      wilderness zone exists within `proximityRadius` cells
+ *      of any of its cells? Merge across the thin path strip.
  *      Mechanically: the player still walks the path as a path;
  *      the SECTOR LABELLING just folds the small thicket into the
  *      bigger grove it belongs to.
@@ -478,8 +455,6 @@ function floodWilderness(
  * un-merged — they're real standalone features. Path / chamber /
  * crossroads sectors are never touched.
  */
-const MERGE_PROXIMITY_RADIUS = 8;
-
 function mergeSmallWildernessZones(
   zoneOf: Uint16Array,
   _openMask: Uint8Array,
@@ -487,6 +462,7 @@ function mergeSmallWildernessZones(
   traversalOf: ("path" | "wilderness")[],
   _zoneCount: number,
   minArea: number,
+  proximityRadius: number,
 ): void {
   const N = gridSize * gridSize;
   const area = new Map<number, number>();
@@ -545,12 +521,12 @@ function mergeSmallWildernessZones(
     }
 
     // (2) Proximity-based — only fall back when no adjacency match.
-    //     Scan the small zone's pixels' MERGE_PROXIMITY_RADIUS neighbourhood
+    //     Scan the small zone's cells' proximityRadius neighbourhood
     //     for ANY larger wilderness zone. Pick the largest.
     if (bestId === -1) {
       const bb = bbox.get(zid);
       if (!bb) continue;
-      const R = MERGE_PROXIMITY_RADIUS;
+      const R = proximityRadius;
       const xLo = Math.max(0, bb.minX - R);
       const xHi = Math.min(gridSize - 1, bb.maxX + R);
       const yLo = Math.max(0, bb.minY - R);
@@ -679,23 +655,22 @@ function classifyCorridorRole(
 }
 
 /**
- * Wilderness zones are picked by their dominant pixel kind.
- * Tie-breaking: stone > forest > grass.
+ * Wilderness zones are picked by their dominant cell kind.
+ * Tie-breaking: stone > forest > grass > water.
  */
 function classifyWildernessRole(area: number, hist: Record<number, number>): ZoneRole {
-  const stone   = hist[BOUNDARY_KIND_STONE]       ?? 0;
-  const forest  = hist[BOUNDARY_KIND_FOREST]      ?? 0;
-  const grass   = hist[BOUNDARY_KIND_GRASS_MOUND] ?? 0;
-  const total   = stone + forest + grass;
+  const stone   = hist[BoundaryKind.stone]      ?? 0;
+  const forest  = hist[BoundaryKind.forest]     ?? 0;
+  const grass   = hist[BoundaryKind.grassMound] ?? 0;
+  const water   = hist[BoundaryKind.water]      ?? 0;
+  const total   = stone + forest + grass + water;
   if (total === 0) return "outcrop";
-  const dominant = stone >= forest && stone >= grass ? "stone"
-                 : forest >= grass ? "forest"
-                 : "grass";
+  const dominant = stone >= forest && stone >= grass && stone >= water ? "stone"
+                 : forest >= grass && forest >= water ? "forest"
+                 : grass >= water ? "grass"
+                 : "water";
   if (dominant === "stone")  return "crag";
   if (dominant === "forest") return area > 500 ? "grove"  : "thicket";
+  if (dominant === "water")  return "morass";
   return                          area > 300 ? "hollow" : "outcrop";
 }
-
-// (suppress unused-var warnings for kind ids referenced only in type checks)
-void BOUNDARY_KIND_OPEN;
-void BOUNDARY_KIND_WATER;

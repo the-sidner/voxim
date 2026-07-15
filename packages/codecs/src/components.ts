@@ -8,7 +8,8 @@
 import type { Serialiser } from "@voxim/engine";
 import { buildCodec } from "./binary.ts";
 import { WireWriter, WireReader } from "./wire.ts";
-import type { ItemPart, ModelRefData, AnimationStateData, AnimationLayer, BodyPartVolume } from "@voxim/content";
+import { rleEncodeU8, rleDecodeU8 } from "./rle.ts";
+import type { ItemPart, ModelRefData, AnimationStateData, AnimationLayer } from "@voxim/content";
 
 /**
  * Hard array-size caps for variable-length component payloads. Purely a
@@ -19,7 +20,6 @@ import type { ItemPart, ModelRefData, AnimationStateData, AnimationLayer, BodyPa
  */
 export const WIRE_LIMITS = {
   inventorySlots: 64,
-  craftingQueue: 16,
   traderListings: 64,
   containerSlots: 64,
   heritageTraits: 64,
@@ -155,10 +155,11 @@ export const openMaskCodec: Serialiser<OpenMaskData> = {
 
 export interface KindGridData {
   /**
-   * Per-cell boundary kind id from atlas's BOUNDARY_KIND_* set. Same
-   * row-major layout as HeightmapData.data. 0 = open / un-tagged.
-   * Drives client-side decoration (trees on FOREST, etc.) without
-   * needing per-tree server entities.
+   * Per-cell boundary kind id from @voxim/protocol's BoundaryKind set
+   * (packages/protocol/src/boundary_kind.ts). Same row-major layout as
+   * HeightmapData.data. 0 = open / un-tagged. Drives client-side
+   * decoration (trees on FOREST, etc.) without needing per-tree server
+   * entities.
    */
   data: Uint16Array;
 }
@@ -170,6 +171,129 @@ export const kindGridCodec: Serialiser<KindGridData> = {
   decode(bytes: Uint8Array): KindGridData {
     const copy = bytes.slice(0, CHUNK_CELLS * 2);
     return { data: new Uint16Array(copy.buffer, copy.byteOffset, CHUNK_CELLS) };
+  },
+};
+
+// ---- Per-cell field grids (T-311 Phase 3) ----------------------------------
+// Server/atlas-authoritative render fields, one byte plane per field (0..255),
+// RLE-packed per plane (sync — Serialiser is sync, gzip is async). WaterGrid is
+// an f32 surface level with a NaN sentinel, packed as water/dry runs. NEVER
+// consulted for collision — OpenMask stays the sole collision authority.
+
+/** Frame N u8 planes, each as [mode u8: 1=rle 0=raw][len u16][bytes]. */
+function encodeU8Planes(planes: Uint8Array[]): Uint8Array {
+  const w = new WireWriter();
+  w.writeU8(planes.length);
+  for (const p of planes) {
+    const rle = rleEncodeU8(p);
+    if (rle.length < CHUNK_CELLS) {
+      w.writeU8(1); w.writeU16(rle.length); w.writeBytes(rle);
+    } else {
+      w.writeU8(0); w.writeU16(CHUNK_CELLS); w.writeBytes(p);
+    }
+  }
+  return w.toBytes();
+}
+function decodeU8Planes(bytes: Uint8Array): Uint8Array[] {
+  const r = new WireReader(bytes);
+  const n = r.readU8();
+  const out: Uint8Array[] = [];
+  for (let i = 0; i < n; i++) {
+    const mode = r.readU8();
+    const len = r.readU16();
+    const raw = r.readBytes(len);
+    out.push(mode === 1 ? rleDecodeU8(raw, CHUNK_CELLS) : new Uint8Array(raw));
+  }
+  return out;
+}
+
+export interface VegFieldGridData {
+  /** Sky visibility 0..255 (255 = open sky, low under canopy). 1024 cells, row-major. */
+  canopyLight: Uint8Array;
+  /** Corruption intensity 0..255. */
+  corruption: Uint8Array;
+  /** Vegetation fertility 0..255 (the scatter-density basis). */
+  fertility: Uint8Array;
+}
+export const vegFieldGridCodec: Serialiser<VegFieldGridData> = {
+  encode(d: VegFieldGridData): Uint8Array {
+    return encodeU8Planes([d.canopyLight, d.corruption, d.fertility]);
+  },
+  decode(b: Uint8Array): VegFieldGridData {
+    const [canopyLight, corruption, fertility] = decodeU8Planes(b);
+    return { canopyLight, corruption, fertility };
+  },
+};
+
+export interface SurfaceStateGridData {
+  wetness: Uint8Array;       // 0..255
+  overgrowth: Uint8Array;    // moss-creep 0..255
+  wear: Uint8Array;          // path/traffic wear 0..255
+  variantIndex: Uint8Array;  // MaterialDef.variants index (stable id→index), 0..255
+  ruinAge: Uint8Array;       // age/decay 0..255 ("oldest stone most swallowed")
+  traffic: Uint8Array;       // footfall/disturbance 0..255
+}
+export const surfaceStateGridCodec: Serialiser<SurfaceStateGridData> = {
+  encode(d: SurfaceStateGridData): Uint8Array {
+    return encodeU8Planes([d.wetness, d.overgrowth, d.wear, d.variantIndex, d.ruinAge, d.traffic]);
+  },
+  decode(b: Uint8Array): SurfaceStateGridData {
+    const [wetness, overgrowth, wear, variantIndex, ruinAge, traffic] = decodeU8Planes(b);
+    return { wetness, overgrowth, wear, variantIndex, ruinAge, traffic };
+  },
+};
+
+export interface CliffGridData {
+  /** Content CliffProfileDef stable index (0 = "none", not a cliff cell). */
+  profileId: Uint8Array;
+  /** Erosion state 0=crisp / 1=weathered / 2=broken. */
+  erosion: Uint8Array;
+  /** Course index within the per-cell stack (client voxeliser only; not the
+   *  authority for stack height — the profile's tierCount is). */
+  tier: Uint8Array;
+  /** 1 = outward lip (stack here); 0 = buried interior wall cell. */
+  edge: Uint8Array;
+}
+export const cliffGridCodec: Serialiser<CliffGridData> = {
+  encode(d: CliffGridData): Uint8Array {
+    return encodeU8Planes([d.profileId, d.erosion, d.tier, d.edge]);
+  },
+  decode(b: Uint8Array): CliffGridData {
+    const [profileId, erosion, tier, edge] = decodeU8Planes(b);
+    return { profileId, erosion, tier, edge };
+  },
+};
+
+export interface WaterGridData {
+  /** Per-cell water surface level in world units; NaN = no water. 1024 cells. */
+  surfaceLevel: Float32Array;
+}
+export const waterGridCodec: Serialiser<WaterGridData> = {
+  encode(d: WaterGridData): Uint8Array {
+    const w = new WireWriter();
+    const a = d.surfaceLevel;
+    let i = 0;
+    while (i < CHUNK_CELLS) {
+      const water = !Number.isNaN(a[i]);
+      let run = 1;
+      while (i + run < CHUNK_CELLS && (!Number.isNaN(a[i + run])) === water) run++;
+      w.writeU16(run);
+      w.writeU8(water ? 1 : 0);
+      if (water) for (let k = 0; k < run; k++) w.writeF32(a[i + k]);
+      i += run;
+    }
+    return w.toBytes();
+  },
+  decode(b: Uint8Array): WaterGridData {
+    const r = new WireReader(b);
+    const a = new Float32Array(CHUNK_CELLS);
+    let o = 0;
+    while (o < CHUNK_CELLS) {
+      const run = r.readU16();
+      const water = r.readU8() === 1;
+      for (let k = 0; k < run && o < CHUNK_CELLS; k++) a[o++] = water ? r.readF32() : NaN;
+    }
+    return { surfaceLevel: a };
   },
 };
 
@@ -240,40 +364,6 @@ export const inventorySlotCodec: Serialiser<InventorySlot> = {
   },
 };
 
-// ---- InputState -------------------------------------------------------------
-// Player/NPC intent for the current tick. Written immediately at tick start
-// from the drained input ring buffer (player sessions) or from NpcAi. Read by
-// every downstream system. Networked so the client can render other players'
-// facing / movement intent between state messages.
-
-export interface InputStateData {
-  facing: number;
-  movementX: number;
-  movementY: number;
-  actions: number;
-  /**
-   * Duration the use-skill button was held before release, in milliseconds.
-   * Written when ACTION_USE_SKILL is set on this tick; otherwise 0. ActionSystem
-   * reads it to pick the matching weapon action variant from the equipped
-   * weapon's `swingable.actions[]`.
-   */
-  chargeMs: number;
-  seq: number;
-  timestamp: number;
-  rttMs: number;
-}
-
-export const inputStateCodec: Serialiser<InputStateData> = buildCodec<InputStateData>({
-  facing: { type: "f32" },
-  movementX: { type: "f32" },
-  movementY: { type: "f32" },
-  actions: { type: "i32" },
-  chargeMs: { type: "i32" },
-  seq: { type: "i32" },
-  timestamp: { type: "f64" },
-  rttMs: { type: "f32" },
-});
-
 // ---- Health -----------------------------------------------------------------
 
 export interface HealthData {
@@ -289,12 +379,36 @@ export const healthCodec: Serialiser<HealthData> = buildCodec<HealthData>({
 export interface WorldClockData {
   ticksElapsed: number;
   dayLengthTicks: number;
+  /**
+   * The tile's single closed biome tag (T-311 P5a) — the render-context
+   * selector AtmosphereDef/WaterStyleDef resolve against
+   * (`content.atmospheres.get(biomeTag) ?? content.atmospheres.getOrThrow("default")`).
+   * One value per tile (BiomeParams is a per-worldmap-tile scalar, not
+   * per-cell), computed atlas-side via `biomeTag()`
+   * (packages/atlas/src/tilemap/pipeline/biome_tag.ts) from the tile's
+   * WorldCellRecord.biome. Reuses WorldClock's existing wireId — no new wire
+   * slot burned for this selector.
+   */
+  biomeTag: string;
 }
 
-export const worldClockCodec: Serialiser<WorldClockData> = buildCodec<WorldClockData>({
-  ticksElapsed: { type: "i32" },
-  dayLengthTicks: { type: "i32" },
-});
+/**
+ * Hand-rolled (not `buildCodec`, which has no string field support) —
+ * mirrors `lightEmitterCodec`'s WireWriter/WireReader shape exactly.
+ */
+export const worldClockCodec: Serialiser<WorldClockData> = {
+  encode(v: WorldClockData): Uint8Array {
+    const w = new WireWriter();
+    w.writeI32(v.ticksElapsed);
+    w.writeI32(v.dayLengthTicks);
+    w.writeStr(v.biomeTag);
+    return w.toBytes();
+  },
+  decode(bytes: Uint8Array): WorldClockData {
+    const r = new WireReader(bytes);
+    return { ticksElapsed: r.readI32(), dayLengthTicks: r.readI32(), biomeTag: r.readStr() };
+  },
+};
 
 // (Hunger / Thirst codecs retired — they're server-only Resources now
 // (tile-server/components/resource.ts). Wire ids 7/8 retired in
@@ -433,7 +547,8 @@ export const modelRefCodec: Serialiser<ModelRefData> = {
 };
 
 // ---- AnimationState ---------------------------------------------------------
-// { layers: AnimationLayer[], weaponActionId: string, ticksIntoAction: u16 }
+// { layers: AnimationLayer[], weaponActionId: string, ticksIntoAction: u16,
+//   dissolutionPhase: f32 }
 //
 // Layer wire format (per layer):
 //   str  clipId
@@ -443,6 +558,9 @@ export const modelRefCodec: Serialiser<ModelRefData> = {
 //   u8   blend         (0 = override, 1 = additive)
 //   f32  speedScaleVal (-1.0 sentinel = "velocity")
 //   f32  speedReference (0 when not applicable)
+//
+// dissolutionPhase (T-311 P5c) is appended AFTER ticksIntoAction — purely
+// additive at the tail, every existing byte offset is unchanged.
 
 export const animationStateCodec: Serialiser<AnimationStateData> = {
   encode(v: AnimationStateData): Uint8Array {
@@ -459,6 +577,7 @@ export const animationStateCodec: Serialiser<AnimationStateData> = {
     }
     w.writeStr(v.weaponActionId);
     w.writeU16(v.ticksIntoAction);
+    w.writeF32(v.dissolutionPhase);
     return w.toBytes();
   },
   decode(bytes: Uint8Array): AnimationStateData {
@@ -480,6 +599,7 @@ export const animationStateCodec: Serialiser<AnimationStateData> = {
       layers,
       weaponActionId: r.readStr(),
       ticksIntoAction: r.readU16(),
+      dissolutionPhase: r.readF32(),
     };
   },
 };
@@ -591,37 +711,6 @@ export const itemDataCodec: Serialiser<ItemDataData> = {
   decode(bytes: Uint8Array): ItemDataData {
     const r = new WireReader(bytes);
     return { prefabId: r.readStr(), quantity: r.readU16() };
-  },
-};
-
-// ---- CraftingQueue ----------------------------------------------------------
-// { activeRecipeId: string|null, progressTicks: number, queued: string[] }
-
-export interface CraftingQueueData {
-  activeRecipeId: string | null;
-  progressTicks: number;
-  queued: string[];
-}
-
-export const craftingQueueCodec: Serialiser<CraftingQueueData> = {
-  encode(v: CraftingQueueData): Uint8Array {
-    assertMaxLen("CraftingQueue.queued", v.queued.length, WIRE_LIMITS.craftingQueue);
-    const w = new WireWriter();
-    if (v.activeRecipeId !== null) { w.writeU8(1); w.writeStr(v.activeRecipeId); } else { w.writeU8(0); }
-    w.writeI32(v.progressTicks);
-    w.writeU16(v.queued.length);
-    for (const id of v.queued) w.writeStr(id);
-    return w.toBytes();
-  },
-  decode(bytes: Uint8Array): CraftingQueueData {
-    const r = new WireReader(bytes);
-    const hasActive = r.readU8();
-    const activeRecipeId = hasActive ? r.readStr() : null;
-    const progressTicks = r.readI32();
-    const queueLen = r.readU16();
-    const queued: string[] = [];
-    for (let i = 0; i < queueLen; i++) queued.push(r.readStr());
-    return { activeRecipeId, progressTicks, queued };
   },
 };
 
@@ -941,313 +1030,19 @@ export const loreLoadoutCodec: Serialiser<LoreLoadoutData> = {
 // ActiveEffect / ActiveEffects codecs retired (T-239) — buffs are
 // scene-graph children (server-only BuffSpec), not a networked list.
 
-// ---- NpcTag -----------------------------------------------------------------
-// { npcType: string; name: string }
-// networked: false — server-only marker component.
-
-export interface NpcTagData {
-  npcType: string;
-  name: string;
-}
-
-export const npcTagCodec: Serialiser<NpcTagData> = {
-  encode(d: NpcTagData): Uint8Array {
-    const w = new WireWriter();
-    w.writeStr(d.npcType);
-    w.writeStr(d.name);
-    return w.toBytes();
-  },
-  decode(bytes: Uint8Array): NpcTagData {
-    const r = new WireReader(bytes);
-    return { npcType: r.readStr(), name: r.readStr() };
-  },
-};
-
-// ---- NpcJobQueue ------------------------------------------------------------
-// Complex union-typed server-only AI state.
-// networked: false — never leaves the server; codec needed only for persistence.
-
-export type Job =
-  | { type: "idle";          expiresAt: number }
-  | { type: "wander";        targetX: number; targetY: number; expiresAt: number }
-  | { type: "seekFood";      expiresAt: number }
-  | { type: "seekWater";     expiresAt: number }
-  | { type: "seekBed";       expiresAt: number }
-  | { type: "flee";          fromX: number; fromY: number; expiresAt: number }
-  | { type: "attackTarget";  targetId: string; expiresAt: number }
-  | {
-      type: "craftAtWorkbench";
-      workbenchType: string;
-      inputs: ReadonlyArray<{ itemType: string; quantity: number }>;
-      /** Set once the job handler has resolved a specific workstation entity to approach. */
-      workbenchId: string | null;
-      /** approach → place → hit → (job cleared). */
-      phase: "approach" | "place" | "hit";
-      expiresAt: number;
-    }
-  | {
-      type: "gatherResource";
-      itemType: string;
-      /** Acceptable resource-node prefab ids whose yields include itemType. */
-      resourceNodeTypes: ReadonlyArray<string>;
-      /** Total inventory count of itemType the NPC wants to end with. */
-      targetQuantity: number;
-      /** Set once the job handler has resolved a specific node entity to approach. */
-      nodeId: string | null;
-      expiresAt: number;
-    }
-  | {
-      type: "caravanEscort";
-      /** Tile the caravan is bound for; matched against a GateLink's destinationTileId. */
-      destinationTileId: string;
-      expiresAt: number;
-    };
-
-export type PlanStep =
-  | { kind: "moveTo";   x: number; y: number }
-  | { kind: "interact"; targetId: string; verb: string }
-  | { kind: "wait";     ticks: number; ticksRemaining: number }
-  | { kind: "dropItem"; itemType: string; quantity: number };
-
-export interface NpcPlanData {
-  steps: PlanStep[];
-  stepIdx: number;
-  expiresAt: number;
-  lastKnownTargetX?: number;
-  lastKnownTargetY?: number;
-}
-
-export interface NpcJobQueueData {
-  current: Job | null;
-  scheduled: Job[];
-  plan: NpcPlanData | null;
-}
-
-// Job discriminants
-const JOB_IDLE        = 0;
-const JOB_WANDER      = 1;
-const JOB_SEEK_FOOD   = 2;
-const JOB_SEEK_WATER  = 3;
-const JOB_FLEE        = 4;
-const JOB_ATTACK      = 5;
-const JOB_CRAFT_AT    = 6;
-const JOB_GATHER      = 7;
-const JOB_SEEK_BED    = 8;
-const JOB_CARAVAN     = 9;
-
-// craftAtWorkbench phase discriminants
-const CRAFT_APPROACH = 0;
-const CRAFT_PLACE    = 1;
-const CRAFT_HIT      = 2;
-
-// Plan step discriminants
-const STEP_MOVE_TO  = 0;
-const STEP_INTERACT = 1;
-const STEP_WAIT     = 2;
-const STEP_DROP     = 3;
-
-function writeJob(w: WireWriter, job: Job): void {
-  switch (job.type) {
-    case "idle":         w.writeU8(JOB_IDLE);   w.writeI32(job.expiresAt); break;
-    case "wander":       w.writeU8(JOB_WANDER); w.writeF32(job.targetX); w.writeF32(job.targetY); w.writeI32(job.expiresAt); break;
-    case "seekFood":     w.writeU8(JOB_SEEK_FOOD);  w.writeI32(job.expiresAt); break;
-    case "seekWater":    w.writeU8(JOB_SEEK_WATER); w.writeI32(job.expiresAt); break;
-    case "seekBed":      w.writeU8(JOB_SEEK_BED);   w.writeI32(job.expiresAt); break;
-    case "flee":         w.writeU8(JOB_FLEE); w.writeF32(job.fromX); w.writeF32(job.fromY); w.writeI32(job.expiresAt); break;
-    case "attackTarget": w.writeU8(JOB_ATTACK); w.writeStr(job.targetId); w.writeI32(job.expiresAt); break;
-    case "craftAtWorkbench":
-      w.writeU8(JOB_CRAFT_AT);
-      w.writeStr(job.workbenchType);
-      w.writeU8(job.phase === "approach" ? CRAFT_APPROACH : job.phase === "place" ? CRAFT_PLACE : CRAFT_HIT);
-      w.writeStr(job.workbenchId ?? "");
-      w.writeU16(job.inputs.length);
-      for (const inp of job.inputs) { w.writeStr(inp.itemType); w.writeU16(inp.quantity); }
-      w.writeI32(job.expiresAt);
-      break;
-    case "gatherResource":
-      w.writeU8(JOB_GATHER);
-      w.writeStr(job.itemType);
-      w.writeU16(job.targetQuantity);
-      w.writeStr(job.nodeId ?? "");
-      w.writeU16(job.resourceNodeTypes.length);
-      for (const t of job.resourceNodeTypes) w.writeStr(t);
-      w.writeI32(job.expiresAt);
-      break;
-    case "caravanEscort":
-      w.writeU8(JOB_CARAVAN);
-      w.writeStr(job.destinationTileId);
-      w.writeI32(job.expiresAt);
-      break;
-  }
-}
-
-function readJob(r: WireReader): Job {
-  const kind = r.readU8();
-  switch (kind) {
-    case JOB_IDLE:       return { type: "idle",          expiresAt: r.readI32() };
-    case JOB_WANDER:     return { type: "wander",        targetX: r.readF32(), targetY: r.readF32(), expiresAt: r.readI32() };
-    case JOB_SEEK_FOOD:  return { type: "seekFood",      expiresAt: r.readI32() };
-    case JOB_SEEK_WATER: return { type: "seekWater",     expiresAt: r.readI32() };
-    case JOB_SEEK_BED:   return { type: "seekBed",       expiresAt: r.readI32() };
-    case JOB_FLEE:       return { type: "flee",          fromX: r.readF32(), fromY: r.readF32(), expiresAt: r.readI32() };
-    case JOB_ATTACK:     return { type: "attackTarget",  targetId: r.readStr(), expiresAt: r.readI32() };
-    case JOB_CRAFT_AT: {
-      const workbenchType = r.readStr();
-      const phaseDisc = r.readU8();
-      const phase: "approach" | "place" | "hit" =
-        phaseDisc === CRAFT_APPROACH ? "approach" :
-        phaseDisc === CRAFT_PLACE    ? "place" : "hit";
-      const wbid = r.readStr();
-      const workbenchId = wbid === "" ? null : wbid;
-      const n = r.readU16();
-      const inputs: Array<{ itemType: string; quantity: number }> = [];
-      for (let i = 0; i < n; i++) inputs.push({ itemType: r.readStr(), quantity: r.readU16() });
-      const expiresAt = r.readI32();
-      return { type: "craftAtWorkbench", workbenchType, phase, workbenchId, inputs, expiresAt };
-    }
-    case JOB_GATHER: {
-      const itemType = r.readStr();
-      const targetQuantity = r.readU16();
-      const rawId = r.readStr();
-      const nodeId = rawId === "" ? null : rawId;
-      const n = r.readU16();
-      const resourceNodeTypes: string[] = [];
-      for (let i = 0; i < n; i++) resourceNodeTypes.push(r.readStr());
-      const expiresAt = r.readI32();
-      return { type: "gatherResource", itemType, targetQuantity, nodeId, resourceNodeTypes, expiresAt };
-    }
-    case JOB_CARAVAN: {
-      const destinationTileId = r.readStr();
-      const expiresAt = r.readI32();
-      return { type: "caravanEscort", destinationTileId, expiresAt };
-    }
-    default: throw new Error(`Unknown job kind: ${kind}`);
-  }
-}
-
-function writePlanStep(w: WireWriter, step: PlanStep): void {
-  switch (step.kind) {
-    case "moveTo":   w.writeU8(STEP_MOVE_TO);  w.writeF32(step.x); w.writeF32(step.y); break;
-    case "interact": w.writeU8(STEP_INTERACT); w.writeStr(step.targetId); w.writeStr(step.verb); break;
-    case "wait":     w.writeU8(STEP_WAIT);     w.writeI32(step.ticks); w.writeI32(step.ticksRemaining); break;
-    case "dropItem": w.writeU8(STEP_DROP);     w.writeStr(step.itemType); w.writeU16(step.quantity); break;
-  }
-}
-
-function readPlanStep(r: WireReader): PlanStep {
-  const kind = r.readU8();
-  switch (kind) {
-    case STEP_MOVE_TO:  return { kind: "moveTo",   x: r.readF32(), y: r.readF32() };
-    case STEP_INTERACT: return { kind: "interact", targetId: r.readStr(), verb: r.readStr() };
-    case STEP_WAIT:     return { kind: "wait",     ticks: r.readI32(), ticksRemaining: r.readI32() };
-    case STEP_DROP:     return { kind: "dropItem", itemType: r.readStr(), quantity: r.readU16() };
-    default: throw new Error(`Unknown plan step kind: ${kind}`);
-  }
-}
-
-export const npcJobQueueCodec: Serialiser<NpcJobQueueData> = {
-  encode(d: NpcJobQueueData): Uint8Array {
-    const w = new WireWriter();
-    w.writeU8(d.current ? 1 : 0);
-    if (d.current) writeJob(w, d.current);
-    w.writeU16(d.scheduled.length);
-    for (const job of d.scheduled) writeJob(w, job);
-    w.writeU8(d.plan ? 1 : 0);
-    if (d.plan) {
-      w.writeU16(d.plan.steps.length);
-      for (const step of d.plan.steps) writePlanStep(w, step);
-      w.writeU16(d.plan.stepIdx);
-      w.writeI32(d.plan.expiresAt);
-      const hasTarget = d.plan.lastKnownTargetX !== undefined;
-      w.writeU8(hasTarget ? 1 : 0);
-      if (hasTarget) { w.writeF32(d.plan.lastKnownTargetX!); w.writeF32(d.plan.lastKnownTargetY!); }
-    }
-    return w.toBytes();
-  },
-  decode(bytes: Uint8Array): NpcJobQueueData {
-    const r = new WireReader(bytes);
-    const current   = r.readU8() ? readJob(r) : null;
-    const numSched  = r.readU16();
-    const scheduled: Job[] = [];
-    for (let i = 0; i < numSched; i++) scheduled.push(readJob(r));
-    let plan: NpcPlanData | null = null;
-    if (r.readU8()) {
-      const numSteps = r.readU16();
-      const steps: PlanStep[] = [];
-      for (let i = 0; i < numSteps; i++) steps.push(readPlanStep(r));
-      const stepIdx   = r.readU16();
-      const expiresAt = r.readI32();
-      const hasTarget = r.readU8() !== 0;
-      plan = {
-        steps, stepIdx, expiresAt,
-        lastKnownTargetX: hasTarget ? r.readF32() : undefined,
-        lastKnownTargetY: hasTarget ? r.readF32() : undefined,
-      };
-    }
-    return { current, scheduled, plan };
-  },
-};
-
-// ---- Hitbox ----
-
-/**
- * Hit geometry for an entity. Always server-only.
- *
- * `derive` is the authority flag:
- *   true  — HitboxSystem repopulates `parts` each tick from ModelRef + the
- *           live skeleton pose. Prefabs for animated entities use this.
- *   false — `parts` is static and owned by whoever wrote it (spawner's
- *           one-shot derivation for non-skeletal models, or a prefab with
- *           hand-authored capsule geometry). HitboxSystem ignores the entity.
- */
-export interface HitboxData {
-  derive: boolean;
-  parts: BodyPartVolume[];
-}
-
-function writeBodyPart(w: WireWriter, p: BodyPartVolume): void {
-  w.writeStr(p.id);
-  w.writeF32(p.fromFwd);  w.writeF32(p.fromRight); w.writeF32(p.fromUp);
-  w.writeF32(p.toFwd);    w.writeF32(p.toRight);   w.writeF32(p.toUp);
-  w.writeF32(p.radius);
-}
-
-function readBodyPart(r: WireReader): BodyPartVolume {
-  const id        = r.readStr();
-  const fromFwd   = r.readF32(); const fromRight = r.readF32(); const fromUp  = r.readF32();
-  const toFwd     = r.readF32(); const toRight   = r.readF32(); const toUp    = r.readF32();
-  const radius    = r.readF32();
-  return { id, fromFwd, fromRight, fromUp, toFwd, toRight, toUp, radius };
-}
-
-export const hitboxCodec: Serialiser<HitboxData> = {
-  encode(v: HitboxData): Uint8Array {
-    const w = new WireWriter();
-    w.writeU8(v.derive ? 1 : 0);
-    w.writeU16(v.parts.length);
-    for (const p of v.parts) writeBodyPart(w, p);
-    return w.toBytes();
-  },
-  decode(bytes: Uint8Array): HitboxData {
-    const r = new WireReader(bytes);
-    const derive = r.readU8() === 1;
-    const count = r.readU16();
-    const parts: BodyPartVolume[] = [];
-    for (let i = 0; i < count; i++) parts.push(readBodyPart(r));
-    return { derive, parts };
-  },
-};
-
 // ---- LightEmitter ----------------------------------------------------------
 // Emitted by entities that cast light (torch, campfire, hearth, player holding torch).
 // color is a packed RGB u32 (0xRRGGBB). intensity 0–1 scales the raw radius.
-// flicker 0–1 drives random oscillation amplitude on the client.
+// lightDefId (T-311 P2) is the content LightDef id — the client resolves the
+// presentation-only fields (flicker curve, family, castsPool) from it; the
+// numbers (color/intensity/radius) stay on the wire because getLightAt() queries
+// them server-side (the "wire carries data, client derives presentation" doctrine).
 
 export interface LightEmitterData {
   color: number;
   intensity: number;
   radius: number;
-  flicker: number;
+  lightDefId: string;
 }
 
 export const lightEmitterCodec: Serialiser<LightEmitterData> = {
@@ -1256,35 +1051,12 @@ export const lightEmitterCodec: Serialiser<LightEmitterData> = {
     w.writeU32(v.color);
     w.writeF32(v.intensity);
     w.writeF32(v.radius);
-    w.writeF32(v.flicker);
+    w.writeStr(v.lightDefId);
     return w.toBytes();
   },
   decode(bytes: Uint8Array): LightEmitterData {
     const r = new WireReader(bytes);
-    return { color: r.readU32(), intensity: r.readF32(), radius: r.readF32(), flicker: r.readF32() };
-  },
-};
-
-// ---- DarknessModifier -------------------------------------------------------
-// Present on entities that suppress ambient light in a radius (deep corruption,
-// shadow-cursed creatures). Client darkens tiles within range.
-
-export interface DarknessModifierData {
-  radius: number;
-  /** 0–1: fraction of ambient light suppressed at the entity center. Falls off to 0 at radius. */
-  strength: number;
-}
-
-export const darknessModifierCodec: Serialiser<DarknessModifierData> = {
-  encode(v: DarknessModifierData): Uint8Array {
-    const w = new WireWriter();
-    w.writeF32(v.radius);
-    w.writeF32(v.strength);
-    return w.toBytes();
-  },
-  decode(bytes: Uint8Array): DarknessModifierData {
-    const r = new WireReader(bytes);
-    return { radius: r.readF32(), strength: r.readF32() };
+    return { color: r.readU32(), intensity: r.readF32(), radius: r.readF32(), lightDefId: r.readStr() };
   },
 };
 
@@ -1307,46 +1079,6 @@ export const durabilityCodec: Serialiser<DurabilityData> = {
   decode(bytes: Uint8Array): DurabilityData {
     const r = new WireReader(bytes);
     return { remaining: r.readF32(), max: r.readF32() };
-  },
-};
-
-// ---- Inscribed ----
-// A lore fragment encoded into a unique item. Written at a scribe workstation;
-// read at the "internalise" interaction to grant the fragment to the reader.
-
-export interface InscribedData {
-  fragmentId: string;
-}
-
-export const inscribedCodec: Serialiser<InscribedData> = {
-  encode(v: InscribedData): Uint8Array {
-    const w = new WireWriter();
-    w.writeStr(v.fragmentId);
-    return w.toBytes();
-  },
-  decode(bytes: Uint8Array): InscribedData {
-    const r = new WireReader(bytes);
-    return { fragmentId: r.readStr() };
-  },
-};
-
-// ---- QualityStamped ----
-// Craft-time quality tier in [0, 1]. deriveItemStats() reads this and multiplies
-// the relevant derived stats (armour reduction, food/water value, light intensity).
-
-export interface QualityStampedData {
-  quality: number;
-}
-
-export const qualityStampedCodec: Serialiser<QualityStampedData> = {
-  encode(v: QualityStampedData): Uint8Array {
-    const w = new WireWriter();
-    w.writeF32(v.quality);
-    return w.toBytes();
-  },
-  decode(bytes: Uint8Array): QualityStampedData {
-    const r = new WireReader(bytes);
-    return { quality: r.readF32() };
   },
 };
 
@@ -1528,6 +1260,15 @@ export interface GateLinkData {
   edge: GateEdge;
   /** World units; visualisation matches the proximity trigger. */
   radius: number;
+  /**
+   * World-unit offset along the edge's perpendicular axis where the atlas-
+   * carved corridor actually reaches this edge (T-261). Same quantity as
+   * atlas's `GateSpec.offset` / `Portal.offset` — no rescale. Used to place
+   * the gate on the carved corridor instead of the edge midpoint, and (via
+   * the cross-tile mirror invariant) to compute the correct arrival point
+   * on the destination tile's matching edge.
+   */
+  offset: number;
 }
 
 const GATE_EDGE_TO_INT: Record<GateEdge, number> = {
@@ -1541,6 +1282,7 @@ export const gateLinkCodec: Serialiser<GateLinkData> = {
     w.writeStr(v.destinationTileId);
     w.writeU8(GATE_EDGE_TO_INT[v.edge]);
     w.writeF32(v.radius);
+    w.writeF32(v.offset);
     return w.toBytes();
   },
   decode(bytes: Uint8Array): GateLinkData {
@@ -1548,15 +1290,16 @@ export const gateLinkCodec: Serialiser<GateLinkData> = {
     const destinationTileId = r.readStr();
     const edge = INT_TO_GATE_EDGE[r.readU8()] ?? "north";
     const radius = r.readF32();
-    return { destinationTileId, edge, radius };
+    const offset = r.readF32();
+    return { destinationTileId, edge, radius, offset };
   },
 };
 
 // ---- Container --------------------------------------------------------------
 // A deployed family-chest fixture's slot store for UNIQUE item entities: the
 // library (kind "tome") and the treasury (kind "equipment"). Unlike
-// WorkstationBuffer (stack-only), every slot is an entity ref, so each tome's
-// Inscribed and each weapon's Durability/QualityStamped ride along per-instance.
+// WorkstationBuffer (stack-only), every slot is an entity ref, so each item's
+// networked instance components (Durability/Stats/Provenance) ride along.
 // Networked (T-077/T-078) so the deposit/withdraw panel mirrors slot contents.
 
 export type ContainerKind = "tome" | "equipment";
@@ -1622,28 +1365,29 @@ export const nameCodec: Serialiser<NameData> = {
 // cancel-into rules on the action vocabulary now, no networked chain-step
 // component. Wire id 46 retired, never reuse.)
 
-// ---- ActorSlots ------------------------------------------------------------
-// The declared slot set for an actor (T-226). Set once at spawn from the
-// actor template's `actorSlots`; never mutated at runtime. Networked so the
-// client's mirrored World can dispatch/predict the same slots.
+// ---- Bone -------------------------------------------------------------------
+// One entity per skeleton bone (T-219). Deliberately minimal: `boneId` is the
+// only field. `parentBoneId` and `restPose` are NOT wired — they're already
+// content data (SkeletonDef.bones, keyed by boneId), and the parent-bone
+// ENTITY relationship is the engine's own `Parent` component (wireId 49),
+// replicated once at spawn alongside this. Bone TRANSFORMS are never
+// replicated at all: motion is derived client-side from AnimationState
+// (already on the wire) the same way the pre-T-219 boneGroups pipeline
+// already computed it — structure ships once, movement is never re-sent.
 
-export interface ActorSlotsData {
-  slots: string[];
+export interface BoneData {
+  boneId: string;
 }
 
-export const actorSlotsCodec: Serialiser<ActorSlotsData> = {
-  encode(v: ActorSlotsData): Uint8Array {
+export const boneCodec: Serialiser<BoneData> = {
+  encode(v: BoneData): Uint8Array {
     const w = new WireWriter();
-    w.writeU16(v.slots.length);
-    for (const s of v.slots) w.writeStr(s);
+    w.writeStr(v.boneId);
     return w.toBytes();
   },
-  decode(bytes: Uint8Array): ActorSlotsData {
+  decode(bytes: Uint8Array): BoneData {
     const r = new WireReader(bytes);
-    const n = r.readU16();
-    const slots: string[] = [];
-    for (let i = 0; i < n; i++) slots.push(r.readStr());
-    return { slots };
+    return { boneId: r.readStr() };
   },
 };
 
@@ -1705,3 +1449,34 @@ export const activeActionsCodec: Serialiser<ActiveActionsData> = {
 // (CharacterStateMachine codec retired — the CSM was fully replaced by the
 // action primitive (ActiveActions + ActionDispatcher); the client mirrors
 // behaviour from AnimationState now. Wire id 45 retired, never reuse.)
+
+// ---- PoiInteractable ---------------------------------------------------------
+// Marker on the world-prop entity an `action`/`puzzle` POI activity spawns
+// (chalice pedestal, signal brazier, lever, …). Networked so the client's
+// hover/click can detect it the same way it detects workstationBuffer/
+// container/traderInventory (T-212 v2) — `canHandle()` keys off entityState
+// field presence, which only exists for networked components.
+
+export interface PoiInteractableData {
+  poiInstanceId: string;
+  verb: string;
+  consumable: boolean;
+}
+
+export const poiInteractableCodec: Serialiser<PoiInteractableData> = {
+  encode(v: PoiInteractableData): Uint8Array {
+    const w = new WireWriter();
+    w.writeStr(v.poiInstanceId);
+    w.writeStr(v.verb);
+    w.writeU8(v.consumable ? 1 : 0);
+    return w.toBytes();
+  },
+  decode(b: Uint8Array): PoiInteractableData {
+    const r = new WireReader(b);
+    return {
+      poiInstanceId: r.readStr(),
+      verb:          r.readStr(),
+      consumable:    r.readU8() === 1,
+    };
+  },
+};

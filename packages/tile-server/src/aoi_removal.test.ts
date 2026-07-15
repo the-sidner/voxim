@@ -18,7 +18,7 @@ import type { GameEvent } from "@voxim/protocol";
 import { Position, Velocity } from "./components/game.ts";
 import { ClientSession } from "./session.ts";
 import { SpatialGrid } from "./spatial_grid.ts";
-import { computeSessionUpdate } from "./aoi.ts";
+import { computeAoiSharedInputs, computeSessionUpdate } from "./aoi.ts";
 
 function setup() {
   const world = new World();
@@ -49,7 +49,7 @@ function run(
   events: GameEvent[],
 ) {
   return computeSessionUpdate(
-    s.world, s.session, s.spatial, s.playerId,
+    s.world, computeAoiSharedInputs(s.world), s.session, s.spatial, s.playerId,
     new Map(), removedComponents, worldDestroys, events,
     /*serverTick*/ 10, /*ackInputSeq*/ 0, /*aoiRadius*/ 128, /*onlineCount*/ 1,
   );

@@ -14,6 +14,7 @@ import { JsonSource } from "@voxim/content";
 import { spawnPrefab, destroyCarriedItemEntities } from "./spawner.ts";
 import { Equipment } from "./components/equipment.ts";
 import { Inventory } from "./components/items.ts";
+import { Bone } from "./components/bone.ts";
 import { DeathSystem } from "./systems/death.ts";
 import type { DeathHook } from "./systems/death.ts";
 
@@ -38,6 +39,29 @@ Deno.test("T-252: killing an NPC destroys its equip entities (via the equip_clea
 
   assert(!world.isAlive(wolf), "wolf destroyed");
   assert(!world.isAlive(fang), "its weapon entity went with it — no leak");
+});
+
+Deno.test("T-219: killing a skeletal NPC destroys its bone-entity subtree too (destroySubtree, not destroy)", () => {
+  const world = new World();
+  const wolf = spawnPrefab(world, content, "wolf", { x: 0, y: 0, z: 0 });
+  const boneEntities = world.descendants(wolf).filter((d) => world.has(d, Bone));
+  assertEquals(boneEntities.length, 11, "wolf spawned its full bone subtree");
+  for (const b of boneEntities) assert(world.isAlive(b));
+
+  const hooks = new Registry<DeathHook>();
+  hooks.register({
+    id: "equip_cleanup",
+    onDeath: (ctx) => destroyCarriedItemEntities(ctx.world, ctx.entityId),
+  });
+  const deaths = new DeathSystem(hooks);
+  deaths.request({ entityId: wolf, cause: "damage" });
+  deaths.run(world, new EventBus(), 1 / 20);
+  world.applyChangeset();
+
+  assert(!world.isAlive(wolf), "wolf destroyed");
+  for (const b of boneEntities) {
+    assert(!world.isAlive(b), `bone entity ${b} leaked past the wolf's own death`);
+  }
 });
 
 Deno.test("T-252: unique inventory slots are destroyed too; stacks are untouched data", () => {

@@ -1,0 +1,29 @@
+{
+  "id": 33,
+  "name": "blood",
+  "color": "#6b1212",
+  "roughness": 0.35,
+  "metallic": 0,
+  "emissive": 0,
+  "solid": false,
+  "walkable": true,
+  "properties": {
+    "hardness": 0,
+    "density": 0.1,
+    "flexibility": 0.9,
+    "flammability": 0,
+    "toughness": 0
+  },
+  "tags": [
+    "decal"
+  ],
+  "render": {
+    "tintJitter": {
+      "brightness": [
+        0.75,
+        1.15
+      ],
+      "warmCool": 0.05
+    }
+  }
+}

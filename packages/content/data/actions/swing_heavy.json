@@ -15,6 +15,9 @@
     },
     "winddown": {
       "ticks": 6
+    },
+    "recovery": {
+      "ticks": 8
     }
   },
   "cancel": {
@@ -28,17 +31,26 @@
     },
     "winddown": {
       "into": []
+    },
+    "recovery": {
+      "into": []
     }
   },
   "movement": {
-    "windup": "slowed",
+    "windup": 0.42,
     "active": "locked",
-    "winddown": "slowed"
+    "winddown": 0.42,
+    "recovery": 0.55
   },
   "costs": {
     "stamina": 18
   },
   "priority": 5,
+  "hitStopTicks": 5,
+  "preWindup": {
+    "clipId": "sword_and_shield_power_up",
+    "ticks": 2
+  },
   "effects": [
     {
       "phase": "active:enter",
@@ -60,6 +72,10 @@
     },
     "winddown": {
       "clipId": "$weapon.swing_clip",
+      "loop": false
+    },
+    "recovery": {
+      "clipId": "great_sword_impact",
       "loop": false
     }
   }
