@@ -1,10 +1,9 @@
 /**
- * emit_event resource effect (T-238c) — the hunger/thirst "critical"
- * coupling. A `cross` threshold with params `{ event }` publishes the
- * named `TileEvents` symbol once when the value enters the zone, payload
- * `{ entityId, value }` (matching the retired HungerSystem's
- * HungerCritical / ThirstCritical publishes — event_router / aoi consume
- * `{ entityId }`). Unknown event names fail fast.
+ * emit_event resource effect (T-238c) — the generic resource-threshold →
+ * event-bus bridge. A `cross` threshold with params `{ event }` publishes
+ * the named `TileEvents` symbol once when the value enters the zone,
+ * payload `{ entityId, value }` (current sole content user: hunger's
+ * HungerCritical). Unknown event names fail fast.
  */
 
 import { TileEvents } from "@voxim/protocol";

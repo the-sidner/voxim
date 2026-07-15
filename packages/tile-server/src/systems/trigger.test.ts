@@ -267,7 +267,9 @@ Deno.test("T-259c: low-health frenzy — innate NPC trigger, gated on health_bel
   world.create(attacker);
 
   const wound = () =>
-    bus.publish(TileEvents.DamageDealt, { targetId: wolf, sourceId: attacker, amount: 5, blocked: false });
+    bus.publish(TileEvents.DamageDealt, {
+      targetId: wolf, sourceId: attacker, amount: 5, blocked: false, hitX: 0, hitY: 0, hitZ: 0,
+    });
   const tick = (t: number) => {
     sys.prepare(t, { spatial: null as never, pendingCommands: new Map() });
     sys.run(world, bus, DT);

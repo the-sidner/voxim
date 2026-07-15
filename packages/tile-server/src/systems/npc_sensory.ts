@@ -67,6 +67,9 @@ export class NpcSensorySystem implements System {
    */
   registerSubscribers(bus: EventBus): void {
     bus.subscribe(TileEvents.DamageDealt, (p: DamageDealtPayload) => {
+      // Self-inflicted damage (starvation/dehydration DPS publishes with
+      // sourceId === targetId) is not a commotion — nothing to aggro toward.
+      if (p.sourceId === p.targetId) return;
       // A wounded entity's neighbours turn on its attacker. Origin is the
       // contact point — the loudest spot of the fight.
       this.push(p.sourceId, p.hitX, p.hitY);

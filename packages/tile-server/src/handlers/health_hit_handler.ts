@@ -104,7 +104,9 @@ export class HealthHitHandler implements HitHandler {
         sourceId: ctx.attackerId,
         amount: 0,
         blocked: true,
-        bodyPart: "",
+        hitX: ctx.hitX,
+        hitY: ctx.hitY,
+        hitZ: ctx.hitZ,
       });
       return;
     }
@@ -215,7 +217,6 @@ export class HealthHitHandler implements HitHandler {
       sourceId: ctx.attackerId,
       amount: damage,
       blocked: isBlocking,
-      bodyPart: ctx.bodyPart,
       hitX: ctx.hitX,
       hitY: ctx.hitY,
       hitZ: ctx.hitZ,

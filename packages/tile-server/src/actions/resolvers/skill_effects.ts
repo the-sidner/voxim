@@ -179,7 +179,13 @@ export class HealthSkillResolver implements EffectResolver {
       const stolen = Math.min(mag, targetHealth.current);
       const next = targetHealth.current - stolen;
       world.mutate(targetId, Health, (h) => ({ ...h, current: Math.max(0, h.current - stolen) }));
-      events.publish(TileEvents.DamageDealt, { targetId, sourceId: entityId, amount: stolen, blocked: false });
+      // A drain has no blade contact — the target's own position is the
+      // contact point (where the client's damage number appears).
+      const targetPos = world.get(targetId, Position);
+      events.publish(TileEvents.DamageDealt, {
+        targetId, sourceId: entityId, amount: stolen, blocked: false,
+        hitX: targetPos?.x ?? pos.x, hitY: targetPos?.y ?? pos.y, hitZ: targetPos?.z ?? pos.z,
+      });
       if (next <= 0) this.deaths.request({ entityId: targetId, killerId: entityId, cause: "effect" });
       if (drainToCaster && world.has(entityId, Health) && stolen > 0) {
         world.mutate(entityId, Health, (h) => ({ ...h, current: Math.min(h.max, h.current + stolen) }));
