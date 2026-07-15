@@ -681,6 +681,15 @@ export class VoximGame {
     this.world.clear();
     this.buildOccupancy.clear();
     this.renderer?.clearWorld();
+    // Entity-backed panels hold old-tile entity ids that world.clear() just
+    // invalidated — old-tile entities never traverse msg.destroys (the only
+    // other panel-closing path), so a panel left open across the gate would
+    // render stale slots and dispatch commands the new tile can't resolve.
+    closePanel("workstation");
+    closePanel("container");
+    closePanel("trader");
+    closePanel("job_board");
+    patchUI({ workstation: null, container: null, trader: null, jobBoard: null });
     this.terrainChunksReceived = 0;
     this.loadingComplete = false;
     this.predictor?.reset();
