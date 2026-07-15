@@ -112,7 +112,7 @@ export function makeGroundItemHandler(
     id: "ground_item",
     priority: 8,
     interactionRange: 2.5,
-    canHandle: (t) => t.entityState.raw.has("itemData"),
+    canHandle: (t) => t.entityState.itemData !== undefined,
     onClick: (t) => { pickup(t.entityId); return true; },
   };
 }
@@ -130,7 +130,7 @@ export function makePoiInteractableHandler(
     id: "poi_interactable",
     priority: 8,
     interactionRange: 3,
-    canHandle: (t) => t.entityState.raw.has("poiInteractable"),
+    canHandle: (t) => t.entityState.poiInteractable !== undefined,
     onClick: (t) => { use(t.entityId); return true; },
   };
 }
