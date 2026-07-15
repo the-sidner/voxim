@@ -259,7 +259,8 @@
   },
   "prediction": {
     "correctionHalfLifeMs": 38,
-    "hardSnapThresholdUnits": 3.0
+    "hardSnapThresholdUnits": 3.0,
+    "remoteInterpDelayMs": 100
   },
   "npcAiDefaults": {
     "wanderRadius": 20,
@@ -321,6 +322,16 @@
       "organicAmount": 0.25,
       "dirtAmount": 0.2,
       "sandAmount": 0.12
+    },
+    "supersample": {
+      "min": 1.2,
+      "max": 1.35
+    },
+    "pose": {
+      "crouchDropAmount": 0.9,
+      "crouchEaseOmega": 18,
+      "lookAtGain": 0.6,
+      "springOmega": 32
     }
   },
   "input": {

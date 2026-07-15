@@ -247,6 +247,10 @@ export interface AtmosphereDef {
     densityByPhase: Record<string, number>;
     /** sRGB hex mist tint. */
     color: string;
+    /** Per-frame ease-lerp rate toward the phase-target density weight
+     *  (mistWeightCur += (target − mistWeightCur) × easeRate), so mist
+     *  doesn't snap on a day-phase change (T-356). */
+    easeRate: number;
   };
   /**
    * God-ray (light-shaft) params for the existing screen-space radial-scatter
@@ -2593,12 +2597,16 @@ export interface GameConfig {
     /** Radius in world units within which entities are visible to a client. */
     aoiRadius: number;
   };
-  /** Client-side prediction correction smoothing. */
+  /** Client-side prediction/interpolation smoothing — local-player correction
+   *  plus remote-entity render interpolation delay (T-356). */
   prediction: {
     /** Half-life of the render-offset correction in milliseconds. Lower = snappier. */
     correctionHalfLifeMs: number;
     /** Divergences above this (world units) snap immediately instead of smoothing. */
     hardSnapThresholdUnits: number;
+    /** Milliseconds behind the latest received state remote entities are
+     *  rendered, for smooth linear interpolation between server ticks. */
+    remoteInterpDelayMs: number;
   };
   /** Global fallback defaults for NPC AI tuning. Per-type overrides live on NpcTemplate. */
   npcAiDefaults: {
@@ -2686,9 +2694,10 @@ export interface GameConfig {
     rangedHoldTicks: number;
   };
   /** Client render look-tuning that doesn't fit MaterialRenderDef/GradeDef
-   *  (T-315 D3) — foliage wind + camera-occlusion fade-cylinder geometry, and
-   *  the shared drawNoise `amount` coefficient for the organic/dirt/sand
-   *  procedural texture styles. */
+   *  (T-315 D3) — foliage wind + camera-occlusion fade-cylinder geometry, the
+   *  shared drawNoise `amount` coefficient for the organic/dirt/sand
+   *  procedural texture styles, plus the renderer's supersample band and
+   *  secondary-motion pose easing (T-356). */
   render: {
     /** Foliage sway (canopy_fade.ts's wind uniforms). */
     canopyWind: {
@@ -2741,6 +2750,30 @@ export interface GameConfig {
       organicAmount: number;
       dirtAmount: number;
       sandAmount: number;
+    };
+    /** SSAA supersample factor band: clamp(devicePixelRatio, min, max). The
+     *  whole post chain (SSAO + edge taps + bloom) renders at this × the CSS
+     *  resolution — THE PRIMARY PERF KNOB, cost scales with the square of it.
+     *  Resolved ONCE, at VoximRenderer construction (content is hydrated by
+     *  then); a mid-session edit needs a page reload, since the post-FX
+     *  render-target set is sized from it (T-356). */
+    supersample: {
+      min: number;
+      max: number;
+    };
+    /** Secondary-motion pose easing, read every render() frame (T-356). */
+    pose: {
+      /** Pelvis drop (skeleton rest units) at full crouch; scaled per entity. */
+      crouchDropAmount: number;
+      /** Crouch ease rate (1/s) — snappy (~150ms settle), not a one-frame jolt. */
+      crouchEaseOmega: number;
+      /** Head/gaze stabilization blend (applyLookAtPose) — 0 fully follows the
+       *  spine's lean, 1 fully cancels it. Partial keeps organic follow-through. */
+      lookAtGain: number;
+      /** Spine/head follow-through spring ease rate (1/s) — the bones eased
+       *  toward the composed pose each frame (NOT the IK'd hands/arms).
+       *  Higher = snappier; ~32 settles in ~90ms, organic but never floaty. */
+      springOmega: number;
     };
   };
   /** Free-look pointer-lock camera (T-320; rotation ownership inverted by
