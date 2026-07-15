@@ -43,6 +43,21 @@ the static model, seed-unique per equipped instance, with zero change to the T-3
 ### T-360 · Externalise Lore UI — write a learned fragment to a blank tome
 Effort: S   Status: todo   (renumbered from a T-328 collision — T-328 is the landed camera ticket; numbers are never reused)
 
+### T-361 · Stabilization sweep — 34 verified bug/perf/confusion findings from the post-merge audit
+Effort: L   Status: in-progress   (2026-07-15)
+
+An 8-dimension find+adversarial-verify pass over freshly merged main confirmed
+34 findings (each survived two independent refuters): 2 T-354 regressions
+(entity destroy deferred behind an untimed account fetch; reconnect-during-
+teardown race), a death-reaction loop on lingering corpses, handoff-window
+item duplication + cross-tile fog contamination + cache leaks, crumble corpses
+with floating weapons + surviving tile transitions, delta channel degenerating
+to a 20 Hz full broadcast for moving actors, InstancePool full-buffer re-uploads,
+pose-pipeline per-frame allocation storms, and a set of confusion consolidations
+(dual day-phase derivation, four stacked interact-reach gates, unreachable
+consumeHandedOff branch). Fix in five file-disjoint lanes; findings archive in
+the session scratchpad (lane_s1..s5 JSON).
+
 Found while building T-072 (heir-ritual UI): `CommandType.Internalise` (read a
 tome, T-020) now has a client entry point (InventoryPanel's "Read" action),
 but `CommandType.Externalise` (write a learned Lore fragment to a blank tome,
