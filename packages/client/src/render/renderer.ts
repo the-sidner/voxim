@@ -36,8 +36,8 @@ import { updateSkeletonPose, blendAnimationLayers, type EntityMeshGroup } from "
 import { computeTelegraphLayer } from "./telegraph.ts";
 import { computeIframeFlash, applyIframeFlash } from "./iframe_flash.ts";
 import { InstancePool } from "./instance_pool.ts";
-import { CrumbleController } from "./crumble_controller.ts";
-import { registerDeathStyle, getDeathStyleHandler } from "./death_style_registry.ts";
+import type { CrumbleController } from "./crumble_controller.ts";
+import { getDeathStyleHandler } from "./death_style_registry.ts";
 import { evaluatePose } from "./skeleton_evaluator.ts";
 import { composePose } from "./pose_composer.ts";
 import { timeOfDay01 } from "@voxim/content";
@@ -251,8 +251,9 @@ export class VoximRenderer {
   private readonly _skeletonOverlay: SkeletonOverlay;
   private readonly _chunkOverlay:    ChunkOverlay;
   private readonly particles: ParticleSystem;
-  /** "crumble" death-style handler (T-339) — registered under that style id
-   *  in the constructor; `onEntityDied`/`render()` drive it. */
+  /** "crumble" death-style handler (T-339) — injected from game.ts, which
+   *  registers it under that style id before the content cross-check runs;
+   *  `onEntityDied`/`render()` drive it. */
   private readonly crumbleController: CrumbleController;
   /** Physics gravity constant (T-340/T-339) — pre-hydration placeholder
    *  only, overwritten by setParticlePhysics() the moment content loads.
@@ -386,6 +387,7 @@ export class VoximRenderer {
 
   constructor(
     canvas: HTMLCanvasElement,
+    crumbleController: CrumbleController,
     supersample: { min: number; max: number } = PRE_BOOTSTRAP_RENDER_TUNING.supersample,
   ) {
     this.instancePool = new InstancePool(this.scene);
@@ -401,15 +403,7 @@ export class VoximRenderer {
     this.debugOverlayManager.register("hitbox",    new HitboxDebugOverlay());
 
     this.particles = new ParticleSystem(this.instancePool);
-    // T-339: the real, stateful "crumble" handler — overwrites the
-    // placeholder death_style_registry.ts's registerBuiltinDeathStyles()
-    // registered before this renderer existed (see that file's header for
-    // why the ordering is safe).
-    this.crumbleController = new CrumbleController();
-    registerDeathStyle(
-      "crumble",
-      (entityId, mesh, def, durationTicks, ctx) => this.crumbleController.onDeath(entityId, mesh, def, durationTicks, ctx),
-    );
+    this.crumbleController = crumbleController;
 
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
     // Supersample: render the whole pipeline at clamp(devicePixelRatio, min,

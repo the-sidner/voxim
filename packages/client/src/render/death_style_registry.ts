@@ -61,21 +61,15 @@ export function deathStyleIds(): string[] {
  * special case) — a typo'd style in content still fails loud via
  * `crossCheckDeathStyles`.
  *
- * "crumble" is registered here as a PLACEHOLDER no-op. `crossCheckDeathStyles`
- * runs at content-hydration time in game.ts, BEFORE `new VoximRenderer()`
- * exists — so the real, stateful CrumbleController-backed handler can't be
- * registered yet. VoximRenderer's constructor overwrites this placeholder
- * with the real handler once `this.crumbleController` exists; by the time
- * any entity actually dies (well after renderer construction), the real
- * handler is always the one in place. Registering a placeholder here first
- * only guarantees the early cross-check sees "crumble" as a known style.
+ * "crumble" is NOT a builtin: its handler is stateful (CrumbleController),
+ * so game.ts constructs the controller and registers the real handler
+ * before running `crossCheckDeathStyles`.
  */
 let _builtinsRegistered = false;
 export function registerBuiltinDeathStyles(): void {
   if (_builtinsRegistered) return;
   _builtinsRegistered = true;
   registerDeathStyle("dissolve", () => {});
-  registerDeathStyle("crumble", () => {});
 }
 
 /** Boot cross-check (fail-fast, mirrors crossCheckParticles/crossCheckDecals):
