@@ -2342,7 +2342,7 @@ Pattern fixes:
 - `TerrainDigSystem` hardcodes dig reach (`* 1.0`) → game_config.
 
 ### T-358 · Client raw.has() presence checks are dead since T-284
-Effort: S   Status: todo
+Effort: S   Status: in-progress
 
 `interactable_handlers.ts` checks `raw.has("itemData")` and `hover_outline.ts`
 checks `raw.has("poiInteractable")`, but both components HAVE client decoders
@@ -2354,7 +2354,7 @@ degraded), switch the checks to the named fields, and live-verify via the
 testplay harness.
 
 ### T-359 · tile_events.ts payload interfaces drifted from live event shapes
-Effort: S   Status: todo
+Effort: S   Status: in-progress
 
 `HitSparkPayload` / `DamageDealtPayload` (and possibly siblings) in
 `tile-server/src/tile_events.ts` no longer match what publishers actually emit —
