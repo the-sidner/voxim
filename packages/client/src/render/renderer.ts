@@ -28,7 +28,7 @@ import { sampleField } from "./field_sample.ts";
 import { geometryFromBaked } from "./voxel_geo.ts";
 import { buildVoxelMaterial, setEmissiveHdrScale } from "./voxel_material.ts";
 import { canopyFade } from "./canopy_fade.ts";
-import { setTextureStyleParams } from "./material_textures.ts";
+import { disposeVoxelTextures, setTextureStyleParams } from "./material_textures.ts";
 import { setClientPalette, paletteToken } from "./palette.ts";
 import { WeaponTrailRenderer } from "./weapon_trail.ts";
 import { GateMarkerRenderer } from "./gate_marker.ts";
@@ -662,6 +662,15 @@ export class VoximRenderer {
    * is pending, so it's safe to call unconditionally.
    */
   onContentHydrated(): void {
+    // Fresh content invalidates the per-material procedural texture cache
+    // (keyed by materialId alone): a re-hydration can carry a changed
+    // material colour / render.textureStyle / game_config style params, and
+    // a stale cached CanvasTexture would silently override them — the exact
+    // version drift the bootstrap-blob design promises cannot happen. Any
+    // texture still referenced by a live material is transparently
+    // re-uploaded by three on next use; subsequent bakes regenerate from
+    // the new defs.
+    disposeVoxelTextures();
     if (this.pendingChunkRebuilds.size === 0) return;
     const pending = [...this.pendingChunkRebuilds];
     this.pendingChunkRebuilds.clear();
