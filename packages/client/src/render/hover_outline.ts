@@ -43,7 +43,7 @@ interface OutlineCategory {
  * suppresses the outline entirely. Add an entry per category to opt new
  * entity kinds in — keeping NPCs/players out is intentional for now.
  */
-function outlineCategoryFor(state: EntityState | null): OutlineCategory | null {
+export function outlineCategoryFor(state: EntityState | null): OutlineCategory | null {
   if (!state) return null;
   // Order mirrors interaction-handler priority so the outline colour matches
   // the kind the Use key would activate (job_board > workstation).
@@ -53,7 +53,7 @@ function outlineCategoryFor(state: EntityState | null): OutlineCategory | null {
   if (state.container)            return { tint: 0xc0a060 };  // tan — chests
   if (state.raw.has("resource_node")) return { tint: 0xffe080 };  // warm yellow
   if (state.itemData)             return { tint: 0x80e0ff };  // cyan
-  if (state.raw.has("poiInteractable")) return { tint: 0xd080ff };  // violet — POI world props
+  if (state.poiInteractable)      return { tint: 0xd080ff };  // violet — POI world props
   return null;
 }
 

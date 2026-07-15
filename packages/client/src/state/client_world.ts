@@ -26,6 +26,7 @@ import type {
   TraderInventoryData,
   JobBoardData,
   ContainerData,
+  PoiInteractableData,
   HeritageData,
   BoneData,
 } from "@voxim/codecs";
@@ -72,6 +73,10 @@ export interface EntityState {
   jobBoard?: JobBoardData;
   /** Family chest slots — drives the deposit/withdraw panel when the player interacts (T-077/T-078). */
   container?: ContainerData;
+  /** `action`/`puzzle` POI world-prop marker (chalice pedestal, signal brazier,
+   *  lever, …) — drives the violet hover outline and the Use-key UseEntity
+   *  verb (T-212 v2). */
+  poiInteractable?: PoiInteractableData;
   /** dynastyId/generation/traits — the local player's own copy tells the client
    *  it just respawned as an heir (a generation bump) and which family chests
    *  are its own, T-072. */
