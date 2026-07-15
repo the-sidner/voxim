@@ -988,6 +988,9 @@ export function validateAtmosphereDef(def: AtmosphereDef): void {
   if (typeof m.color !== "string" || m.color.length === 0) {
     throw new Error(`Atmosphere '${def.id}': 'mist.color' must be a non-empty hex string`);
   }
+  if (typeof m.easeRate !== "number" || m.easeRate <= 0) {
+    throw new Error(`Atmosphere '${def.id}': 'mist.easeRate' must be a positive number`);
+  }
   const g = def.godRay;
   if (!g || typeof g !== "object") {
     throw new Error(`Atmosphere '${def.id}': 'godRay' must be an object`);

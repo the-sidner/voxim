@@ -140,7 +140,7 @@ export class IntentTranslator {
    *  `camera.mouseSensitivity` (T-328). Pre-bootstrap default mirrors
    *  CameraRig's own pre-configure default so the two axes match before
    *  `configure()` overwrites both from content. */
-  private sensitivity = 0.0022;
+  private sensitivity = 0.011;
   /** Live keyboard bindings — `game_config.input.bindings` once the content blob
    *  lands, DEFAULT_BINDINGS until then (T-335). */
   private bindings: Record<InputAction, string[]> = DEFAULT_BINDINGS;

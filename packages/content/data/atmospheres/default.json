@@ -15,7 +15,8 @@
       "dusk": 0.35,
       "midnight": 0.2
     },
-    "color": "#b07a5e"
+    "color": "#b07a5e",
+    "easeRate": 0.015
   },
   "godRay": {
     "intensity": 0.42,
