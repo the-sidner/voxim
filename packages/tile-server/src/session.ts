@@ -141,10 +141,9 @@ export class ClientSession {
    */
   async serveCommands(stream: { readable: ReadableStream<Uint8Array> }): Promise<void> {
     const reader = (stream.readable as ReadableStream<Uint8Array>).getReader();
-    // readPayload (not readFrame): the client wraps the codec body with
-    // encodeFrame, so the codec's self-describing TLV — whose first byte is the
-    // DATAGRAM_TYPE_COMMAND discriminant — starts after the frame's length
-    // prefix is stripped.
+    // readPayload strips the frame's length prefix: the client wraps the codec
+    // body with encodeFrame, so the codec's self-describing TLV — whose first
+    // byte is the DATAGRAM_TYPE_COMMAND discriminant — starts right after it.
     const { readPayload } = makeFrameReader(reader);
     try {
       while (!this._closed) {

@@ -83,23 +83,6 @@ export function makeFrameReader(reader: ReadableStreamDefaultReader<Uint8Array>)
     return JSON.parse(dec.decode(payload));
   }
 
-  /**
-   * Read the next length-prefixed frame as a single Uint8Array
-   * containing both the 4-byte header and the payload.
-   * Useful when the downstream codec expects the full framed bytes.
-   */
-  async function readFrame(): Promise<Uint8Array | null> {
-    const header = await readExact(4);
-    if (!header) return null;
-    const len = new DataView(header.buffer).getUint32(0, true);
-    const payload = await readExact(len);
-    if (!payload) return null;
-    const full = new Uint8Array(4 + len);
-    full.set(header, 0);
-    full.set(payload, 4);
-    return full;
-  }
-
   /** Read the next length-prefixed frame's payload bytes only (no header). */
   async function readPayload(): Promise<Uint8Array | null> {
     const header = await readExact(4);
@@ -108,5 +91,5 @@ export function makeFrameReader(reader: ReadableStreamDefaultReader<Uint8Array>)
     return readExact(len);
   }
 
-  return { readExact, readJson, readFrame, readPayload };
+  return { readExact, readJson, readPayload };
 }

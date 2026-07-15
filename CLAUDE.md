@@ -270,7 +270,7 @@ writer.write(encodeFrame({ type: "join", ... }));   // JSON objects
 writer.write(encodeFrame(binaryBytes));              // Uint8Array pass-through
 
 // Receiver
-const { readJson, readFrame, readPayload } = makeFrameReader(reader);
+const { readJson, readPayload } = makeFrameReader(reader);
 const msg = await readJson();      // reads one length-prefixed JSON message
 const raw = await readPayload();   // reads one length-prefixed binary payload
 ```
