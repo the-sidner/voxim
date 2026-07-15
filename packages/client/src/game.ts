@@ -11,6 +11,7 @@
  */
 import { connectViaGateway } from "./connection/gateway_client.ts";
 import { TileConnection } from "./connection/tile_connection.ts";
+import { wireConnectionHandlers } from "./connection/wire_handlers.ts";
 import type { CharacterCreation } from "./connection/tile_connection.ts";
 import { InputCapture } from "./input/input_capture.ts";
 import { PointerLockController } from "./input/pointer_lock.ts";
@@ -45,19 +46,17 @@ import { WorldOverlay } from "./ui/world_overlay.ts";
 import { mountUI } from "./ui/mount_ui.tsx";
 import { uiState, patchUI, openPanel, closePanel, pushToast, hotbarItems } from "./ui/ui_store.ts";
 import { setClientWorld, setLocalPlayerId } from "./ui/client_world_ref.ts";
-import { currentZoneName, currentZoneRole, currentZoneTraversal } from "./ui/zone_ref.ts";
 import { setContentService } from "./ui/content_ref.ts";
 import { setFogRef } from "./ui/fog_ref.ts";
 import type { UIAction } from "./ui/ui_actions.ts";
-import { humanizeItemType } from "./ui/item_names.ts";
-import { openWorkstation, openTrader, openJobBoard, openContainer, mirrorWorkstationToUi, mirrorTraderToUi, mirrorJobBoardToUi, mirrorContainerToUi } from "./ui/panel_bridge.ts";
-import { recordInput, recordState, recordSnapshot } from "./ui/network_capture.ts";
+import { openWorkstation, openTrader, openJobBoard, openContainer } from "./ui/panel_bridge.ts";
+import { recordInput } from "./ui/network_capture.ts";
 import { setDebugLayer, setDebugItemList } from "./ui/debug_store.ts";
 import { loadLoginName } from "./ui/login.ts";
 import { ACTION_USE_SKILL, ACTION_JUMP, ACTION_CROUCH, hasAction, CommandType, EquipSlotIndex, EQUIP_SLOT_NAMES } from "@voxim/protocol";
 import type { CommandPayload } from "@voxim/protocol";
 import type { HeirRitualStep } from "./ui/ui_store.ts";
-import { mapEquipmentToUI, worldClockPhase, vitalsPatch, mapLoreLoadoutToUI, deriveCastState, getToolType, isHoldToAimWeapon, mapInventoryToUI } from "./state/state_mappers.ts";
+import { mapEquipmentToUI, worldClockPhase, vitalsPatch, mapLoreLoadoutToUI, deriveCastState, mapInventoryToUI } from "./state/state_mappers.ts";
 import { DEFAULT_PHYSICS } from "@voxim/engine";
 import { Predictor } from "./prediction/predictor.ts";
 import { BootstrapSource } from "@voxim/content";
@@ -100,7 +99,7 @@ export interface GameConfig {
 
 export class VoximGame {
   private connection: TileConnection = new TileConnection();
-  private world = new ClientWorld();
+  world = new ClientWorld();
   /**
    * Fog-of-war state (T-157).  Lives on Game (not the renderer) because
    * server fog messages can arrive during `connect()` before the renderer
@@ -108,7 +107,7 @@ export class VoximGame {
    * renderer is given a reference once it's built so its EdgePass shader
    * can sample the texture.
    */
-  private fog = new FogOfWar();
+  fog = new FogOfWar();
   private content: ContentCache | null = null;
   /**
    * ContentService hydrated from the WT-handshake bootstrap blob (T-177).
@@ -116,18 +115,18 @@ export class VoximGame {
    * consumers (UI panels, debug item list, weapon-action lookup). Held
    * here so tile transitions can swap it for the new tile's blob.
    */
-  private contentService: ContentService | null = null;
-  private renderer: VoximRenderer | null = null;
-  private overlay: WorldOverlay | null = null;
-  private input: IntentTranslator | null = null;
+  contentService: ContentService | null = null;
+  renderer: VoximRenderer | null = null;
+  overlay: WorldOverlay | null = null;
+  input: IntentTranslator | null = null;
   private inputCapture: InputCapture | null = null;
   private pointerLock: PointerLockController | null = null;
-  private intentRouter: IntentRouter | null = null;
+  intentRouter: IntentRouter | null = null;
   private animFrameId = 0;
-  private playerId: string | null = null;
+  playerId: string | null = null;
   private inputSeq = 0;
   private commandSeq = 0;
-  private serverTick = 0;
+  serverTick = 0;
 
   /**
    * Test/automation hooks (T-272 harness), reached via `window._voxim_game`.
@@ -247,24 +246,24 @@ export class VoximGame {
     };
   }
   private running = false;
-  private predictor: Predictor | null = null;
+  predictor: Predictor | null = null;
   private lastFrameTime = 0;
   private interactionSystem: InteractionSystem | null = null;
   private buildGhost: BuildGhostRenderer | null = null;
   /** Per-column stack counter feeding the build cursor's vertical stacking (T-284). */
-  private readonly buildOccupancy = new BuildOccupancy();
+  readonly buildOccupancy = new BuildOccupancy();
   private hoverOutline: HoverOutlineRenderer | null = null;
   private scatter: ScatterRenderer | null = null;
   /** Per-tile id for the scatter VariantPool's deterministic seed. Defaults to
    *  the single-tile world; the gateway path overrides it. */
   private tileId = "0_0";
   private waterRenderer: WaterRenderer | null = null;
-  private roofRenderer: RoofRenderer | null = null;
-  private decals: DecalRenderer | null = null;
+  roofRenderer: RoofRenderer | null = null;
+  decals: DecalRenderer | null = null;
   /** Hold-to-aim arc + landing marker (T-337) — "you cannot aim what you cannot see". */
   private aimIndicator: AimIndicatorRenderer | null = null;
   /** Throttle key for the "missing materials" toast — avoids spam on every swing. */
-  private _lastMissingToastKey: string | null = null;
+  _lastMissingToastKey: string | null = null;
 
   /** Rolling FPS sampler — counts frames between publish ticks. */
   private fpsFrames = 0;
@@ -273,7 +272,7 @@ export class VoximGame {
   /** Per-section CPU time accumulators (ms), averaged over the FPS window. */
   private timingAccum = { frame: 0, sk: 0, trail: 0, gl: 0, post: 0 };
   /** Last `onlineCount` shipped via state message; pushed to UIState as it changes. */
-  private lastOnlineCount = -1;
+  lastOnlineCount = -1;
   /**
    * Recently-sent input timestamps keyed by seq.  When a state message
    * arrives with `ackInputSeq`, we look up the original send timestamp
@@ -293,11 +292,11 @@ export class VoximGame {
 
   private terrainChunksReceived = 0;
   /** True once all terrain AND all entity models are preloaded. */
-  private loadingComplete = false;
+  loadingComplete = false;
   /** Session token kept around so tile transitions can re-join without re-auth. */
   private tileToken: string | null = null;
   /** True while a tile transition is in flight; suppresses onClose→stop(). */
-  private transitioning = false;
+  transitioning = false;
 
   // ── Heir ritual guidance (T-072) ──────────────────────────────────────────
   /** Last `Heritage.generation` observed for the local player. Null until the
@@ -306,15 +305,15 @@ export class VoximGame {
   private lastHeritageGeneration: number | null = null;
   /** True once a genuine generation bump has been observed THIS session (a
    *  real death → heir respawn happened while connected). */
-  private ritualActive = false;
+  ritualActive = false;
   /** Player closed the guidance banner; stays true until the next generation bump. */
-  private ritualDismissed = false;
+  ritualDismissed = false;
 
   async start(config: GameConfig): Promise<void> {
     // Step 1: wire message handlers BEFORE connecting — eliminates the race where
     // the server's full snapshot arrives during connect() while handlers are still null.
     // All renderer/hud references use optional chaining — safe before they are created.
-    this._wireConnectionHandlers(this.connection);
+    wireConnectionHandlers(this, this.connection);
 
     // Step 2: resolve tile address (via gateway, or direct for demo/dev)
     const { canvas } = config;
@@ -469,9 +468,7 @@ export class VoximGame {
     }
     patchUI({ loadingProgress: Math.min(1, this.terrainChunksReceived / VoximGame.TOTAL_CHUNKS) });
     console.log(`[Game] startup complete; terrain chunks pre-received during connect: ${this.terrainChunksReceived}/${VoximGame.TOTAL_CHUNKS}`);
-    if (!this.loadingComplete && this.terrainChunksReceived >= VoximGame.TOTAL_CHUNKS) {
-      this._finishLoading();
-    }
+    this._finishLoadingIfReady();
     // Input system — Capture (DOM listeners) → Translator (state + intents)
     // → Router (handlers). Replaces the old InputController callback surface.
     this.intentRouter = new IntentRouter();
@@ -632,372 +629,6 @@ export class VoximGame {
   }
 
   /**
-   * Wire the per-message callbacks on a TileConnection. Called once during
-   * `start()` and again per tile transition (T-141), since each transition
-   * builds a fresh connection.
-   */
-  private _wireConnectionHandlers(conn: TileConnection): void {
-    conn.onSnapshot = (snap) => {
-      this.serverTick = snap.serverTick;
-      this.world.applySnapshot(snap);
-      recordSnapshot(snap);
-      for (const e of snap.entities) {
-        const state = this.world.get(e.entityId);
-        if (state?.position) this.renderer?.updateEntity(e.entityId, state);
-      }
-    };
-
-    conn.onStateMessage = (msg) => {
-      this.serverTick = msg.serverTick;
-      recordState(msg);
-
-      if (msg.onlineCount !== this.lastOnlineCount) {
-        this.lastOnlineCount = msg.onlineCount;
-        patchUI({ hudStats: { ...uiState.value.hudStats, onlineCount: msg.onlineCount } });
-      }
-
-      // RTT — find the wall-clock timestamp we stamped when sending the
-      // input that this state message acknowledges.  Drop it and any
-      // older entries from the buffer (their seqs are now eclipsed).
-      const sentAt = this.inputSentAt.get(msg.ackInputSeq);
-      if (sentAt !== undefined) {
-        const rtt = Date.now() - sentAt;
-        // EMA with α=0.2 — smooth enough to read but reactive to spikes.
-        this.smoothedPingMs = this.smoothedPingMs === 0
-          ? rtt
-          : this.smoothedPingMs * 0.8 + rtt * 0.2;
-      }
-      this.lastAckedSeq = msg.ackInputSeq;
-      // Prune everything ≤ acked seq. Keys are integers; iterate once.
-      for (const seq of this.inputSentAt.keys()) {
-        if (seq <= msg.ackInputSeq) this.inputSentAt.delete(seq);
-      }
-
-      // Fog of war (T-157) — server is authoritative for `seenEver`.
-      // Snapshots arrive on the first state message after join (and on resync);
-      // reveal lists ride every tick that uncovered new cells.  Applied to
-      // the Game-owned FogOfWar so messages received during connect() (before
-      // the renderer is built) aren't dropped.
-      if (msg.fogSnapshot) {
-        this.fog.applySnapshot(msg.fogSnapshot);
-      }
-      if (msg.fogReveals.length > 0) {
-        this.fog.applyReveals(msg.fogReveals);
-      }
-
-      const updated = new Set<string>();
-      for (const spawn of msg.spawns) {
-        this.world.applySpawn(spawn);
-        updated.add(spawn.entityId);
-        // Mirror placed voxels (blueprint entities) into the build occupancy so
-        // the cursor stacks on top of them (T-284). Single source = ClientWorld.
-        const e = this.world.get(spawn.entityId);
-        if (e?.blueprint && e.position) {
-          this.buildOccupancy.add(spawn.entityId, e.position.x, e.position.y);
-        }
-      }
-      for (const delta of msg.deltas) {
-        this.world.applyDelta(delta);
-        updated.add(delta.entityId);
-      }
-      for (const rm of msg.removals) {
-        this.world.applyRemoval(rm.entityId, rm.componentType);
-        updated.add(rm.entityId);
-      }
-      for (const entityId of msg.destroys) {
-        this.buildOccupancy.remove(entityId);
-        this.world.applyDestroy(entityId);
-        this.renderer?.removeEntity(entityId);
-        this.renderer?.removeGateMarker(entityId);
-        this.overlay?.removeEntityBar(entityId);
-        this.overlay?.removeGateLabel(entityId);
-      }
-
-      for (const entityId of updated) {
-        const state = this.world.get(entityId);
-        if (!state) continue;
-        if (state.heightmap && state.materialGrid) {
-          this.terrainChunksReceived++;
-          patchUI({ loadingProgress: Math.min(1, this.terrainChunksReceived / VoximGame.TOTAL_CHUNKS) });
-          if (this.terrainChunksReceived % 20 === 0 || this.terrainChunksReceived === VoximGame.TOTAL_CHUNKS) {
-            console.log(`[Game] terrain chunks received: ${this.terrainChunksReceived}/${VoximGame.TOTAL_CHUNKS}`);
-          }
-          // During loading: don't push to renderer yet — keeps JS thread free so
-          // QUIC flow control isn't starved.  _finishLoading() flushes everything.
-          if (this.loadingComplete) {
-            const chunk = this.world.getChunk(state.heightmap.chunkX, state.heightmap.chunkY);
-            if (chunk?.heightmap && chunk.materialGrid) this.renderer?.updateTerrain(chunk as ClientChunk);
-          }
-        } else if (state.gateLink && state.position) {
-          // Gate entities are rendered as standalone navigational markers,
-          // not via the regular entity mesh path (no modelRef, no skeleton).
-          // Pin the pillar to local terrain height so it stands on the ground.
-          if (this.loadingComplete) {
-            const groundZ = this.world.getTerrainHeight(state.position.x, state.position.y);
-            this.renderer?.updateGateMarker(
-              entityId, state.position.x, state.position.y, groundZ, state.gateLink.edge,
-            );
-          }
-        } else if (state.position) {
-          if (this.loadingComplete) this.renderer?.updateEntity(entityId, state);
-        }
-        if (state.worldClock) {
-          this.renderer?.setDayPhase(worldClockPhase(state.worldClock.ticksElapsed, state.worldClock.dayLengthTicks));
-        }
-        if (entityId === this.playerId) {
-          if (state.health)    patchUI({ health:    { current: state.health.current, max: state.health.max } });
-          if (state.resource)  patchUI(vitalsPatch(state.resource));
-          if (state.actionCooldowns) patchUI({ skillCooldowns: state.actionCooldowns });
-          if (state.activeActions)   patchUI({ castState: deriveCastState(state.activeActions, this.contentService) });
-          if (state.equipment) {
-            patchUI({ equipment: mapEquipmentToUI(state.equipment) });
-            if (this.input) {
-              const toolType = getToolType(state.equipment.weapon?.prefabId, this.contentService);
-              const newBuildMode = toolType === "hammer";
-              if (newBuildMode !== this.input.buildMode) {
-                console.log(`[Build] buildMode=${newBuildMode} weapon=${state.equipment.weapon?.prefabId ?? "none"} toolType=${toolType ?? "none"}`);
-                this.input.buildMode = newBuildMode;
-                // Hammer unequipped while in build mode → cancel any staged
-                // blueprint selection. Routed through the intent so handlers
-                // stay the single source of mode-clear logic.
-                if (!newBuildMode && modeState.value.kind === "build") {
-                  this.intentRouter?.dispatch({ kind: "build-cancel" });
-                }
-              }
-              // T-337: hold-to-aim weapon detection — drives IntentTranslator's
-              // held-vs-tap ACTION_USE_SKILL branch and the pointer-lock
-              // pitch-capture branch below.
-              this.input.aimWeaponActive = isHoldToAimWeapon(state.equipment.weapon?.prefabId, this.contentService);
-            }
-          }
-          if (state.inventory) {
-            patchUI({ inventory: mapInventoryToUI(state.inventory, this.world) });
-            this._syncHotbarAttachments();   // an assigned slot's item may have changed/emptied (T-309)
-          }
-          if (state.loreLoadout) patchUI({ skillLoadout: mapLoreLoadoutToUI(state.loreLoadout) });
-          if (state.heritage) {
-            const gen = state.heritage.generation;
-            // A real bump this session (not the first sighting) means a death
-            // just advanced the dynasty and this spawn is the heir (T-079/T-270).
-            if (this.lastHeritageGeneration !== null && gen > this.lastHeritageGeneration) {
-              this.ritualActive = true;
-              this.ritualDismissed = false;
-            }
-            this.lastHeritageGeneration = gen;
-            this._recomputeRitualGuide();
-          }
-        }
-        // Mirror buffer/tag updates on the open workstation entity into uiState
-        // so the panel reflects loads/takes/recipe progress without polling.
-        if (uiState.value.workstation?.entityId === entityId) {
-          mirrorWorkstationToUi(this.world, entityId);
-        }
-        // Family chest: refresh when the open chest's slots change (a deposit or
-        // withdraw) so the panel reflects the move without polling.
-        if (uiState.value.container?.entityId === entityId) {
-          mirrorContainerToUi(this.world, entityId);
-        }
-        // Heir ritual (T-072): any container touching this dynasty's chests
-        // (deposit/withdraw, or one newly entering AoI) can change the
-        // guidance banner's pending counts — rescan regardless of which
-        // panel (if any) is open.
-        if (this.ritualActive && !this.ritualDismissed && state.container) {
-          this._recomputeRitualGuide();
-        }
-        // Trade panel: refresh when the open trader's stock OR the player's
-        // inventory (coins/goods) changes, so prices and the sell list stay live.
-        const traderId = uiState.value.trader?.npcId;
-        if (traderId && (entityId === traderId || entityId === this.playerId)) {
-          mirrorTraderToUi(this.world, this.playerId, this.contentService, traderId);
-        }
-        // Job-board panel: refresh when the open board's pending jobs change
-        // (a job claimed/completed by an assigned NPC) so the list stays live.
-        if (uiState.value.jobBoard?.entityId === entityId) {
-          mirrorJobBoardToUi(this.world, entityId);
-        }
-      }
-
-      // Workstation panel cleanup: if the entity left AoI / was destroyed,
-      // the world drop happened above and the mirror would no-op — but the
-      // panel still has stale state. Close it so the next click can reopen.
-      const wsId = uiState.value.workstation?.entityId;
-      if (wsId && msg.destroys.includes(wsId)) {
-        closePanel("workstation");
-      }
-      const chId = uiState.value.container?.entityId;
-      if (chId && msg.destroys.includes(chId)) {
-        closePanel("container");
-      }
-      const trId = uiState.value.trader?.npcId;
-      if (trId && msg.destroys.includes(trId)) {
-        closePanel("trader");
-      }
-      const jbId = uiState.value.jobBoard?.entityId;
-      if (jbId && msg.destroys.includes(jbId)) {
-        closePanel("job_board");
-      }
-      // A tracked ritual chest leaving AoI/destroyed isn't itself a `delta`,
-      // so the container-scan trigger above wouldn't see it — rescan directly.
-      if (this.ritualActive && !this.ritualDismissed && msg.destroys.length > 0) {
-        this._recomputeRitualGuide();
-      }
-
-      if (!this.loadingComplete && this.terrainChunksReceived >= VoximGame.TOTAL_CHUNKS) {
-        this._finishLoading();
-      }
-
-      // Client-side prediction reconciliation
-      if (this.predictor && this.playerId) {
-        const playerState = this.world.get(this.playerId);
-        const pos = playerState?.position;
-        const vel = playerState?.velocity;
-        if (pos) {
-          const terrainFn = (x: number, y: number) => this.world.getTerrainHeight(x, y);
-          const isOpenFn  = (x: number, y: number) => this.world.isOpen(x, y);
-          const serverVel = vel ?? { x: 0, y: 0, z: 0 };
-          if (!this.predictor.isInitialised) {
-            this.predictor.seed(pos, serverVel);
-          } else {
-            this.predictor.reconcile(msg.ackInputSeq, pos, serverVel, terrainFn, isOpenFn);
-          }
-        }
-      }
-
-      for (const ev of msg.events) {
-        switch (ev.type) {
-          case "DamageDealt": {
-            const blocked = ev.blocked ? " (blocked)" : "";
-            console.log(`[Event] DamageDealt target=${ev.targetId.slice(-6)} source=${ev.sourceId.slice(-6)} amount=${ev.amount.toFixed(1)}${blocked}`);
-            const screenPos = this.renderer?.getEntityScreenPos(ev.targetId);
-            if (screenPos) this.overlay?.showDamage(screenPos.x, screenPos.y, Math.round(ev.amount), ev.blocked);
-            this.decals?.onEvent(ev);
-            // Hitstop punch (T-296+T-292): a real (unblocked) hit briefly
-            // freezes the scene. No wire field for the server's exact
-            // hitStopTicks — the client derives a flat short window from the
-            // existing DamageDealt payload (amount already rides the wire),
-            // scaling toward the longer end on a heavier hit.
-            if (!ev.blocked && ev.amount > 0) {
-              const emphasis = Math.min(1, ev.amount / 25);
-              this.renderer?.triggerHitStop(60 + emphasis * 60);
-            }
-            break;
-          }
-          case "HitSpark":
-            this.renderer?.onParticleEvent(ev);
-            break;
-          case "Healed": {
-            const screenPos = this.renderer?.getEntityScreenPos(ev.entityId);
-            if (screenPos) this.overlay?.showHeal(screenPos.x, screenPos.y, Math.round(ev.amount));
-            break;
-          }
-          case "EntityDied":
-            console.log(`[Event] EntityDied entity=${ev.entityId.slice(-6)}${ev.killerId ? ` killer=${ev.killerId.slice(-6)}` : ""}`);
-            this.decals?.onEvent(ev);
-            this.renderer?.onEntityDied(ev.entityId);
-            if (ev.entityId === this.playerId) {
-              openPanel("death", true);
-              pushToast("You died", "danger");
-            }
-            break;
-          case "HungerCritical":
-            console.log(`[Event] HungerCritical entity=${ev.entityId.slice(-6)}`);
-            if (ev.entityId === this.playerId) pushToast("Starving!", "warn");
-            break;
-          case "DayPhaseChanged": {
-            console.log(`[Event] DayPhaseChanged phase=${ev.phase} time=${ev.timeOfDay.toFixed(2)}`);
-            const labels: Record<string, string> = { dawn: "Dawn", noon: "Noon", dusk: "Dusk", midnight: "Midnight" };
-            pushToast(labels[ev.phase] ?? ev.phase, "info");
-            this.renderer?.setDayPhase(ev.phase);
-            break;
-          }
-          case "CraftingCompleted":
-            console.log(`[Event] CraftingCompleted crafter=${ev.crafterId.slice(-6)} recipe=${ev.recipeId}`);
-            if (ev.crafterId === this.playerId) pushToast(`Crafted: ${ev.recipeId}`, "success");
-            break;
-          case "BuildingCompleted":
-            console.log(`[Event] BuildingCompleted builder=${ev.builderId.slice(-6)} type=${ev.structureType}`);
-            if (ev.builderId === this.playerId) {
-              pushToast(`Built: ${humanizeItemType(ev.structureType)}`, "success");
-              this._lastMissingToastKey = null;
-            }
-            break;
-          case "BuildingMaterialsConsumed":
-            console.log(`[Event] BuildingMaterialsConsumed builder=${ev.builderId.slice(-6)} type=${ev.structureType}`);
-            if (ev.builderId === this.playerId) {
-              const lines = ev.consumed.map((c) => `${c.quantity}× ${humanizeItemType(c.itemType)}`).join(", ");
-              pushToast(`Materials used: ${lines}`, "info");
-            }
-            break;
-          case "BuildingMissingMaterials": {
-            console.log(`[Event] BuildingMissingMaterials builder=${ev.builderId.slice(-6)} type=${ev.structureType}`);
-            if (ev.builderId === this.playerId) {
-              // Throttle: only toast once per unique (structureType, missing list) combination
-              const key = ev.structureType + ":" + ev.missing.map((m) => `${m.itemType}×${m.quantity}`).join(",");
-              if (key !== this._lastMissingToastKey) {
-                this._lastMissingToastKey = key;
-                const lines = ev.missing.map((m) => `${m.quantity}× ${humanizeItemType(m.itemType)}`).join(", ");
-                pushToast(`Missing: ${lines}`, "warn");
-              }
-            }
-            break;
-          }
-          case "NodeDepleted":
-            console.log(`[Event] NodeDepleted node=${ev.nodeId.slice(-6)} type=${ev.nodeTypeId} harvester=${ev.harvesterId.slice(-6)}`);
-            if (ev.harvesterId === this.playerId) pushToast(`${ev.nodeTypeId} depleted`, "info");
-            break;
-          case "GateApproached":
-            console.log(`[Event] GateApproached entity=${ev.entityId.slice(-6)} gate=${ev.gateId} dest=${ev.destinationTileId}`);
-            if (ev.entityId === this.playerId) pushToast(`Entering ${ev.destinationTileId}`, "info");
-            break;
-          case "GateCrossing":
-            console.log(`[Event] GateCrossing entity=${ev.entityId.slice(-6)} → ${ev.destinationTileAddress}`);
-            if (ev.entityId === this.playerId) {
-              this._transitionToTile(ev.destinationTileAddress, ev.destinationTileCertHashHex);
-            }
-            break;
-          case "TradeCompleted":
-            console.log(`[Event] TradeCompleted buyer=${ev.buyerId.slice(-6)} item=${ev.itemType} qty=${ev.quantity} coins=${ev.coinDelta}`);
-            if (ev.buyerId === this.playerId) {
-              const coins = ev.coinDelta > 0 ? `-${ev.coinDelta}` : `+${-ev.coinDelta}`;
-              pushToast(`${ev.quantity}x ${ev.itemType} (${coins} coins)`, "success");
-            }
-            break;
-          case "LoreExternalised":
-            console.log(`[Event] LoreExternalised entity=${ev.entityId.slice(-6)} fragment=${ev.fragmentId}`);
-            if (ev.entityId === this.playerId) pushToast(`Fragment written: ${ev.fragmentId}`, "info");
-            break;
-          case "LoreInternalised":
-            console.log(`[Event] LoreInternalised entity=${ev.entityId.slice(-6)} fragment=${ev.fragmentId}`);
-            if (ev.entityId === this.playerId) pushToast(`Lore absorbed: ${ev.fragmentId}`, "success");
-            break;
-          case "ZoneEntered":
-            if (ev.playerId === this.playerId) {
-              // Empty name = sub-threshold zone or no-zone band; clear
-              // the HUD caption rather than show "You are in: ".
-              currentZoneName.value = ev.zoneName;
-              currentZoneRole.value = ev.topologyRole;
-              currentZoneTraversal.value = ev.traversal;
-              if (ev.zoneName) pushToast(`Entering: ${ev.zoneName}`, "info");
-            }
-            break;
-          case "EnclosureChanged":
-            this.roofRenderer?.onEnclosureChanged(ev.cells);
-            break;
-        }
-      }
-    };
-
-    conn.onClose = () => {
-      // During tile transitions we deliberately close the source connection;
-      // the new connection is what runs after _transitionToTile() returns.
-      // Don't tear the game down in that case.
-      if (this.transitioning) return;
-      console.log("[Game] disconnected");
-      this.stop();
-    };
-  }
-
-  /**
    * Tile transition (T-141). The source tile sends a final GateCrossing event
    * carrying the destination's WT address + cert fingerprint, then tombstones
    * the player. We close the old connection, wipe per-tile world state, open
@@ -1006,7 +637,7 @@ export class VoximGame {
    * and predictor are all preserved across the swap — only the connection +
    * world entities + terrain churn.
    */
-  private async _transitionToTile(address: string, certHashHex: string): Promise<void> {
+  async _transitionToTile(address: string, certHashHex: string): Promise<void> {
     if (this.transitioning) return;
     if (!this.playerId || !this.tileToken) {
       console.error("[Game] tile transition without playerId/token — aborting");
@@ -1035,7 +666,7 @@ export class VoximGame {
 
     // Fresh connection — handlers reference `this` so they keep working.
     const conn = new TileConnection();
-    this._wireConnectionHandlers(conn);
+    wireConnectionHandlers(this, conn);
     this.connection = conn;
 
     try {
@@ -1294,6 +925,43 @@ export class VoximGame {
   }
 
   /**
+   * Record a state message's `ackInputSeq`: derive RTT from the matching send
+   * timestamp (EMA, α = 0.2 — smooth enough to read but reactive to spikes)
+   * and prune every eclipsed entry from the send buffer. Called by the
+   * connection handlers (connection/wire_handlers.ts) once per state message;
+   * pairs with the `inputSentAt.set()` in frame().
+   */
+  _recordAckedSeq(ackInputSeq: number): void {
+    const sentAt = this.inputSentAt.get(ackInputSeq);
+    if (sentAt !== undefined) {
+      const rtt = Date.now() - sentAt;
+      this.smoothedPingMs = this.smoothedPingMs === 0
+        ? rtt
+        : this.smoothedPingMs * 0.8 + rtt * 0.2;
+    }
+    this.lastAckedSeq = ackInputSeq;
+    // Prune everything ≤ acked seq. Keys are integers; iterate once.
+    for (const seq of this.inputSentAt.keys()) {
+      if (seq <= ackInputSeq) this.inputSentAt.delete(seq);
+    }
+  }
+
+  /**
+   * Observe the local player's `Heritage.generation`. A real bump this
+   * session (not the first sighting — that's just the baseline) means a death
+   * just advanced the dynasty and this spawn is the heir (T-079/T-270):
+   * activate the ritual guidance and recompute the banner.
+   */
+  _observeHeritageGeneration(generation: number): void {
+    if (this.lastHeritageGeneration !== null && generation > this.lastHeritageGeneration) {
+      this.ritualActive = true;
+      this.ritualDismissed = false;
+    }
+    this.lastHeritageGeneration = generation;
+    this._recomputeRitualGuide();
+  }
+
+  /**
    * Heir ritual guidance (T-072). Rescans every entity currently known to
    * the client for a `container` belonging to the player's own dynasty
    * (matched via the player's own `Heritage.dynastyId`) and still holding
@@ -1304,7 +972,7 @@ export class VoximGame {
    * dismisses it). Reading/equipping still goes through the ordinary
    * container + inventory UI; there is no "do it for me" button here.
    */
-  private _recomputeRitualGuide(): void {
+  _recomputeRitualGuide(): void {
     if (!this.ritualActive || this.ritualDismissed || !this.playerId) {
       if (uiState.value.heirRitual) patchUI({ heirRitual: null });
       return;
@@ -1732,7 +1400,7 @@ export class VoximGame {
    * derivation Hotbar.tsx uses (hotbarItems) so the HUD icons and the 3D
    * anchors never disagree.
    */
-  private _syncHotbarAttachments(): void {
+  _syncHotbarAttachments(): void {
     const hb = uiState.value.hotbar;
     if (!hb || !this.renderer) return;
     this.renderer.setHotbar(hotbarItems.value.map((it) => it?.itemType ?? null), hb.activeIndex);
@@ -1758,6 +1426,22 @@ export class VoximGame {
       case "bypass_postfx": return this.renderer.toggleBypassPostFX();
       case "shadows":       return this.renderer.toggleShadows();
       default:              return this.renderer.debugOverlayManager.toggle(layer);
+    }
+  }
+
+  /** Count one received terrain chunk toward the loading gate + progress UI. */
+  _noteTerrainChunkReceived(): void {
+    this.terrainChunksReceived++;
+    patchUI({ loadingProgress: Math.min(1, this.terrainChunksReceived / VoximGame.TOTAL_CHUNKS) });
+    if (this.terrainChunksReceived % 20 === 0 || this.terrainChunksReceived === VoximGame.TOTAL_CHUNKS) {
+      console.log(`[Game] terrain chunks received: ${this.terrainChunksReceived}/${VoximGame.TOTAL_CHUNKS}`);
+    }
+  }
+
+  /** Run _finishLoading() once every expected terrain chunk has arrived. */
+  _finishLoadingIfReady(): void {
+    if (!this.loadingComplete && this.terrainChunksReceived >= VoximGame.TOTAL_CHUNKS) {
+      this._finishLoading();
     }
   }
 
