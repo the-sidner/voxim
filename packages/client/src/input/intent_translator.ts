@@ -41,6 +41,7 @@
  * check alone can't catch since the event target there genuinely is the
  * canvas, not a UI node.
  */
+import { clamp } from "@voxim/engine";
 import type { MovementDatagram } from "@voxim/protocol";
 import {
   ACTION_USE_SKILL,
@@ -81,10 +82,6 @@ export interface FacingConfig {
    * keeps the pre-bootstrap default (0..45deg).
    */
   aim?: { pitchMinDeg: number; pitchMaxDeg: number };
-}
-
-function clamp(v: number, lo: number, hi: number): number {
-  return v < lo ? lo : v > hi ? hi : v;
 }
 
 /**

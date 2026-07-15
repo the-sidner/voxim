@@ -16,6 +16,7 @@
  * radius from the player have their groups hidden.
  */
 import * as THREE from "three";
+import { lerp } from "@voxim/engine";
 import type { ClientChunk, ClientWorld, EntityState } from "../state/client_world.ts";
 import type { ContentCache } from "../state/content_cache.ts";
 import type { WeaponActionDef, Prefab, AtmosphereDef, ParticleEmitterDef } from "@voxim/content";
@@ -161,9 +162,6 @@ const DEPTH_BLIT_FRAG = /* glsl */`
  * (~35m slant distance) — visible ground footprint can reach ~50m forward.
  */
 const CULL_RADIUS_SQ = 160 * 160;
-
-/** Lerp a number toward target, returning new value. */
-function lerpN(a: number, b: number, t: number): number { return a + (b - a) * t; }
 
 /** Short-path angle lerp (handles ±π wrap). */
 function lerpAngle(a: number, b: number, t: number): number {
@@ -433,9 +431,9 @@ export class VoximRenderer {
     const aspect = (canvas.clientWidth || canvas.width || 320) / (canvas.clientHeight || canvas.height || 180);
     this.cameraRig = new CameraRig(aspect);
     this.camera = this.cameraRig.camera;
-    // Boot placement before the first frame: dt=0 and no facing target yet, so
-    // the yaw holds at its boot value (join screen / pre-spawn).
-    this.cameraRig.update(this.cameraTarget, 0);
+    // Boot placement before the first frame: no facing target yet, so the yaw
+    // holds at its boot value (join screen / pre-spawn).
+    this.cameraRig.update(this.cameraTarget);
     this.gateMarkers = new GateMarkerRenderer(this.scene, this.camera, this.renderer.domElement);
     this.entities = new EntityMeshRegistry(
       this.scene, this.instancePool, this.weaponActionsMap, this.itemPrefabMap,
@@ -1360,9 +1358,9 @@ export class VoximRenderer {
       } else {
         const alpha = Math.max(0, Math.min(1, (renderTime - buf[lo].t) / (buf[hi].t - buf[lo].t)));
         mesh.group.position.set(
-          lerpN(buf[lo].x, buf[hi].x, alpha),
-          lerpN(buf[lo].y, buf[hi].y, alpha) + mesh.rollLiftY,
-          lerpN(buf[lo].z, buf[hi].z, alpha),
+          lerp(buf[lo].x, buf[hi].x, alpha),
+          lerp(buf[lo].y, buf[hi].y, alpha) + mesh.rollLiftY,
+          lerp(buf[lo].z, buf[hi].z, alpha),
         );
         mesh.group.rotation.y = lerpAngle(buf[lo].ry, buf[hi].ry, alpha);
       }
@@ -1456,7 +1454,7 @@ export class VoximRenderer {
     // mouse-Y). update() re-places the camera from the current (yaw, pitch)
     // each frame around the player target.
     if (localFacing != null) this.cameraRig.setYaw(localFacing);
-    this.cameraRig.update(this.cameraTarget, dt);
+    this.cameraRig.update(this.cameraTarget);
 
     // Day/night lerp + shadow-frustum follow/snap + sky-locked sun disc — all
     // off the now-settled camera target. (After cameraRig.update so the sun disc

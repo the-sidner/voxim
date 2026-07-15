@@ -27,6 +27,7 @@
  * why (keeps the near cascade's material-shading path untouched).
  */
 import * as THREE from "three";
+import { lerp } from "@voxim/engine";
 import type { Palette, AtmosphereDef } from "@voxim/content";
 import { sunArc, type SunArcParams } from "@voxim/content";
 
@@ -73,9 +74,6 @@ function copyPhase(dst: DayPhaseLight, src: DayPhaseLight): void {
   dst.sky.copy(src.sky); dst.fog.copy(src.fog); dst.sun.copy(src.sun); dst.hemiGround.copy(src.hemiGround);
   dst.sunIntensity = src.sunIntensity; dst.hemiIntensity = src.hemiIntensity; dst.fogFar = src.fogFar;
 }
-
-/** Lerp a number toward target, returning new value. */
-function lerpN(a: number, b: number, t: number): number { return a + (b - a) * t; }
 
 /**
  * The pre-bootstrap fallback sun-arc params — reproduces the retired fixed
@@ -400,9 +398,9 @@ export class EnvironmentLighting {
     this.lightCur.fog.lerp(this.lightTgt.fog, L);
     this.lightCur.sun.lerp(this.lightTgt.sun, L);
     this.lightCur.hemiGround.lerp(this.lightTgt.hemiGround, L);
-    this.lightCur.sunIntensity  = lerpN(this.lightCur.sunIntensity,  this.lightTgt.sunIntensity,  L);
-    this.lightCur.hemiIntensity = lerpN(this.lightCur.hemiIntensity, this.lightTgt.hemiIntensity, L);
-    this.lightCur.fogFar        = lerpN(this.lightCur.fogFar,        this.lightTgt.fogFar,        L);
+    this.lightCur.sunIntensity  = lerp(this.lightCur.sunIntensity,  this.lightTgt.sunIntensity,  L);
+    this.lightCur.hemiIntensity = lerp(this.lightCur.hemiIntensity, this.lightTgt.hemiIntensity, L);
+    this.lightCur.fogFar        = lerp(this.lightCur.fogFar,        this.lightTgt.fogFar,        L);
     (this.scene.background as THREE.Color).copy(this.lightCur.sky);
     (this.scene.fog as THREE.FogExp2).color.copy(this.lightCur.fog);
     (this.scene.fog as THREE.FogExp2).density = FOG_DENSITY_K / Math.max(this.lightCur.fogFar, 1);

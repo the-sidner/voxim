@@ -35,7 +35,7 @@ Deno.test("rest pitch reproduces the T-317 framing byte-stable", () => {
   const r = rig();
   assertAlmostEquals(r.getPitch(), 55 * Math.PI / 180, 1e-12);
 
-  r.update(TARGET, 0);
+  r.update(TARGET);
   const lookAt = new THREE.Vector3(TARGET.x, TARGET.y + CFG.lookAtBias, TARGET.z);
 
   // T-317 geometry: camera backDistance behind (yaw), heightAbove above,
@@ -65,10 +65,10 @@ Deno.test("T-328: setYaw makes getYaw() track the input exactly (rigid coupling,
 Deno.test("setYaw rotates the camera around the target by the yaw delta", () => {
   const r = rig();
   r.setYaw(0);
-  r.update(TARGET, 0);
+  r.update(TARGET);
   const p0 = r.camera.position.clone();
   r.setYaw(Math.PI / 2);
-  r.update(TARGET, 0);
+  r.update(TARGET);
   const p1 = r.camera.position.clone();
   // Horizontal distance to target is preserved; azimuth advanced by ~90°.
   const az = (p: THREE.Vector3) => Math.atan2(p.z - TARGET.z, p.x - TARGET.x);
@@ -103,10 +103,10 @@ Deno.test("invertY flips the pitch response sign", () => {
 
 Deno.test("pitching down raises and pulls the camera in over the target", () => {
   const r = rig();
-  r.update(TARGET, 0);
+  r.update(TARGET);
   const rest = r.camera.position.clone();
   r.applyLookDelta(500); // pitch toward pitchMax
-  r.update(TARGET, 0);
+  r.update(TARGET);
   const steep = r.camera.position.clone();
   const horizRest = Math.hypot(rest.x - TARGET.x, rest.z - TARGET.z);
   const horizSteep = Math.hypot(steep.x - TARGET.x, steep.z - TARGET.z);
