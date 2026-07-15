@@ -1,16 +1,6 @@
 /**
  * Skeleton pose evaluator — Three.js wrapper around evaluateAnimationLayers().
  *
- * Pipeline (called each render frame):
- *   1. evaluatePose()     — FK: CSM-driven layer stack → bone Euler rotations
- *   2. updateSkeletonPose() (entity_mesh.ts) — write Euler rotations to THREE.Groups
- *
- * The IK-driven arm post-pass is gone (T-182 step 6): swings now play
- * authored clips through the CSM combat layer, so the arms come straight
- * from the FK pass like every other body part. Two-bone IK lives in
- * `ik_solver.ts` and is still available for future static constraints
- * (foot planting, off-hand grip helper) — just no longer wired up here.
- *
  * `evaluateAnimationLayers` lives in `@voxim/content` so the server
  * (HitboxSystem) can also call it without Three.js.
  *
