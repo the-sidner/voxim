@@ -16,6 +16,7 @@
 
 import type { World, EntityId } from "@voxim/engine";
 import { Heightmap, CHUNK_SIZE } from "@voxim/world";
+import { isEventRelevant } from "@voxim/protocol";
 import type { GameEvent } from "@voxim/protocol";
 import type {
   BinaryStateMessage,
@@ -61,61 +62,6 @@ function buildSpawnComponents(world: World, entityId: EntityId): BinaryComponent
     }
   }
   return components;
-}
-
-function isEventRelevant(
-  ev: GameEvent,
-  playerId: EntityId,
-  knownEntities: ReadonlySet<EntityId>,
-): boolean {
-  switch (ev.type) {
-    case "DamageDealt":
-      return knownEntities.has(ev.targetId) || knownEntities.has(ev.sourceId);
-    case "EntityDied":
-      return knownEntities.has(ev.entityId);
-    case "CraftingCompleted":
-      return ev.crafterId === playerId;
-    case "BuildingCompleted":
-      return ev.builderId === playerId || knownEntities.has(ev.blueprintId);
-    case "HungerCritical":
-      return ev.entityId === playerId;
-    case "Healed":
-      return knownEntities.has(ev.entityId);
-    case "GateApproached":
-      return ev.entityId === playerId;
-    case "GateCrossing":
-      return ev.entityId === playerId;
-    case "NodeDepleted":
-      return knownEntities.has(ev.nodeId) || knownEntities.has(ev.harvesterId);
-    case "DayPhaseChanged":
-      return true;
-    case "TradeCompleted":
-      return ev.buyerId === playerId || knownEntities.has(ev.traderId);
-    case "LoreExternalised":
-      return ev.entityId === playerId;
-    case "LoreInternalised":
-      return ev.entityId === playerId;
-    case "HitSpark":
-      return true;
-    case "BuildingMaterialsConsumed":
-      return ev.builderId === playerId;
-    case "BuildingMissingMaterials":
-      return ev.builderId === playerId;
-    case "ZoneEntered":
-      // Each client only cares about its own player's zone transitions
-      // (other players' zone changes don't drive its HUD). Server still
-      // emits to AoI so spectator UIs / observability tools can listen.
-      return ev.playerId === playerId;
-    case "EnclosureChanged":
-      // Tile-wide broadcast, like DayPhaseChanged — every connected client
-      // rebuilds its roof geometry off the same cell set.
-      return true;
-    default:
-      // TypeScript enforces exhaustiveness: adding a new GameEvent type without
-      // a matching case here will produce a compile error.
-      ev satisfies never;
-      return false;
-  }
 }
 
 export interface AoiSharedInputs {
