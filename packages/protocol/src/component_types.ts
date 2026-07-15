@@ -45,7 +45,8 @@ export const ComponentType = {
   hitbox:             29,
   workstationBuffer:  30,
   lightEmitter:       31,
-  darknessModifier:   32,
+  // 32 is retired (was darknessModifier) — zero writers ever spawned one; the
+  //    darkness-subtraction loop in getLightAt() was dead code (T-350); do not reuse
   durability:         33,
   // 34 is retired (was inscribed) — server-only now (T-349): no client
   //    consumer ever read it off the wire; do not reuse

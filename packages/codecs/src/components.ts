@@ -1399,29 +1399,6 @@ export const lightEmitterCodec: Serialiser<LightEmitterData> = {
   },
 };
 
-// ---- DarknessModifier -------------------------------------------------------
-// Present on entities that suppress ambient light in a radius (deep corruption,
-// shadow-cursed creatures). Client darkens tiles within range.
-
-export interface DarknessModifierData {
-  radius: number;
-  /** 0–1: fraction of ambient light suppressed at the entity center. Falls off to 0 at radius. */
-  strength: number;
-}
-
-export const darknessModifierCodec: Serialiser<DarknessModifierData> = {
-  encode(v: DarknessModifierData): Uint8Array {
-    const w = new WireWriter();
-    w.writeF32(v.radius);
-    w.writeF32(v.strength);
-    return w.toBytes();
-  },
-  decode(bytes: Uint8Array): DarknessModifierData {
-    const r = new WireReader(bytes);
-    return { radius: r.readF32(), strength: r.readF32() };
-  },
-};
-
 // ---- Durability ---- instance-lifetime component.
 // Remaining / max uses before the item is worn out. Ticked down by DurabilitySystem
 // on each weapon swing; when remaining hits 0 the item is destroyed.

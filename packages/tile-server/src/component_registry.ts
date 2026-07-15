@@ -72,7 +72,7 @@ import { BuiltBy, WorkbenchOwner } from "./components/workbench.ts";
 import { WorldClock } from "./components/world.ts";
 import { TraderInventory } from "./components/trader.ts";
 import { LoreLoadout } from "./components/lore_loadout.ts";
-import { DarknessModifier, LightEmitter } from "./components/light.ts";
+import { LightEmitter } from "./components/light.ts";
 import { Hitbox } from "./components/hitbox.ts";
 import { Bone } from "./components/bone.ts";
 import { GateLink } from "./components/gate.ts";
@@ -160,7 +160,8 @@ export const NETWORKED_DEFS: ReadonlyArray<NetworkedComponentDef<any>> = [
   WorkstationBuffer,
   WorkstationTag,
   LightEmitter,
-  DarknessModifier,
+  // 32 (darknessModifier) retired — zero writers ever spawned one; the
+  //    darkness-subtraction loop in getLightAt was dead code (T-350)
   // ── Instance-lifetime components — held unique items stream to the
   //    holder's session via AoI inclusion in aoi.ts. Only Durability/Stats/
   //    Provenance remain here — Inscribed/QualityStamped went server-only
