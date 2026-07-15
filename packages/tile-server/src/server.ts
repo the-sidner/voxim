@@ -594,6 +594,19 @@ export class TileServer {
     for (const [playerId, session] of this.sessions) {
       if (!this.world.isAlive(playerId)) continue;
 
+      // T-361: an in-flight handoff already serialized this player — the
+      // destination restores THAT snapshot, so nothing they do here may land
+      // (a drop would duplicate the item across tiles; a pickup would be
+      // destroyed at the source yet missing from the payload). Discard, don't
+      // queue: on success the session closes anyway, on failure play resumes
+      // from live input next tick. InputState was neutralised at initiation,
+      // so no stale held-movement replays during the freeze either.
+      if (this.handoffCoordinator.isHandingOff(playerId)) {
+        session.inputBuffer.drain();
+        session.commandQueue.length = 0;
+        continue;
+      }
+
       // Drain movement datagrams into InputState — sanitized and merged
       // (T-253): non-finite fields zeroed, stale/replayed seqs discarded,
       // "latest" chosen by seq (datagrams are unordered), one-shot bits

@@ -194,6 +194,21 @@ export class HandoffCoordinator {
     if (!this.deps.getGatewayUrl() || this.handingOff.has(payload.entityId)) return;
     this.handingOff.add(payload.entityId);
 
+    // Freeze the player for the round-trip (T-361). The payload below is a
+    // snapshot: anything the player does after it is built diverges the live
+    // world from what the destination restores — a dropped item would exist
+    // on both tiles, a picked-up one would be destroyed at the source but be
+    // absent from the payload. The tick loop's input drain discards this
+    // player's datagrams/commands while `handingOff` is set; neutralising
+    // InputState here stops the LAST drained frame (held movement / action
+    // bits) from replaying every tick of the freeze.
+    const input = this.deps.world.get(payload.entityId, InputState);
+    if (input) {
+      this.deps.world.write(payload.entityId, InputState, {
+        ...input, movementX: 0, movementY: 0, actions: 0, chargeMs: 0,
+      });
+    }
+
     const gateLink = this.deps.world.get(payload.gateId as EntityId, GateLink);
     const dynastyId = this.deps.world.get(payload.entityId, Heritage)?.dynastyId ?? payload.entityId;
     const handoffId = crypto.randomUUID();
