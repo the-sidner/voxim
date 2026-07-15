@@ -2193,3 +2193,151 @@ and it wants a design pass, not a lane.
 
 ## Ops & Deployment
 
+## Architecture & Housekeeping
+
+From the 2026-07-15 server/networking/client audit. Doctrine note that applies to
+every ticket here: prose documentation (file headers, architecture comments) is
+NOT maintained in this codebase — it always drifts. Stale doc gets DELETED, not
+refreshed; the code is the reference. Only comments stating a constraint the
+code cannot show survive.
+
+### T-348 · Event wire path → per-event descriptor registry
+Effort: L   Status: todo
+
+The one subsystem the registry rebuild (T-279–284) never reached. Every GameEvent
+kind is hand-maintained at FOUR sites: the union in `protocol/src/messages.ts`,
+the internal→wire translation subscribes in `tile-server/src/event_router.ts`,
+the `encodeEvent`/`decodeEvent` switches in `protocol/src/state_binary.ts`, and
+the `isEventRelevant` AoI-filter switch in `tile-server/src/aoi.ts`. Collapse to
+one per-event descriptor keyed by EventType — wire codec + AoI relevance
+predicate registered once — mirroring `CODEC_BY_WIREID`. The relevance
+predicates are almost all one of three shapes (`=== playerId`,
+`knownEntities.has(x)`, `true`), so relevance can be data.
+Done when: adding a new game event touches exactly one registration site and the
+four switches are gone.
+
+### T-349 · Single-source networked-component registry + boot fail-fast
+Effort: M   Status: todo
+
+`NETWORKED_DEFS` (server encode) and `CODEC_BY_WIREID` (client decode) are two
+independently authored lists, plus a third hardcoded copy in
+`codec_registry.test.ts` that only asserts sizes and cannot catch divergence.
+The heritage (16) / parent (49) silent-decode bugs were symptoms. Author the
+wireId→codec pairing ONCE and derive both registries from it; add a boot
+cross-check (fail-fast, like the content registries) that every networked def
+has a client decoder or an explicit presence-marker opt-out (`resource_node`).
+Includes deciding the three components currently encoded but decoded nowhere:
+`ActorSlots` (47, its "client runs slot dispatch for prediction" justification
+is unrealized — predictor is position-only), `Inscribed` (34), `QualityStamped`
+(35) — either wire them into decode or drop `networked`; today they are pure
+spawn-size + delta bandwidth.
+
+### T-350 · Retire dead components: CraftingQueue, DarknessModifier
+Effort: S   Status: todo
+
+`CraftingQueue` is written once at spawn on every player and read by nobody —
+crafting is entirely WorkstationBuffer-based; it occupies a wire ID and a
+per-player codec allocation. `DarknessModifier` is a networked component with
+zero writers — only queried in `getLightAt()`, but no entity ever carries it,
+so the darkness-subtraction loop is dead-on-arrival. Apply the retire-a-component
+checklist to both (spawner, registry, codec, client field, def; leave the numeric
+slots as retired comments) and simplify `getLightAt`.
+
+### T-351 · SwingPredictor: real chain state or delete the combo apparatus
+Effort: M   Status: todo
+
+`client/src/prediction/swing_predictor.ts` is premised on a networked SwingChain
+that no longer exists (wire id 46 retired, component is server-only). The caller
+passes `chainIndex` as constant 0, so only combo step 0 is ever predicted —
+every combo continuation mispredicts. Either derive real chain state client-side
+(needs T-349's ActorSlots decision) or reduce the predictor to press/hold-only
+and delete the `chainIndex` apparatus.
+
+### T-352 · server.ts decomposition — composition root + HandoffCoordinator
+Effort: L   Status: todo
+
+`server.ts` is 2196 lines; `start()` alone spans ~1000 and interleaves cert
+hashing, content validation, the entire registry composition root (8 registries,
+~45 register() calls), ~15 boot cross-checks, and system construction. Extract
+the composition root into its own module (`wiring.ts`), and extract the
+handoff/gate/zone coordinator (~250 lines of private methods with their own
+state maps: `handingOff`, `handedOff`, `playerLastZone`, `playerHearthAnchors`)
+into a `HandoffCoordinator`, per the "large subsystems are extracted into
+separate modules" table.
+
+### T-353 · game.ts decomposition — connection wiring, panel mirrors, UIAction table, pose composer
+Effort: L   Status: todo
+
+`game.ts` is 2220 lines with 200–370-line methods. Extraction seams:
+`_wireConnectionHandlers` (~370 lines); the panel-bridge family
+(`_open*`/`_mirror*ToUi`, a self-contained world-entity→UI-signal mirror
+module); `_handleUIAction`'s 30-case switch, mostly a mechanical
+UIAction→CommandType map that wants a `Record<type, handler>` dispatch table.
+Also extract the constraint-producer chain hand-sequenced inside the per-entity
+render loop (`renderer.ts` ~1222–1316) into a pose-composer module with a
+registered producer list — compliant on "no per-weapon branches" today but not
+on "producers → generic solver".
+
+### T-354 · Unify session teardown
+Effort: S   Status: todo
+
+Two teardown paths have drifted: the tick-loop dead-session sweep deletes
+`playerLastZone` but skips fog-save + account calls; the `handleSession` end
+path does the reverse — whichever fires first wins, so `playerLastZone` can
+leak. One `teardownSession(playerId)` method both paths call.
+
+### T-355 · AoI: hoist session-independent per-tick work
+Effort: M   Status: todo
+
+`computeSessionUpdate` re-runs `world.query(Heightmap)` (rebuilding
+`allChunkIds`), `WorldClock`, `GateLink`, and `Container` queries once per
+session per tick, though the results are identical across sessions; plus a full
+known-set copy and an `[...inAoI]` spread per session. Compute the shared
+always-visible set + chunk inputs once in the tick loop and pass them in.
+
+### T-356 · Renderer motion/lighting scalars → content
+Effort: S   Status: todo
+
+The graphics arc migrated the color pipeline to content (grade, bloom, god rays,
+mist, atmosphere) but not the motion/lighting scalars: `CROUCH_DROP`/
+`CROUCH_OMEGA`/`LOOK_AT_GAIN`/`SPRING_OMEGA`, the SSAA band
+`AAGFX_MIN_SS`/`AAGFX_MAX_SS`, `HEIGHT_SHADE_BELOW/ABOVE`, `INTERP_DELAY_MS`,
+and an inline mist ease rate, all literals in `renderer.ts`. Move to
+game_config/atmosphere content. Also fold in: `camera_rig.ts` pre-bootstrap
+fallbacks literally duplicate `game_config.json` values.
+
+### T-357 · Housekeeping sweep — delete stale doc, small pattern fixes
+Effort: M   Status: todo
+
+Doc rot (DELETE, don't refresh — see section note):
+- `skeleton_evaluator.ts` header describes the retired CSM layer stack and
+  denies the live IK pipeline — delete the header.
+- Present-tense `ActionSystem` references (retired T-225–234) in
+  `hit_handler.ts`, `components/hitbox.ts`, `components/item_behaviours.ts`,
+  `systems/physics.ts`, `server.ts` — delete.
+- CSM references in `swing_predictor.ts`, `client_world_ref.ts`; rename
+  `CSMSection` in `DebugPanel.tsx` (reads AnimationState).
+- CLAUDE.md protocol section documents a 36-byte InputDatagram with
+  `interactSlot`; the wire is a 39-byte MovementDatagram with pitch+chargeMs.
+  Thin the section to what doesn't drift (pointers, not byte layouts); same for
+  the stale `state_binary.ts` layout header — delete it.
+- `render/ideas.md` scratch file — move out of the source tree or delete.
+
+Pattern fixes:
+- `poi/reward.ts` `switch (extra.kind)` on a content id → registry dispatch
+  (the one genuine violation left server-side).
+- `TrainingDummySystem` ticks ungated in production → gate behind `devMode`
+  like its sibling `DebugCommandSystem`.
+- Crumble double-registration in `death_style_registry.ts` (boot no-op
+  placeholder overwritten by the renderer) → register the real handler before
+  the cross-check.
+- Server-only codecs (`inputStateCodec`, `hitboxCodec`, `npcTagCodec`,
+  `npcJobQueueCodec`) live in `@voxim/codecs` and ship in the client bundle →
+  inline into their component files.
+- `readFrame` in `framing.ts` is a dead export — delete.
+- Scalar `clamp`/`lerp` duplicated in `camera_rig.ts`, `intent_translator.ts`,
+  `material_textures.ts` → add to `@voxim/engine` math and dedupe.
+- `camera_rig.update` keeps a vestigial `_dt` param for symmetry with the
+  deleted follow controller — drop it.
+- `TerrainDigSystem` hardcodes dig reach (`* 1.0`) → game_config.
+
