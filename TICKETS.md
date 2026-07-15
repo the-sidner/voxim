@@ -2254,7 +2254,7 @@ every combo continuation mispredicts. Either derive real chain state client-side
 and delete the `chainIndex` apparatus.
 
 ### T-352 · server.ts decomposition — composition root + HandoffCoordinator
-Effort: L   Status: in-progress
+Effort: L   Status: done   Commit: 8b4968c0   (server.ts 2210→1232 lines; wiring.ts owns the composition root — wireGameSystems(deps): System[], all cross-checks at the same boot position; HandoffCoordinator owns the four state maps behind narrow accessors, teardown statement order preserved; verbatim moves, zero behavior change)
 
 `server.ts` is 2196 lines; `start()` alone spans ~1000 and interleaves cert
 hashing, content validation, the entire registry composition root (8 registries,
