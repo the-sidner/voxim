@@ -2217,7 +2217,7 @@ Done when: adding a new game event touches exactly one registration site and the
 four switches are gone.
 
 ### T-349 · Single-source networked-component registry + boot fail-fast
-Effort: M   Status: in-progress
+Effort: M   Status: done   Commit: 944b5da   (ActorSlots/Inscribed/QualityStamped de-networked — wire ids 47/34/35 retired; CODEC_BY_WIREID is the single authoring site, networkedCodec() resolves defs, boot fail-fast at module load; PRESENCE_ONLY_WIRE_IDS documents the resource_node opt-out)
 
 `NETWORKED_DEFS` (server encode) and `CODEC_BY_WIREID` (client decode) are two
 independently authored lists, plus a third hardcoded copy in
@@ -2233,7 +2233,7 @@ is unrealized — predictor is position-only), `Inscribed` (34), `QualityStamped
 spawn-size + delta bandwidth.
 
 ### T-350 · Retire dead components: CraftingQueue, DarknessModifier
-Effort: S   Status: in-progress
+Effort: S   Status: done   Commit: f3a09b8   (full retirement, wire ids 19/32 retired; getLightAt darkness loop deleted — provably behavior-preserving, darkness was always 0)
 
 `CraftingQueue` is written once at spawn on every player and read by nobody —
 crafting is entirely WorkstationBuffer-based; it occupies a wire ID and a
@@ -2244,7 +2244,7 @@ checklist to both (spawner, registry, codec, client field, def; leave the numeri
 slots as retired comments) and simplify `getLightAt`.
 
 ### T-351 · SwingPredictor: real chain state or delete the combo apparatus
-Effort: M   Status: in-progress
+Effort: M   Status: done   Commit: 4b4bf26   (ActorSlots stayed server-only per T-349, so the predictor reduced to press/hold-only on chain[0]; chainIndex apparatus + SwingableLike/SwingChainEntryLike shapes deleted; zero runtime-behavior change)
 
 `client/src/prediction/swing_predictor.ts` is premised on a networked SwingChain
 that no longer exists (wire id 46 retired, component is server-only). The caller
@@ -2279,7 +2279,7 @@ registered producer list — compliant on "no per-weapon branches" today but not
 on "producers → generic solver".
 
 ### T-354 · Unify session teardown
-Effort: S   Status: in-progress
+Effort: S   Status: done   Commit: b8fd5ae   (one teardownSession(playerId); sessions.delete first-synchronous makes both trigger points idempotent; fog-save-before-handedOff ordering preserved)
 
 Two teardown paths have drifted: the tick-loop dead-session sweep deletes
 `playerLastZone` but skips fog-save + account calls; the `handleSession` end
@@ -2287,7 +2287,7 @@ path does the reverse — whichever fires first wins, so `playerLastZone` can
 leak. One `teardownSession(playerId)` method both paths call.
 
 ### T-355 · AoI: hoist session-independent per-tick work
-Effort: M   Status: in-progress
+Effort: M   Status: done   Commit: 77ef1c3   (computeAoiSharedInputs(world) once per tick, threaded into computeSessionUpdate; isEventRelevant untouched — T-348's territory)
 
 `computeSessionUpdate` re-runs `world.query(Heightmap)` (rebuilding
 `allChunkIds`), `WorldClock`, `GateLink`, and `Container` queries once per
@@ -2296,7 +2296,7 @@ known-set copy and an `[...inAoI]` spread per session. Compute the shared
 always-visible set + chunk inputs once in the tick loop and pass them in.
 
 ### T-356 · Renderer motion/lighting scalars → content
-Effort: S   Status: in-progress
+Effort: S   Status: done   Commit: f512cac   (render.pose/supersample + prediction.remoteInterpDelayMs in game_config, mist.easeRate on AtmosphereDef; values frozen verbatim, no look change; HEIGHT_SHADE_* deleted as drifting duplicates; also fixed a real mouseSensitivity drift between camera_rig fallback and intent_translator)
 
 The graphics arc migrated the color pipeline to content (grade, bloom, god rays,
 mist, atmosphere) but not the motion/lighting scalars: `CROUCH_DROP`/
