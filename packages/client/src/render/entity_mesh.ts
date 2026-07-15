@@ -16,7 +16,7 @@
  */
 import * as THREE from "three";
 import type { EntityState } from "../state/client_world.ts";
-import type { ModelDefinition, MaterialDef, SkeletonDef, AnimationStateData, ResolvedSubObject, DissolveProfileDef } from "@voxim/content";
+import type { ModelDefinition, MaterialDef, SkeletonDef, AnimationStateData, BoneRotation, ResolvedSubObject, DissolveProfileDef } from "@voxim/content";
 import type { ActiveActionsData } from "@voxim/codecs";
 import { buildVoxelMaterial } from "./voxel_material.ts";
 import { paletteToken } from "./palette.ts";
@@ -164,6 +164,14 @@ export interface EntityMeshGroup {
    * locked to the hit. Seeded to target on first sight; cleared on model swap.
    */
   boneSprings: Map<string, THREE.Quaternion>;
+  /**
+   * Reusable FK pose output — threaded into evaluatePose/
+   * evaluateAnimationLayers as the `out` map every frame so the base-FK
+   * stage allocates nothing (the map AND its per-bone rotation objects are
+   * mutated in place). Cleared on model swap so a different skeleton can't
+   * inherit stale bone keys.
+   */
+  poseScratch: Map<string, BoneRotation>;
   /** Eased crouch amount [0,1] — the pelvis-drop / foot-IK input. Eased toward
    *  the target (local player input; remotes 0) so the crouch is snappy but not
    *  a one-frame jolt. */
@@ -296,6 +304,7 @@ export function createEntityMesh(state: EntityState, isLocal: boolean): EntityMe
     attachments: new Map(),
     boneSlotTransforms: new Map(),
     boneSprings: new Map(),
+    poseScratch: new Map(),
     crouchEased: 0,
     animationState: state.animationState ?? null,
     activeActions: state.activeActions ?? null,
@@ -465,6 +474,7 @@ function clearMeshContent(mesh: EntityMeshGroup): void {
   mesh.boneEntityByBoneId.clear();
   mesh.boneIdByEntity.clear();
   mesh.boneSprings.clear(); // drop stale spring state so a model swap doesn't ease from a garbage pose
+  mesh.poseScratch.clear(); // a different skeleton must not inherit the old rig's bone keys
   mesh.dissolveUniforms = []; // drop refs to about-to-be-disposed materials' uniform bundles
   // Gait accumulator (T-308): re-seed on next frame instead of carrying a
   // ground-position baseline from a possibly-different skeleton/scale.
@@ -950,12 +960,12 @@ export function upgradeToSkeletonModel(
  */
 export function updateSkeletonPose(
   mesh: EntityMeshGroup,
-  pose: Map<string, THREE.Euler>,
+  pose: ReadonlyMap<string, BoneRotation>,
 ): void {
   if (!mesh.boneGroups) return;
   for (const [boneId, rotation] of pose) {
     const bg = mesh.boneGroups.get(boneId);
-    if (bg) bg.rotation.copy(rotation);
+    if (bg) bg.rotation.set(rotation.x, rotation.y, rotation.z);
   }
 }
 

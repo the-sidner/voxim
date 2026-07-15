@@ -90,6 +90,23 @@ export class CrumbleController {
       container.attach(bg);
       captured.push({ group: bg, threePos: bg.position.clone() });
     }
+    // Entity-ROOT attachment anchors (main_hand/off_hand — a held sword,
+    // shield, torch) are NOT bone children: they're mesh.group children
+    // positioned per-frame by updateAttachmentPositions, which stops running
+    // once `mesh.crumbling` is set. Left behind they'd hang frozen in
+    // mid-air for the whole linger window (the server's equip_cleanup
+    // destroys the item ENTITY on death but never rewrites the corpse's
+    // Equipment, so no delta detaches the visual either). Equipment dies
+    // WITH the body: each populated entity-root anchor becomes a ballistic
+    // piece of this corpse. Ownership transfers wholesale — the slot leaves
+    // mesh.attachments so disposeCorpse (not clearMeshContent) is its one
+    // teardown path, mirroring the bone groups' own ownership handoff.
+    for (const [slotId, slot] of mesh.attachments) {
+      if (slot.boneParented || slot.anchor.children.length === 0) continue;
+      container.attach(slot.anchor);
+      captured.push({ group: slot.anchor, threePos: slot.anchor.position.clone() });
+      mesh.attachments.delete(slotId);
+    }
     mesh.crumbling = true;
     if (mesh.nameLabel) mesh.nameLabel.visible = false;
 
@@ -190,8 +207,8 @@ export class CrumbleController {
     }
   }
 
-  /** Tear down one corpse early (entity left AoI, tile transition, natural
-   *  destroy) — the ONLY disposal path for a crumble-detached bone subtree;
+  /** Tear down one corpse early (entity left AoI, natural destroy) — the
+   *  ONLY disposal path for a crumble-detached bone subtree;
    *  `clearMeshContent`'s own dispose-traverse correctly no-ops for a
    *  reparented bone group (its parent is this controller's container, not
    *  `mesh.group`), so this must run instead, not in addition. */
@@ -202,7 +219,7 @@ export class CrumbleController {
     this.corpses.delete(entityId);
   }
 
-  /** Renderer teardown (tile transition / page unload). */
+  /** Whole-world teardown (tile transition via clearWorld / renderer dispose). */
   disposeAll(): void {
     for (const [, corpse] of this.corpses) this.disposeCorpse(corpse);
     this.corpses.clear();

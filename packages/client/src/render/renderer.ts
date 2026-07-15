@@ -21,13 +21,14 @@ import type { ClientChunk, ClientWorld, EntityState } from "../state/client_worl
 import type { ContentCache } from "../state/content_cache.ts";
 import type { WeaponActionDef, Prefab, AtmosphereDef, ParticleEmitterDef } from "@voxim/content";
 import { buildChunkAtoms, TERRAIN_DISP_MAG, type CliffFieldInput } from "./terrain_voxels.ts";
+import { RebakePlanner } from "./rebake_planner.ts";
 import { bakeVoxels, resolveMossResponse } from "./voxel_bake.ts";
 import { applySurfaceTreatment, setWetReflectSkyColor } from "./surface_treatments.ts";
 import { sampleField } from "./field_sample.ts";
 import { geometryFromBaked } from "./voxel_geo.ts";
 import { buildVoxelMaterial, setEmissiveHdrScale } from "./voxel_material.ts";
 import { canopyFade } from "./canopy_fade.ts";
-import { setTextureStyleParams } from "./material_textures.ts";
+import { disposeVoxelTextures, setTextureStyleParams } from "./material_textures.ts";
 import { setClientPalette, paletteToken } from "./palette.ts";
 import { WeaponTrailRenderer } from "./weapon_trail.ts";
 import { GateMarkerRenderer } from "./gate_marker.ts";
@@ -68,25 +69,28 @@ const PRE_BOOTSTRAP_RENDER_TUNING: PreBootstrapRenderTuning = {
 // skeletons (wolf) lack the torso bones — the ease just no-ops on missing bones.
 const SPRING_BONES = ["torso_lower", "torso_mid", "torso_upper", "head"] as const;
 const _springTargetQ = new THREE.Quaternion();
+const _springE = new THREE.Euler();
+const _entityScreenPos = new THREE.Vector3();
 
 /**
  * Ease the follow-through bones toward the composed target pose with a
  * framerate-corrected exponential lerp (a = 1 − e^(−ω·dt)). Stateless toward a
  * moving target: it cannot overshoot or float (the user's hard "snappy, not
  * physics-velocity" constraint), it only smooths the per-frame pose change so
- * the spine/head settle organically instead of snapping. Mutates the THREE.Euler
+ * the spine/head settle organically instead of snapping. Mutates the rotation
  * values already in `pose`. Seeds to target on first sight (no startup lurch).
  */
-function applyBoneSprings(mesh: EntityMeshGroup, pose: Map<string, THREE.Euler>, dtMs: number, springOmega: number) {
+function applyBoneSprings(mesh: EntityMeshGroup, pose: Map<string, BoneRotation>, dtMs: number, springOmega: number) {
   const a = 1 - Math.exp(-springOmega * (Math.min(dtMs, 100) / 1000));
   for (const bone of SPRING_BONES) {
     const target = pose.get(bone);
     if (!target) continue;
-    _springTargetQ.setFromEuler(target);
+    _springTargetQ.setFromEuler(_springE.set(target.x, target.y, target.z));
     let q = mesh.boneSprings.get(bone);
     if (!q) { q = _springTargetQ.clone(); mesh.boneSprings.set(bone, q); }
     else { q.slerp(_springTargetQ, a); }
-    target.setFromQuaternion(q);
+    _springE.setFromQuaternion(q);
+    target.x = _springE.x; target.y = _springE.y; target.z = _springE.z;
   }
 }
 import { SkeletonOverlay } from "./skeleton_overlay.ts";
@@ -197,8 +201,18 @@ export class VoximRenderer {
   readonly cameraRig: CameraRig;
   readonly camera: THREE.PerspectiveCamera;
 
+  /** Canvas CSS size, cached at construction and on resize — per-frame
+   *  screen-projection helpers must never read clientWidth/clientHeight
+   *  themselves (each read between DOM style writes forces a full reflow). */
+  private viewW: number;
+  private viewH: number;
+
   /** Per-chunk terrain: one voxel Mesh per material present in the chunk (T-283). */
   private readonly terrainMeshes  = new Map<string, THREE.Mesh[]>();
+  /** Neighbour-rebake dedupe (T-361): per baked chunk, the neighbour edge
+   *  heights the bake consumed — updateTerrain rebakes only the neighbours
+   *  whose consumed edge went stale, not all four unconditionally. */
+  private readonly rebakePlanner = new RebakePlanner();
   /** Chunk keys whose bake was deferred because content wasn't hydrated yet
    *  (T-331) — `onContentHydrated()` rebuilds every one of these once the
    *  bootstrap ContentService is wired, so no chunk ever bakes with an
@@ -428,13 +442,19 @@ export class VoximRenderer {
     // main scene + post-FX passes). render() resets manually at the top.
     this.renderer.info.autoReset = false;
 
-    const aspect = (canvas.clientWidth || canvas.width || 320) / (canvas.clientHeight || canvas.height || 180);
+    // Cache the canvas CSS size (refreshed by onResize). Screen-projection
+    // helpers (getEntityScreenPos / gate labels) run per entity per frame
+    // interleaved with the overlay's style writes — a live clientWidth read
+    // there forces a synchronous layout reflow per call.
+    this.viewW = canvas.clientWidth || canvas.width || 320;
+    this.viewH = canvas.clientHeight || canvas.height || 180;
+    const aspect = this.viewW / this.viewH;
     this.cameraRig = new CameraRig(aspect);
     this.camera = this.cameraRig.camera;
     // Boot placement before the first frame: no facing target yet, so the yaw
     // holds at its boot value (join screen / pre-spawn).
     this.cameraRig.update(this.cameraTarget);
-    this.gateMarkers = new GateMarkerRenderer(this.scene, this.camera, this.renderer.domElement);
+    this.gateMarkers = new GateMarkerRenderer(this.scene, this.camera);
     this.entities = new EntityMeshRegistry(
       this.scene, this.instancePool, this.weaponActionsMap, this.itemPrefabMap,
       this._skeletonOverlay, this.lightManager, this.debugOverlayManager,
@@ -642,6 +662,15 @@ export class VoximRenderer {
    * is pending, so it's safe to call unconditionally.
    */
   onContentHydrated(): void {
+    // Fresh content invalidates the per-material procedural texture cache
+    // (keyed by materialId alone): a re-hydration can carry a changed
+    // material colour / render.textureStyle / game_config style params, and
+    // a stale cached CanvasTexture would silently override them — the exact
+    // version drift the bootstrap-blob design promises cannot happen. Any
+    // texture still referenced by a live material is transparently
+    // re-uploaded by three on next use; subsequent bakes regenerate from
+    // the new defs.
+    disposeVoxelTextures();
     if (this.pendingChunkRebuilds.size === 0) return;
     const pending = [...this.pendingChunkRebuilds];
     this.pendingChunkRebuilds.clear();
@@ -654,14 +683,22 @@ export class VoximRenderer {
   updateTerrain(chunk: ClientChunk): void {
     const cx = chunk.chunkX, cy = chunk.chunkY;
 
-    // Each cell's column floors to the lowest of its FOUR neighbours, so the new
-    // chunk changes the cliff depth along every shared edge — rebuild all four
-    // cardinal neighbours, not just W/N.
     this._rebuildChunk(cx, cy);
-    this._rebuildChunk(cx - 1, cy);
-    this._rebuildChunk(cx + 1, cy);
-    this._rebuildChunk(cx, cy - 1);
-    this._rebuildChunk(cx, cy + 1);
+
+    // Each cell's column floors to the lowest of its FOUR neighbours, so a
+    // heightmap change along a shared edge changes the neighbour's cliff
+    // depth — but ONLY the edge heights cross the border (buildChunkAtoms's
+    // neigh()). The planner rebakes exactly the already-baked neighbours
+    // whose consumed edge is now stale: an interior dig rebakes one chunk
+    // (was 5), the load-time flush bakes each chunk once (was ~5×), and a
+    // freshly streamed chunk still corrects neighbours baked against the
+    // no-wall fallback.
+    const hm = chunk.heightmap;
+    if (hm) {
+      for (const [nx, ny] of this.rebakePlanner.staleNeighbours(cx, cy, hm)) {
+        this._rebuildChunk(nx, ny);
+      }
+    }
   }
 
   private _rebuildChunk(cx: number, cy: number): void {
@@ -735,12 +772,13 @@ export class VoximRenderer {
 
     // Re-express the chunk as voxel atoms (column boxes) bucketed by material,
     // then bake one mesh per material through the shared voxel pipeline (T-283).
-    const byMat = buildChunkAtoms(hm, mat, {
+    const nb = {
       N: this.world?.getChunk(cx, cy - 1)?.heightmap ?? null,
       E: this.world?.getChunk(cx + 1, cy)?.heightmap ?? null,
       S: this.world?.getChunk(cx, cy + 1)?.heightmap ?? null,
       W: this.world?.getChunk(cx - 1, cy)?.heightmap ?? null,
-    }, surfaceInput,
+    };
+    const byMat = buildChunkAtoms(hm, mat, nb, surfaceInput,
       // Per-material relief response (render.relief, T-311 P4).
       (matId: number) => this.content?.getMaterialSync(matId)?.render?.relief,
       cliffInput);
@@ -798,6 +836,10 @@ export class VoximRenderer {
     const isNew = !this.terrainMeshes.has(key);
     this.terrainMeshes.set(key, meshes);
     if (isNew) this._chunkOverlay.addChunk(cx, cy, this.debugOverlayManager.isOn("chunks"));
+
+    // Record the neighbour edges this bake consumed — updateTerrain's
+    // stale-neighbour dedupe compares against exactly these copies.
+    this.rebakePlanner.recordBake(cx, cy, nb);
   }
 
   removeTerrain(chunkX: number, chunkY: number): void {
@@ -810,6 +852,7 @@ export class VoximRenderer {
         (me.material as THREE.Material).dispose();
       }
       this.terrainMeshes.delete(key);
+      this.rebakePlanner.forget(chunkX, chunkY);
       this._chunkOverlay.removeChunk(chunkX, chunkY);
     }
   }
@@ -843,10 +886,11 @@ export class VoximRenderer {
 
   removeEntity(entityId: string): void {
     this.entities.removeEntity(entityId);
-    // T-339: the ONE choke point that covers both a crumble corpse's
-    // natural end-of-timer destroy AND an early AoI-exit/tile-transition —
-    // clearMeshContent's own dispose-traverse can't reach a crumble-
-    // detached bone subtree (it lives in the controller's own container).
+    // T-339: covers a crumble corpse's natural end-of-timer destroy AND an
+    // early AoI-exit — clearMeshContent's own dispose-traverse can't reach
+    // a crumble-detached bone subtree (it lives in the controller's own
+    // container). Tile transitions do NOT come through here: they wipe via
+    // clearWorld(), which has its own crumbleController.disposeAll().
     this.crumbleController.dispose(entityId);
   }
 
@@ -859,6 +903,12 @@ export class VoximRenderer {
    */
   clearWorld(): void {
     this.entities.clear();
+    // Crumbling corpses are direct scene children in CrumbleController's own
+    // containers — entities.clear() can't reach them (the registry's
+    // removeEntity has no crumble hook), and without this a corpse killed
+    // near a gate keeps rendering at its OLD tile's local coordinates inside
+    // the new tile until its linger timer expires.
+    this.crumbleController.disposeAll();
     this.gateMarkers.dispose();
     for (const key of [...this.terrainMeshes.keys()]) {
       const [cx, cy] = key.split(",").map(Number);
@@ -869,6 +919,7 @@ export class VoximRenderer {
     // rebuild queued against the old world would either no-op (chunk not
     // loaded yet) or redo work a real spawn already triggered.
     this.pendingChunkRebuilds.clear();
+    this.rebakePlanner.clear(); // (removeTerrain above already forgot each baked chunk — belt and braces)
     this.attachedFog?.reset();
   }
 
@@ -890,7 +941,7 @@ export class VoximRenderer {
   }
 
   getGateScreenPos(entityId: string): { x: number; y: number } | null {
-    return this.gateMarkers.screenPos(entityId);
+    return this.gateMarkers.screenPos(entityId, this.viewW, this.viewH);
   }
 
   // ---- interaction system ----
@@ -932,8 +983,8 @@ export class VoximRenderer {
    * whatever its yaw).
    */
   getCursorWorldPos(canvasX: number, canvasY: number, groundHeight: number): { x: number; y: number } | null {
-    const w = this.renderer.domElement.clientWidth  || this.renderer.domElement.width;
-    const h = this.renderer.domElement.clientHeight || this.renderer.domElement.height;
+    const w = this.viewW;
+    const h = this.viewH;
     const raycaster = new THREE.Raycaster();
     raycaster.setFromCamera(
       new THREE.Vector2(
@@ -951,17 +1002,18 @@ export class VoximRenderer {
     return { x: hit.x, y: hit.z };
   }
 
-  /** Project an entity's world position to canvas pixel coordinates, or null if not found. */
+  /** Project an entity's world position to canvas pixel coordinates, or null
+   *  if not found. Uses the resize-driven size cache + a scratch vector —
+   *  this runs once per health-barred entity per frame, interleaved with the
+   *  overlay's style writes, where a clientWidth read forces a reflow. */
   getEntityScreenPos(entityId: string): { x: number; y: number } | null {
     const mesh = this.entities.get(entityId);
     if (!mesh) return null;
-    const pos = mesh.group.position.clone();
+    const pos = _entityScreenPos.copy(mesh.group.position);
     pos.project(this.camera);
-    const w = this.renderer.domElement.clientWidth;
-    const h = this.renderer.domElement.clientHeight;
     return {
-      x: (pos.x * 0.5 + 0.5) * w,
-      y: (-pos.y * 0.5 + 0.5) * h,
+      x: (pos.x * 0.5 + 0.5) * this.viewW,
+      y: (-pos.y * 0.5 + 0.5) * this.viewH,
     };
   }
 
@@ -1216,7 +1268,6 @@ export class VoximRenderer {
         // Crossfade the raw 20Hz layer snapshot so state transitions (idle→walk,
         // swing in/out) ease in/out instead of hard-cutting the pose (T-291).
         const layers = blendAnimationLayers(mesh.layerFades, rawLayers, animDtMs);
-        const animForPose = anim ? { ...anim, layers } : (telegraph ? { layers, weaponActionId: "", ticksIntoAction: 0, dissolutionPhase: 0 } : null);
 
         // Fused pose pipeline (pose_composer.ts): gait/crouch (legs) →
         // locomotion lean (spine) → swing overlay (arms) → foot-terrain IK →
@@ -1266,11 +1317,11 @@ export class VoximRenderer {
           gaitPhase = mesh.gaitDistance / gaitDef.strideLength;
         }
 
-        let pose: Map<string, THREE.Euler>;
+        let pose: Map<string, BoneRotation>;
         if (skeleton && (swingWA?.swingPath || loco || dropY > 0)) {
           const boneIndex = this.content.getBoneIndex(mesh.skeletonId);
           const baseLayers = swingWA?.swingPath ? layers.filter((l) => l.clipId !== swingWA.clipId) : layers;
-          const base: Map<string, BoneRotation> = evaluatePose(skeleton, clipIndex, maskIndex, anim ? { ...anim, layers: baseLayers } : null);
+          const base: Map<string, BoneRotation> = evaluatePose(skeleton, clipIndex, maskIndex, anim ? baseLayers : null, mesh.poseScratch);
           // Normalised swing time — hoisted out of the swing producer because
           // it reads per-mesh extrapolation state. `anim!` is safe: swingWA is
           // looked up from anim.weaponActionId, so it resolving implies anim.
@@ -1281,7 +1332,7 @@ export class VoximRenderer {
             swingT = Math.max(0, Math.min(ticks / total, 1));
           }
           const world = this.world;
-          const rot = composePose({
+          pose = composePose({
             skeleton, boneIndex,
             scale: mesh.modelScale, morphParams: mesh.modelMorphs,
             loco, gaitDef, gaitPhase, dropY,
@@ -1290,11 +1341,10 @@ export class VoximRenderer {
             heightAt: world ? (wx, wy) => world.getTerrainHeight(wx, wy) : null,
             lookAtGain: this.lookAtGain,
           }, base);
-          // rewrap the mixed map (THREE.Euler for untouched bones, {x,y,z} for overridden) to THREE.Euler
-          pose = new Map<string, THREE.Euler>();
-          for (const [bone, r] of rot) pose.set(bone, r instanceof THREE.Euler ? r : new THREE.Euler(r.x, r.y, r.z));
         } else {
-          pose = evaluatePose(skeleton, clipIndex, maskIndex, animForPose);
+          // Base FK only. Telegraph-only entities (anim null) still pose off
+          // the blended layers, matching the old animForPose fallback.
+          pose = evaluatePose(skeleton, clipIndex, maskIndex, (anim || telegraph) ? layers : null, mesh.poseScratch);
         }
 
         // Secondary motion: ease the spine/head toward the composed pose (snappy,
@@ -1717,6 +1767,8 @@ export class VoximRenderer {
   private onResize(canvas: HTMLCanvasElement): void {
     const w = canvas.clientWidth;
     const h = canvas.clientHeight;
+    this.viewW = w;
+    this.viewH = h;
     this.renderer.setSize(w, h, false);
     const aspect = w / h;
     this.cameraRig.resize(aspect);
