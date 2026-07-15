@@ -551,6 +551,11 @@ export class ClientWorld {
     this.chunkCoordByEntity.clear();
     this.readyCoords.clear();
     this.childrenIndex.clear();
+    // Re-arm the snapshot staleness guard: each tile server's tick counter
+    // starts at 0 at its own boot, so after a tile transition the new tile's
+    // WorldSnapshot ticks can be far below the old tile's — without this
+    // reset every datagram from the new tile would be silently discarded.
+    this.lastSnapshotTick = -1;
   }
 }
 
