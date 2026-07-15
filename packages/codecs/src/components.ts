@@ -20,7 +20,6 @@ import type { ItemPart, ModelRefData, AnimationStateData, AnimationLayer, BodyPa
  */
 export const WIRE_LIMITS = {
   inventorySlots: 64,
-  craftingQueue: 16,
   traderListings: 64,
   containerSlots: 64,
   heritageTraits: 64,
@@ -754,37 +753,6 @@ export const itemDataCodec: Serialiser<ItemDataData> = {
   decode(bytes: Uint8Array): ItemDataData {
     const r = new WireReader(bytes);
     return { prefabId: r.readStr(), quantity: r.readU16() };
-  },
-};
-
-// ---- CraftingQueue ----------------------------------------------------------
-// { activeRecipeId: string|null, progressTicks: number, queued: string[] }
-
-export interface CraftingQueueData {
-  activeRecipeId: string | null;
-  progressTicks: number;
-  queued: string[];
-}
-
-export const craftingQueueCodec: Serialiser<CraftingQueueData> = {
-  encode(v: CraftingQueueData): Uint8Array {
-    assertMaxLen("CraftingQueue.queued", v.queued.length, WIRE_LIMITS.craftingQueue);
-    const w = new WireWriter();
-    if (v.activeRecipeId !== null) { w.writeU8(1); w.writeStr(v.activeRecipeId); } else { w.writeU8(0); }
-    w.writeI32(v.progressTicks);
-    w.writeU16(v.queued.length);
-    for (const id of v.queued) w.writeStr(id);
-    return w.toBytes();
-  },
-  decode(bytes: Uint8Array): CraftingQueueData {
-    const r = new WireReader(bytes);
-    const hasActive = r.readU8();
-    const activeRecipeId = hasActive ? r.readStr() : null;
-    const progressTicks = r.readI32();
-    const queueLen = r.readU16();
-    const queued: string[] = [];
-    for (let i = 0; i < queueLen; i++) queued.push(r.readStr());
-    return { activeRecipeId, progressTicks, queued };
   },
 };
 

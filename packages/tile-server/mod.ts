@@ -28,12 +28,11 @@ export { NpcTag, NpcJobQueue } from "./src/components/npcs.ts";
 export type { NpcTagData, NpcJobQueueData, Job } from "./src/components/npcs.ts";
 
 // Item / crafting components
-export { ItemData, Inventory, CraftingQueue } from "./src/components/items.ts";
+export { ItemData, Inventory } from "./src/components/items.ts";
 export type {
   ItemDataData,
   InventoryData,
   InventorySlot,
-  CraftingQueueData,
 } from "./src/components/items.ts";
 
 // Heritage — component lives on entities; persistence is owned by the

@@ -47,7 +47,6 @@ import { BuffSpec } from "./components/buff.ts";
 import { Equipment } from "./components/equipment.ts";
 import { Heritage } from "./components/heritage.ts";
 import {
-  CraftingQueue,
   Inventory,
   ItemData,
 } from "./components/items.ts";
@@ -145,7 +144,8 @@ export const NETWORKED_DEFS: ReadonlyArray<NetworkedComponentDef<any>> = [
   Heritage,
   ItemData,
   Inventory,
-  CraftingQueue,
+  // 19 (craftingQueue) retired — written once at player spawn, read by nobody;
+  //    crafting is entirely WorkstationBuffer-based (T-350)
   // 20 (interactCooldown) retired — server-only, never needed on client
   Blueprint,
   ResourceNode,

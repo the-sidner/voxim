@@ -18,7 +18,7 @@ import type {
   EquipmentData, InventoryData, BlueprintData, LightEmitterData, DarknessModifierData,
   ResourceData, ActionCooldownsData, ActiveActionsData,
   LoreLoadoutData,
-  DurabilityData, CraftingQueueData, ItemDataData,
+  DurabilityData, ItemDataData,
   WorkstationBufferData, WorkstationTagData,
   StatsData, ProvenanceData,
   GateLinkData,
@@ -64,7 +64,6 @@ export interface EntityState {
   darknessModifier?: DarknessModifierData;
   loreLoadout?: LoreLoadoutData;
   durability?: DurabilityData;
-  craftingQueue?: CraftingQueueData;
   itemData?: ItemDataData;
   workstationBuffer?: WorkstationBufferData;
   workstationTag?: WorkstationTagData;

@@ -31,7 +31,7 @@ import { Resource } from "./components/resource.ts";
 import { NpcTag, NpcJobQueue } from "./components/npcs.ts";
 import { AnimationSlots } from "./components/animation_slots.ts";
 import { ActorSlots, ActiveActions } from "./components/action.ts";
-import { Inventory, CraftingQueue, ItemData } from "./components/items.ts";
+import { Inventory, ItemData } from "./components/items.ts";
 import { Equipment } from "./components/equipment.ts";
 import { Heritage } from "./components/heritage.ts";
 import { Species } from "./components/species.ts";
@@ -180,7 +180,7 @@ const installPlayer: CompoundInstaller = (world, content, id, _prefab, rawData, 
 
   writeDefaults(
     world, id,
-    CraftingQueue, AnimationState,
+    AnimationState,
     FogState,
   );
 

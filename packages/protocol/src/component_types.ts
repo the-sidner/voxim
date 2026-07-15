@@ -30,7 +30,8 @@ export const ComponentType = {
   heritage:           16,
   itemData:           17,
   inventory:          18,
-  craftingQueue:      19,
+  // 19 is retired (was craftingQueue) — written once at player spawn, read by
+  //    nobody; crafting is entirely WorkstationBuffer-based (T-350); do not reuse
   // 20 (interactCooldown) retired — server-only rate limiter, never needed on client
   blueprint:          21,
   resource_node:      22,
