@@ -397,7 +397,10 @@ export class VoximGame {
     } else {
       console.warn("[Game] no bootstrap blob received — falling back to static-bundled content");
     }
-    this.renderer = new VoximRenderer(canvas);
+    // Content hydrated above → the SSAA band (game_config render.supersample,
+    // T-356) threads straight into construction; the renderer sizes every
+    // post-FX target from it exactly once.
+    this.renderer = new VoximRenderer(canvas, this.contentService?.getGameConfig().render.supersample);
     this.renderer.setLocalPlayer(this.playerId!);
     setLocalPlayerId(this.playerId!);
     this.renderer.setClientWorld(this.world);

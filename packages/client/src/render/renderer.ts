@@ -43,36 +43,28 @@ import { solveSwingPose, applyLocomotionPose, applyCrouchPose, applyFootTerrainI
 import type { BoneRotation, LocoState } from "@voxim/content";
 import { CHUNK_SIZE } from "@voxim/world";
 
-// Pelvis drop (skeleton rest units) at full crouch; scaled per entity.
-const CROUCH_DROP = 0.9;
-// Crouch ease rate — snappy (~150ms settle) but not a one-frame jolt.
-const CROUCH_OMEGA = 18;
-
-// Head/gaze stabilization blend (applyLookAtPose) — 0 fully follows the
-// spine's lean, 1 fully cancels it. Partial so the head still reads some
-// organic follow-through instead of a rigid neck.
-const LOOK_AT_GAIN = 0.6;
-
-// Supersample factor = clamp(devicePixelRatio, MIN, MAX). The whole post chain
-// renders at this × the CSS resolution and downsamples on the final blit, so the
-// comic outlines/flat-shaded silhouettes resolve as clean lines instead of aliased
-// stairs. THIS IS THE PRIMARY PERF KNOB: cost scales with the square of this — the
-// post chain (SSAO + edge taps + bloom) is fill-rate bound, so every 0.1 here is
-// real frames. Capped at 1.35 (was 2.0) so a HiDPI panel renders below native
-// device res — still clearly anti-aliased vs the old 1:1 raster, but ~3× cheaper
-// than full native-2. Raise toward 1.6 for crisper edges if the GPU has headroom.
-const AAGFX_MIN_SS = 1.2;
-const AAGFX_MAX_SS = 1.35;
-const aagfxSupersample = () =>
-  Math.min(Math.max(globalThis.devicePixelRatio || 1, AAGFX_MIN_SS), AAGFX_MAX_SS);
+// Motion/pose tuning is content now (T-356): game_config's render.pose /
+// render.supersample / prediction.remoteInterpDelayMs. This pre-bootstrap-only
+// fallback (mirrors PRE_BOOTSTRAP_GRADE, edge_pass.ts) matches
+// game_config.json's shipped values exactly; setContentCache() overwrites the
+// instance fields once the bootstrap blob arrives, and it stays authoritative
+// in the (already-existing) no-bootstrap-blob degraded path.
+interface PreBootstrapRenderTuning {
+  supersample: { min: number; max: number };
+  pose: { crouchDropAmount: number; crouchEaseOmega: number; lookAtGain: number; springOmega: number };
+  remoteInterpDelayMs: number;
+}
+const PRE_BOOTSTRAP_RENDER_TUNING: PreBootstrapRenderTuning = {
+  supersample: { min: 1.2, max: 1.35 },
+  pose: { crouchDropAmount: 0.9, crouchEaseOmega: 18, lookAtGain: 0.6, springOmega: 32 },
+  remoteInterpDelayMs: 100,
+};
 
 // ---- secondary motion (snappy organic ease) --------------------------------
 // The follow-through chain that gets eased — spine + head. NOT the IK'd hands/
 // arms (they must stay locked to the hilt so the blade == the hit). Other
 // skeletons (wolf) lack the torso bones — the ease just no-ops on missing bones.
 const SPRING_BONES = ["torso_lower", "torso_mid", "torso_upper", "head"] as const;
-// Higher = snappier. ~32 rad/s settles in ~90ms — organic, but never floaty.
-const SPRING_OMEGA = 32;
 const _springTargetQ = new THREE.Quaternion();
 
 /**
@@ -83,8 +75,8 @@ const _springTargetQ = new THREE.Quaternion();
  * the spine/head settle organically instead of snapping. Mutates the THREE.Euler
  * values already in `pose`. Seeds to target on first sight (no startup lurch).
  */
-function applyBoneSprings(mesh: EntityMeshGroup, pose: Map<string, THREE.Euler>, dtMs: number) {
-  const a = 1 - Math.exp(-SPRING_OMEGA * (Math.min(dtMs, 100) / 1000));
+function applyBoneSprings(mesh: EntityMeshGroup, pose: Map<string, THREE.Euler>, dtMs: number, springOmega: number) {
+  const a = 1 - Math.exp(-springOmega * (Math.min(dtMs, 100) / 1000));
   for (const bone of SPRING_BONES) {
     const target = pose.get(bone);
     if (!target) continue;
@@ -168,18 +160,6 @@ const DEPTH_BLIT_FRAG = /* glsl */`
  * (~35m slant distance) — visible ground footprint can reach ~50m forward.
  */
 const CULL_RADIUS_SQ = 160 * 160;
-
-/** 3rd-person camera vertical sample range above/below player Y for height
- *  shading — default fallback until GradeDef.heightShadeBelow/Above arrives. */
-const HEIGHT_SHADE_BELOW = 8.0;
-const HEIGHT_SHADE_ABOVE = 24.0;
-
-
-/**
- * How many milliseconds behind the latest received state remote entities
- * are rendered, to allow smooth linear interpolation between server ticks.
- */
-const INTERP_DELAY_MS = 100;
 
 /** Lerp a number toward target, returning new value. */
 function lerpN(a: number, b: number, t: number): number { return a + (b - a) * t; }
@@ -350,8 +330,15 @@ export class VoximRenderer {
   /** 3rd-person camera vertical sample range above/below player Y for height
    *  shading — content-driven via GradeDef.heightShadeBelow/Above (T-315 D2);
    *  these hold the pre-bootstrap fallback until a grade arrives. */
-  private heightShadeBelow = HEIGHT_SHADE_BELOW;
-  private heightShadeAbove = HEIGHT_SHADE_ABOVE;
+  private heightShadeBelow = PRE_BOOTSTRAP_GRADE.heightShadeBelow;
+  private heightShadeAbove = PRE_BOOTSTRAP_GRADE.heightShadeAbove;
+  // Motion/interp tuning — content-driven via game_config render.pose /
+  // prediction.remoteInterpDelayMs (T-356); fallback until the blob arrives.
+  private crouchDropAmount = PRE_BOOTSTRAP_RENDER_TUNING.pose.crouchDropAmount;
+  private crouchEaseOmega = PRE_BOOTSTRAP_RENDER_TUNING.pose.crouchEaseOmega;
+  private lookAtGain = PRE_BOOTSTRAP_RENDER_TUNING.pose.lookAtGain;
+  private springOmega = PRE_BOOTSTRAP_RENDER_TUNING.pose.springOmega;
+  private remoteInterpDelayMs = PRE_BOOTSTRAP_RENDER_TUNING.remoteInterpDelayMs;
   /** Hover mask: hovered entity rendered flat-white; fed into EdgePass for silhouette outline. */
   private readonly hoverMaskTarget: THREE.WebGLRenderTarget;
   /** Override material used during the hover mask pass — flat white, no lighting. */
@@ -396,7 +383,10 @@ export class VoximRenderer {
    *  Set in the constructor (mutates this.scene's lights + fog/background). */
   private envLighting!: EnvironmentLighting;
 
-  constructor(canvas: HTMLCanvasElement) {
+  constructor(
+    canvas: HTMLCanvasElement,
+    supersample: { min: number; max: number } = PRE_BOOTSTRAP_RENDER_TUNING.supersample,
+  ) {
     this.instancePool = new InstancePool(this.scene);
 
     // Build all debug overlays and register them with the manager.
@@ -421,12 +411,20 @@ export class VoximRenderer {
     );
 
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
-    // Supersample: render the whole pipeline at up to 2× the CSS resolution and
-    // downsample on the final blit. This is the AAA win for the comic look —
-    // the deliberate flat-shaded silhouettes + Sobel ink stay crisp lines instead
-    // of stair-stepped aliasing. SSAA (vs MSAA) also anti-aliases the shading and
-    // the depth-derived edge pass, which MSAA's edge-only coverage cannot.
-    this.renderer.setPixelRatio(aagfxSupersample());
+    // Supersample: render the whole pipeline at clamp(devicePixelRatio, min,
+    // max) × the CSS resolution and downsample on the final blit. This is the
+    // AAA win for the comic look — the deliberate flat-shaded silhouettes +
+    // Sobel ink stay crisp lines instead of stair-stepped aliasing. SSAA (vs
+    // MSAA) also anti-aliases the shading and the depth-derived edge pass,
+    // which MSAA's edge-only coverage cannot. THE PRIMARY PERF KNOB: cost
+    // scales with the square of this — the post chain (SSAO + edge taps +
+    // bloom) is fill-rate bound, so every 0.1 here is real frames. The band
+    // comes from game_config render.supersample (T-356), resolved once here:
+    // every render target is sized from it, so a live change would be a
+    // pipeline restructure (T-353's territory).
+    this.renderer.setPixelRatio(
+      Math.min(Math.max(globalThis.devicePixelRatio || 1, supersample.min), supersample.max),
+    );
     this.renderer.shadowMap.enabled = true;
     // Soft-but-tight shadows: PCF penumbra at high resolution reads as clean
     // contact shadowing under the comic look — not the old hard 1px stamp, but
@@ -628,6 +626,14 @@ export class VoximRenderer {
       // Free-look camera geometry + sensitivity/pitch-band knobs (T-320) from
       // game_config.camera.
       this.cameraRig.configure(cfg.camera);
+      // Motion/interp tuning (T-356) — crouch/look-at/spring pose easing and
+      // the remote-entity interpolation delay. (The supersample band is also
+      // content, but construction-time only — see the constructor.)
+      this.crouchDropAmount = cfg.render.pose.crouchDropAmount;
+      this.crouchEaseOmega = cfg.render.pose.crouchEaseOmega;
+      this.lookAtGain = cfg.render.pose.lookAtGain;
+      this.springOmega = cfg.render.pose.springOmega;
+      this.remoteInterpDelayMs = cfg.prediction.remoteInterpDelayMs;
     }
   }
 
@@ -1233,8 +1239,8 @@ export class VoximRenderer {
         // Crouch: eased toward the input target (local player; remotes have no
         // networked crouch yet → 0). The pelvis drop is a root-group translation.
         const crouchTarget = id === this.localPlayerId ? (localCrouch ?? 0) : 0;
-        mesh.crouchEased += (crouchTarget - mesh.crouchEased) * (1 - Math.exp(-CROUCH_OMEGA * (animDtMs / 1000)));
-        const dropY = mesh.crouchEased > 0.002 ? mesh.crouchEased * CROUCH_DROP * mesh.modelScale : 0;
+        mesh.crouchEased += (crouchTarget - mesh.crouchEased) * (1 - Math.exp(-this.crouchEaseOmega * (animDtMs / 1000)));
+        const dropY = mesh.crouchEased > 0.002 ? mesh.crouchEased * this.crouchDropAmount * mesh.modelScale : 0;
         // Only the local player crouches (remotes have no networked crouch), so
         // only its root is translated — leaves every other rig's root untouched.
         if (id === this.localPlayerId) {
@@ -1307,7 +1313,7 @@ export class VoximRenderer {
           }
           // Head/gaze stabilization — last, so it corrects the FINAL composed
           // lean (crouch + locomotion + swing) rather than an intermediate one.
-          rot = applyLookAtPose(skeleton, boneIndex, rot, mesh.modelScale, LOOK_AT_GAIN, { morphParams: mesh.modelMorphs });
+          rot = applyLookAtPose(skeleton, boneIndex, rot, mesh.modelScale, this.lookAtGain, { morphParams: mesh.modelMorphs });
           // rewrap the mixed map (THREE.Euler for untouched bones, {x,y,z} for overridden) to THREE.Euler
           pose = new Map<string, THREE.Euler>();
           for (const [bone, r] of rot) pose.set(bone, r instanceof THREE.Euler ? r : new THREE.Euler(r.x, r.y, r.z));
@@ -1317,7 +1323,7 @@ export class VoximRenderer {
 
         // Secondary motion: ease the spine/head toward the composed pose (snappy,
         // never floaty) so the body settles organically. IK'd hands are excluded.
-        applyBoneSprings(mesh, pose, animDtMs);
+        applyBoneSprings(mesh, pose, animDtMs, this.springOmega);
         updateSkeletonPose(mesh, pose);
 
         // Roll vertical lift — sin(πt) parabola peaking at clip mid-point so the
@@ -1354,7 +1360,7 @@ export class VoximRenderer {
     }
 
     // Interpolate remote entity positions (local player snaps — no delay)
-    const renderTime = performance.now() - INTERP_DELAY_MS;
+    const renderTime = performance.now() - this.remoteInterpDelayMs;
     for (const [id, mesh] of this.entities.all) {
       if (id === this.localPlayerId) continue;
       const buf = mesh.posBuffer;
@@ -1525,7 +1531,7 @@ export class VoximRenderer {
     // when they change.
     if (this.currentAtmosphere) {
       const target = this.currentAtmosphere.mist.densityByPhase[this.currentDayPhase] ?? 0;
-      this.mistWeightCur += (target - this.mistWeightCur) * 0.015;
+      this.mistWeightCur += (target - this.mistWeightCur) * this.currentAtmosphere.mist.easeRate;
       this.edgePass.setMist(this.currentAtmosphere.mist, this.mistWeightCur);
     }
 
