@@ -108,7 +108,10 @@ export function wireConnectionHandlers(game: VoximGame, conn: TileConnection): v
         if (game.loadingComplete) game.renderer?.updateEntity(entityId, state);
       }
       if (state.worldClock) {
-        game.renderer?.setDayPhase(worldClockPhase(state.worldClock.ticksElapsed, state.worldClock.dayLengthTicks));
+        game.renderer?.setDayPhase(worldClockPhase(
+          state.worldClock.ticksElapsed, state.worldClock.dayLengthTicks,
+          game.contentService?.getGameConfig().dayNight,
+        ));
       }
       if (entityId === game.playerId) {
         if (state.health)    patchUI({ health:    { current: state.health.current, max: state.health.max } });
@@ -260,10 +263,12 @@ export function wireConnectionHandlers(game: VoximGame, conn: TileConnection): v
           if (ev.entityId === game.playerId) pushToast("Starving!", "warn");
           break;
         case "DayPhaseChanged": {
+          // Toast only — the renderer's day phase is derived from the streamed
+          // WorldClock (worldClockPhase above, same content boundaries the
+          // server fires this event from), never set from the event.
           console.log(`[Event] DayPhaseChanged phase=${ev.phase} time=${ev.timeOfDay.toFixed(2)}`);
           const labels: Record<string, string> = { dawn: "Dawn", noon: "Noon", dusk: "Dusk", midnight: "Midnight" };
           pushToast(labels[ev.phase] ?? ev.phase, "info");
-          game.renderer?.setDayPhase(ev.phase);
           break;
         }
         case "CraftingCompleted":

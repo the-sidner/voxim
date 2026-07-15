@@ -461,7 +461,10 @@ export class VoximGame {
     for (const [entityId, state] of this.world.entries()) {
       if (state.heightmap) this.terrainChunksReceived++;
       if (state.worldClock) {
-        this.renderer?.setDayPhase(worldClockPhase(state.worldClock.ticksElapsed, state.worldClock.dayLengthTicks));
+        this.renderer?.setDayPhase(worldClockPhase(
+          state.worldClock.ticksElapsed, state.worldClock.dayLengthTicks,
+          this.contentService?.getGameConfig().dayNight,
+        ));
       }
       if (entityId === this.playerId) {
         if (state.health)      patchUI({ health:       { current: state.health.current, max: state.health.max } });
