@@ -2,15 +2,15 @@
  * CrumbleController tests (T-339). Pure THREE.js Object3D/Group math under
  * `deno test`, headless — same precedent as camera_rig.test.ts/
  * light_manager.test.ts (no canvas/WebGL context needed for transform math).
- * A minimal fake EntityMeshGroup implements only the three fields
- * CrumbleController actually reads/writes (boneGroups/crumbling/nameLabel) —
- * same partial-object-cast precedent entity_mesh_dissolve.test.ts uses for
- * a fake SkeletonDef.
+ * A minimal fake EntityMeshGroup implements only the fields
+ * CrumbleController actually reads/writes (boneGroups/attachments/crumbling/
+ * nameLabel) — same partial-object-cast precedent entity_mesh_dissolve.test.ts
+ * uses for a fake SkeletonDef.
  */
 import { assert, assertEquals } from "jsr:@std/assert";
 import * as THREE from "three";
 import type { DeathStyleDef } from "@voxim/content";
-import type { EntityMeshGroup } from "./entity_mesh.ts";
+import type { AttachmentSlot, EntityMeshGroup } from "./entity_mesh.ts";
 import type { DeathStyleContext } from "./death_style_registry.ts";
 import { CrumbleController } from "./crumble_controller.ts";
 
@@ -39,12 +39,33 @@ function newFakeMesh(): { mesh: EntityMeshGroup; boneA: THREE.Group; boneB: THRE
   boneA.add(boneB);
 
   const mesh = {
+    group: root,
     boneGroups: new Map<string, THREE.Group>([["a", boneA], ["b", boneB]]),
+    attachments: new Map<string, AttachmentSlot>(),
     crumbling: false,
     nameLabel: null,
   } as unknown as EntityMeshGroup;
 
   return { mesh, boneA, boneB, root };
+}
+
+/** Attach a fake held-item slot to the mesh (entity-root unless boneParented). */
+function addAttachment(
+  mesh: EntityMeshGroup,
+  slotId: string,
+  parent: THREE.Group,
+  boneParented: boolean,
+  withModel = true,
+): THREE.Group {
+  const anchor = new THREE.Group();
+  anchor.name = `attachment:${slotId}`;
+  anchor.position.set(0.5, 4, 0);
+  parent.add(anchor);
+  if (withModel) anchor.add(new THREE.Group()); // stands in for the item's voxel meshes
+  mesh.attachments.set(slotId, {
+    anchor, modelId: withModel ? "test_item" : null, boneParented, bladeAttach: null, restBoneId: null,
+  });
+  return anchor;
 }
 
 function newCtx(scene: THREE.Scene, spawnBurst: (defId: string, origin: { x: number; y: number; z: number }) => void): DeathStyleContext {
@@ -74,6 +95,40 @@ Deno.test("onDeath: detaches EVERY bone group directly into a per-corpse contain
   assertEquals(boneA.parent, container, "boneA reparents directly under the corpse container");
   assertEquals(boneB.parent, container, "boneB (formerly a child of boneA) ALSO reparents directly under the container");
   assertEquals(root.children.length, 0, "the original skeleton root is left with no bone children");
+});
+
+Deno.test("onDeath: a populated entity-root attachment anchor (held weapon/shield) becomes a falling piece — never left hanging frozen on the dead mesh", () => {
+  const controller = new CrumbleController();
+  const scene = new THREE.Scene();
+  const { mesh, root } = newFakeMesh();
+  const heldAnchor = addAttachment(mesh, "main_hand", root, false);
+
+  controller.onDeath("e1", mesh, CRUMBLE_DEF, 100, newCtx(scene, () => {}));
+
+  const container = scene.children[0];
+  assertEquals(heldAnchor.parent, container, "the held-item anchor reparents into the corpse container");
+  assertEquals(mesh.attachments.has("main_hand"), false, "ownership transfers to the corpse — the slot leaves mesh.attachments");
+
+  // And it FALLS with the body (it is a real piece, not just reparented).
+  const heightBefore = heldAnchor.position.y;
+  controller.update(0.05, 20, () => -100, () => {});
+  controller.update(0.05, 20, () => -100, () => {});
+  assert(heldAnchor.position.y < heightBefore, "the held item must fall under gravity like every other piece");
+});
+
+Deno.test("onDeath: bone-parented and empty entity-root anchors are left alone (bone-parented ones ride their bone group for free)", () => {
+  const controller = new CrumbleController();
+  const scene = new THREE.Scene();
+  const { mesh, boneA, root } = newFakeMesh();
+  const armorAnchor = addAttachment(mesh, "chest", boneA, true);
+  const emptyAnchor = addAttachment(mesh, "off_hand", root, false, false);
+
+  controller.onDeath("e1", mesh, CRUMBLE_DEF, 100, newCtx(scene, () => {}));
+
+  assertEquals(armorAnchor.parent, boneA, "a bone-parented anchor stays on its bone group (which is itself now a piece)");
+  assert(mesh.attachments.has("chest"), "bone-parented slots keep their attachments entry");
+  assertEquals(emptyAnchor.parent, root, "an empty entity-root anchor renders nothing — not worth a piece");
+  assert(mesh.attachments.has("off_hand"), "empty slots keep their attachments entry (clearMeshContent still owns them)");
 });
 
 Deno.test("onDeath: is idempotent — a second call for an already-tracked entity does not re-detach or add a second container", () => {
