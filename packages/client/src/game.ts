@@ -50,6 +50,7 @@ import { setContentService } from "./ui/content_ref.ts";
 import { setFogRef } from "./ui/fog_ref.ts";
 import type { UIAction } from "./ui/ui_actions.ts";
 import { humanizeItemType } from "./ui/item_names.ts";
+import { openWorkstation, openTrader, openJobBoard, openContainer, mirrorWorkstationToUi, mirrorTraderToUi, mirrorJobBoardToUi, mirrorContainerToUi } from "./ui/panel_bridge.ts";
 import { recordInput, recordState, recordSnapshot } from "./ui/network_capture.ts";
 import { setDebugLayer, setDebugItemList } from "./ui/debug_store.ts";
 import { loadLoginName } from "./ui/login.ts";
@@ -551,10 +552,10 @@ export class VoximGame {
     // (T-320). Selects the closest matching entity each frame and drives the
     // hover outline off proximity; the Use (E) key activates the selection.
     this.interactionSystem = new InteractionSystem(this.world);
-    this.interactionSystem.register(makeWorkstationHandler((entityId) => this._openWorkstation(entityId)));
-    this.interactionSystem.register(makeContainerHandler((entityId) => this._openContainer(entityId)));
-    this.interactionSystem.register(makeTraderHandler((entityId) => this._openTrader(entityId)));
-    this.interactionSystem.register(makeJobBoardHandler((entityId) => this._openJobBoard(entityId)));
+    this.interactionSystem.register(makeWorkstationHandler((entityId) => openWorkstation(this.world, this.playerId, entityId)));
+    this.interactionSystem.register(makeContainerHandler((entityId) => openContainer(this.world, this.playerId, entityId)));
+    this.interactionSystem.register(makeTraderHandler((entityId) => openTrader(this.world, this.playerId, this.contentService, entityId)));
+    this.interactionSystem.register(makeJobBoardHandler((entityId) => openJobBoard(this.world, this.playerId, entityId)));
     this.interactionSystem.register(resourceNodeHandler);
     this.interactionSystem.register(makeGroundItemHandler((entityId) =>
       this._sendCommand({ cmd: CommandType.PickUp, entityId }),
@@ -789,12 +790,12 @@ export class VoximGame {
         // Mirror buffer/tag updates on the open workstation entity into uiState
         // so the panel reflects loads/takes/recipe progress without polling.
         if (uiState.value.workstation?.entityId === entityId) {
-          this._mirrorWorkstationToUi(entityId);
+          mirrorWorkstationToUi(this.world, entityId);
         }
         // Family chest: refresh when the open chest's slots change (a deposit or
         // withdraw) so the panel reflects the move without polling.
         if (uiState.value.container?.entityId === entityId) {
-          this._mirrorContainerToUi(entityId);
+          mirrorContainerToUi(this.world, entityId);
         }
         // Heir ritual (T-072): any container touching this dynasty's chests
         // (deposit/withdraw, or one newly entering AoI) can change the
@@ -807,12 +808,12 @@ export class VoximGame {
         // inventory (coins/goods) changes, so prices and the sell list stay live.
         const traderId = uiState.value.trader?.npcId;
         if (traderId && (entityId === traderId || entityId === this.playerId)) {
-          this._mirrorTraderToUi(traderId);
+          mirrorTraderToUi(this.world, this.playerId, this.contentService, traderId);
         }
         // Job-board panel: refresh when the open board's pending jobs change
         // (a job claimed/completed by an assigned NPC) so the list stays live.
         if (uiState.value.jobBoard?.entityId === entityId) {
-          this._mirrorJobBoardToUi(entityId);
+          mirrorJobBoardToUi(this.world, entityId);
         }
       }
 
@@ -1290,202 +1291,6 @@ export class VoximGame {
    */
   private _sendCommand(command: CommandPayload): void {
     this.connection.sendCommand({ seq: ++this.commandSeq, command });
-  }
-
-  /**
-   * Open the workstation panel for an entity. Refuses when the player is
-   * outside the configured interact range — mirrors the server-side reach
-   * check so the panel can never claim to interact with something the
-   * server would refuse.
-   */
-  private _openWorkstation(entityId: string): void {
-    const ws = this.world.get(entityId);
-    if (!ws?.workstationBuffer || !ws.workstationTag || !ws.position) return;
-    const me = this.playerId ? this.world.get(this.playerId) : null;
-    if (!me?.position) return;
-    const dx = me.position.x - ws.position.x;
-    const dy = me.position.y - ws.position.y;
-    if (dx * dx + dy * dy > 3 * 3) {
-      pushToast("Too far away", "warn");
-      return;
-    }
-    this._mirrorWorkstationToUi(entityId);
-    openPanel("workstation");
-  }
-
-  /**
-   * Open the trade panel for a nearby trader NPC (T-075). Builds buy/sell offers
-   * from the trader's networked `traderInventory.listings`: buy lists every
-   * listing (with live stock), sell lists only the listings the player currently
-   * holds. Both buttons dispatch the listing-slot index — the TraderSystem keys
-   * buy and sell by the same slot.
-   */
-  private _openTrader(entityId: string): void {
-    const tr = this.world.get(entityId);
-    if (!tr?.traderInventory || !tr.position) return;
-    const me = this.playerId ? this.world.get(this.playerId) : null;
-    if (!me?.position) return;
-    const dx = me.position.x - tr.position.x;
-    const dy = me.position.y - tr.position.y;
-    if (dx * dx + dy * dy > 3 * 3) {
-      pushToast("Too far away", "warn");
-      return;
-    }
-    this._mirrorTraderToUi(entityId);
-    openPanel("trader");
-  }
-
-  /**
-   * Snapshot a trader's catalogue + the player's coins/holdings into uiState.
-   * Called on open and on every state-message touching the open trader or the
-   * player entity, so the panel reflects stock + coin changes without polling.
-   */
-  private _mirrorTraderToUi(entityId: string): void {
-    const tr = this.world.get(entityId);
-    if (!tr?.traderInventory) return;
-    const me = this.playerId ? this.world.get(this.playerId) : null;
-
-    const currency = this.contentService?.getGameConfig().trade.currencyItemType ?? "coins";
-    const nameOf = humanizeItemType;
-
-    // Tally stackable holdings by prefabId (coins + sellable goods are stacks).
-    const held = new Map<string, number>();
-    for (const s of me?.inventory?.slots ?? []) {
-      if (s.kind === "stack") held.set(s.prefabId, (held.get(s.prefabId) ?? 0) + s.quantity);
-    }
-
-    const listings = tr.traderInventory.listings;
-    patchUI({
-      trader: {
-        npcId: entityId,
-        npcName: tr.name?.value ?? "Trader",
-        playerCoins: held.get(currency) ?? 0,
-        buyOffers: listings.map((l, slot) => ({
-          slot, itemType: l.itemType, displayName: nameOf(l.itemType),
-          priceCoin: l.buyPrice, stock: l.stock < 0 ? null : l.stock,
-        })),
-        sellOffers: listings.flatMap((l, slot) => {
-          const have = held.get(l.itemType) ?? 0;
-          return have < 1 ? [] : [{
-            slot, itemType: l.itemType, displayName: nameOf(l.itemType),
-            priceCoin: l.sellPrice, stock: have,
-          }];
-        }),
-      },
-    });
-  }
-
-  /**
-   * Open the job-board panel for a nearby hiring workbench (T-076). The board
-   * is a workbench-type prefab carrying the networked `jobBoard` component;
-   * range-gated like the trader/workstation handlers.
-   */
-  private _openJobBoard(entityId: string): void {
-    const jb = this.world.get(entityId);
-    if (!jb?.jobBoard || !jb.position) return;
-    const me = this.playerId ? this.world.get(this.playerId) : null;
-    if (!me?.position) return;
-    const dx = me.position.x - jb.position.x;
-    const dy = me.position.y - jb.position.y;
-    if (dx * dx + dy * dy > 3 * 3) {
-      pushToast("Too far away", "warn");
-      return;
-    }
-    this._mirrorJobBoardToUi(entityId);
-    openPanel("job_board");
-  }
-
-  /**
-   * Snapshot the board's networked `jobBoard.pending` into uiState so the panel
-   * stays purely reactive on the signal. Called on open and on every
-   * state-message touching the open board (a job claimed/completed by an
-   * assigned NPC). Read-only for v1 — no post/cancel commands yet.
-   */
-  private _mirrorJobBoardToUi(entityId: string): void {
-    const jb = this.world.get(entityId);
-    if (!jb?.jobBoard) return;
-    patchUI({
-      jobBoard: {
-        entityId,
-        stationName: jb.name?.value ?? "Job Board",
-        jobs: jb.jobBoard.pending.map((j) => ({
-          id: j.id,
-          goal: j.goal,
-          itemType: j.itemType,
-          itemName: humanizeItemType(j.itemType),
-          priority: j.priority,
-          claimedBy: j.claimedBy,
-        })),
-      },
-    });
-  }
-
-  /**
-   * Snapshot the open workstation's networked state into uiState so the panel
-   * stays purely reactive on the signal. Called both on initial open and on
-   * every state-message that touches the open station.
-   */
-  private _mirrorWorkstationToUi(entityId: string): void {
-    const state = this.world.get(entityId);
-    if (!state?.workstationBuffer || !state.workstationTag) return;
-    patchUI({
-      workstation: {
-        entityId,
-        stationType:    state.workstationTag.stationType,
-        capacity:       state.workstationBuffer.capacity,
-        slots:          state.workstationBuffer.slots.map((s) => {
-          if (!s) return null;
-          return s.kind === "stack"
-            ? { kind: "stack" as const, itemType: s.itemType, quantity: s.quantity }
-            : { kind: "unique" as const, entityId: s.entityId, prefabId: s.prefabId };
-        }),
-        activeRecipeId: state.workstationBuffer.activeRecipeId,
-      },
-    });
-  }
-
-  /**
-   * Open the deposit/withdraw panel for a nearby family chest (library/treasury,
-   * T-077/T-078). Range-gated like the workstation/trader handlers; the server
-   * re-checks reach (and dynasty/kind/capacity) on every deposit/withdraw, so
-   * the panel can never claim an interaction the server would refuse.
-   */
-  private _openContainer(entityId: string): void {
-    const ch = this.world.get(entityId);
-    if (!ch?.container || !ch.position) return;
-    const me = this.playerId ? this.world.get(this.playerId) : null;
-    if (!me?.position) return;
-    const dx = me.position.x - ch.position.x;
-    const dy = me.position.y - ch.position.y;
-    if (dx * dx + dy * dy > 3 * 3) {
-      pushToast("Too far away", "warn");
-      return;
-    }
-    this._mirrorContainerToUi(entityId);
-    openPanel("container");
-  }
-
-  /**
-   * Snapshot the open chest's networked `container` slots into uiState so the
-   * panel stays purely reactive. Each slot is an entity ref to a banked unique
-   * item; its prefab id comes from the item entity's ItemData (streamed to the
-   * owning dynasty's client via AoI). Called on open and on every state-message
-   * touching the open chest, so deposits/withdrawals reflect without polling.
-   */
-  private _mirrorContainerToUi(entityId: string): void {
-    const ch = this.world.get(entityId);
-    if (!ch?.container) return;
-    patchUI({
-      container: {
-        entityId,
-        kind:     ch.container.kind,
-        capacity: ch.container.capacity,
-        slots:    ch.container.slots.map((s) => ({
-          entityId: s.entityId,
-          prefabId: this.world.get(s.entityId)?.itemData?.prefabId ?? "",
-        })),
-      },
-    });
   }
 
   /**
