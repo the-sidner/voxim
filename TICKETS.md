@@ -2202,7 +2202,7 @@ refreshed; the code is the reference. Only comments stating a constraint the
 code cannot show survive.
 
 ### T-348 · Event wire path → per-event descriptor registry
-Effort: L   Status: in-progress
+Effort: L   Status: done   Commit: b7ca638   (protocol/src/event_registry.ts: 18 descriptors — wire codec + relevance-as-data (always/player/known clause vocabulary) + fromTileEvent bus binding, mapped-type keyed by GameEvent["type"] for compile-time exhaustiveness; the four switches deleted; GateApproached handoff stays one named ordered exception; wire bytes + decoded shapes unchanged)
 
 The one subsystem the registry rebuild (T-279–284) never reached. Every GameEvent
 kind is hand-maintained at FOUR sites: the union in `protocol/src/messages.ts`,
@@ -2266,7 +2266,7 @@ into a `HandoffCoordinator`, per the "large subsystems are extracted into
 separate modules" table.
 
 ### T-353 · game.ts decomposition — connection wiring, panel mirrors, UIAction table, pose composer
-Effort: L   Status: in-progress
+Effort: L   Status: done   Commit: 47c1abe   (game.ts 2216→1329 lines; new connection/wire_handlers.ts, ui/panel_bridge.ts, ui/ui_action_dispatch.ts (mapped-type exhaustive), state/state_mappers.ts, render/pose_composer.ts; modules import VoximGame type-only, zero behavior change)
 
 `game.ts` is 2220 lines with 200–370-line methods. Extraction seams:
 `_wireConnectionHandlers` (~370 lines); the panel-bridge family
