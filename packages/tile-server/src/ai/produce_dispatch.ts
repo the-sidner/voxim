@@ -8,7 +8,8 @@
  */
 import type { World, EntityId } from "@voxim/engine";
 import type { ContentService } from "@voxim/content";
-import type { InventoryData, Job } from "@voxim/codecs";
+import type { InventoryData } from "@voxim/codecs";
+import type { Job } from "../components/npcs.ts";
 import { Inventory } from "../components/items.ts";
 import { ResourceNode } from "../components/resource_node.ts";
 import { WorkstationTag } from "../components/building.ts";

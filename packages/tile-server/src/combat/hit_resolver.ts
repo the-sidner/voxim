@@ -11,7 +11,7 @@
  */
 import { localToWorld, segSegDistSq, segSegContactInfo } from "@voxim/content";
 import type { Vec3 } from "@voxim/content";
-import type { HitboxData } from "@voxim/codecs";
+import type { HitboxData } from "../components/hitbox.ts";
 
 export interface BladeSegment {
   from: Vec3;
