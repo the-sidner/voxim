@@ -2,52 +2,24 @@
  * Panel bridge — the world-entity → UI-signal mirror family.
  *
  * Each interactable panel (workstation / trader / job board / family chest)
- * has an `open*` entry point (range-gated, mirrors once, opens the panel) and
- * a `mirror*ToUi` snapshot function called again on every state message that
+ * has an `open*` entry point (mirrors once, opens the panel) and a
+ * `mirror*ToUi` snapshot function called again on every state message that
  * touches the open entity, so panels stay purely reactive on uiState without
- * polling. The server re-checks reach (and dynasty/kind/capacity) on every
- * command, so a panel can never claim an interaction the server would refuse.
+ * polling. Reach is NOT gated here: the only callers are the interaction
+ * handlers, which `InteractionSystem.activateNearest` has already
+ * range-checked (the one client-side gate) — and the server re-checks reach
+ * (and dynasty/kind/capacity) on every command, so a panel can never claim
+ * an interaction the server would refuse.
  */
 import type { ClientWorld } from "../state/client_world.ts";
 import type { ContentService } from "@voxim/content";
-import { openPanel, patchUI, pushToast } from "./ui_store.ts";
+import { openPanel, patchUI } from "./ui_store.ts";
 import { humanizeItemType } from "./item_names.ts";
 
-/** Interact reach in world units — mirrors the server-side reach check. */
-const INTERACT_RANGE = 3;
-
-/**
- * Range gate shared by all four open* entry points. `null` means the player's
- * own position is unknown (refuse silently — no toast); a boolean is the
- * actual reach verdict.
- */
-function withinReach(
-  world: ClientWorld,
-  playerId: string | null,
-  target: { x: number; y: number },
-): boolean | null {
-  const me = playerId ? world.get(playerId) : null;
-  if (!me?.position) return null;
-  const dx = me.position.x - target.x;
-  const dy = me.position.y - target.y;
-  return dx * dx + dy * dy <= INTERACT_RANGE * INTERACT_RANGE;
-}
-
-/**
- * Open the workstation panel for an entity. Refuses when the player is
- * outside the configured interact range — mirrors the server-side reach
- * check so the panel can never claim to interact with something the
- * server would refuse.
- */
-export function openWorkstation(world: ClientWorld, playerId: string | null, entityId: string): void {
+/** Open the workstation panel for an entity. */
+export function openWorkstation(world: ClientWorld, entityId: string): void {
   const ws = world.get(entityId);
-  if (!ws?.workstationBuffer || !ws.workstationTag || !ws.position) return;
-  const reach = withinReach(world, playerId, ws.position);
-  if (reach === null) return;
-  if (!reach) {
-    pushToast("Too far away", "warn");
-    return;
-  }
+  if (!ws?.workstationBuffer || !ws.workstationTag) return;
   mirrorWorkstationToUi(world, entityId);
   openPanel("workstation");
 }
@@ -90,13 +62,7 @@ export function openTrader(
   entityId: string,
 ): void {
   const tr = world.get(entityId);
-  if (!tr?.traderInventory || !tr.position) return;
-  const reach = withinReach(world, playerId, tr.position);
-  if (reach === null) return;
-  if (!reach) {
-    pushToast("Too far away", "warn");
-    return;
-  }
+  if (!tr?.traderInventory) return;
   mirrorTraderToUi(world, playerId, content, entityId);
   openPanel("trader");
 }
@@ -148,18 +114,11 @@ export function mirrorTraderToUi(
 
 /**
  * Open the job-board panel for a nearby hiring workbench (T-076). The board
- * is a workbench-type prefab carrying the networked `jobBoard` component;
- * range-gated like the trader/workstation handlers.
+ * is a workbench-type prefab carrying the networked `jobBoard` component.
  */
-export function openJobBoard(world: ClientWorld, playerId: string | null, entityId: string): void {
+export function openJobBoard(world: ClientWorld, entityId: string): void {
   const jb = world.get(entityId);
-  if (!jb?.jobBoard || !jb.position) return;
-  const reach = withinReach(world, playerId, jb.position);
-  if (reach === null) return;
-  if (!reach) {
-    pushToast("Too far away", "warn");
-    return;
-  }
+  if (!jb?.jobBoard) return;
   mirrorJobBoardToUi(world, entityId);
   openPanel("job_board");
 }
@@ -191,19 +150,13 @@ export function mirrorJobBoardToUi(world: ClientWorld, entityId: string): void {
 
 /**
  * Open the deposit/withdraw panel for a nearby family chest (library/treasury,
- * T-077/T-078). Range-gated like the workstation/trader handlers; the server
- * re-checks reach (and dynasty/kind/capacity) on every deposit/withdraw, so
- * the panel can never claim an interaction the server would refuse.
+ * T-077/T-078). The server re-checks reach (and dynasty/kind/capacity) on
+ * every deposit/withdraw, so the panel can never claim an interaction the
+ * server would refuse.
  */
-export function openContainer(world: ClientWorld, playerId: string | null, entityId: string): void {
+export function openContainer(world: ClientWorld, entityId: string): void {
   const ch = world.get(entityId);
-  if (!ch?.container || !ch.position) return;
-  const reach = withinReach(world, playerId, ch.position);
-  if (reach === null) return;
-  if (!reach) {
-    pushToast("Too far away", "warn");
-    return;
-  }
+  if (!ch?.container) return;
   mirrorContainerToUi(world, entityId);
   openPanel("container");
 }

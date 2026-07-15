@@ -42,7 +42,7 @@ import { CrumbleController } from "./render/crumble_controller.ts";
 import { AimIndicatorRenderer } from "./render/aim_indicator.ts";
 import { canopyFade } from "./render/canopy_fade.ts";
 import { InteractionSystem } from "./interaction/interaction_system.ts";
-import { makeWorkstationHandler, makeContainerHandler, makeTraderHandler, makeJobBoardHandler, resourceNodeHandler, makeGroundItemHandler, makePoiInteractableHandler } from "./interaction/interactable_handlers.ts";
+import { makeWorkstationHandler, makeContainerHandler, makeTraderHandler, makeJobBoardHandler, makeResourceNodeHandler, makeGroundItemHandler, makePoiInteractableHandler } from "./interaction/interactable_handlers.ts";
 import { WorldOverlay } from "./ui/world_overlay.ts";
 import { mountUI } from "./ui/mount_ui.tsx";
 import { uiState, patchUI, openPanel, closePanel, pushToast, hotbarItems } from "./ui/ui_store.ts";
@@ -562,16 +562,23 @@ export class VoximGame {
     // (T-320). Selects the closest matching entity each frame and drives the
     // hover outline off proximity; the Use (E) key activates the selection.
     this.interactionSystem = new InteractionSystem(this.world);
-    this.interactionSystem.register(makeWorkstationHandler((entityId) => openWorkstation(this.world, this.playerId, entityId)));
-    this.interactionSystem.register(makeContainerHandler((entityId) => openContainer(this.world, this.playerId, entityId)));
-    this.interactionSystem.register(makeTraderHandler((entityId) => openTrader(this.world, this.playerId, this.contentService, entityId)));
-    this.interactionSystem.register(makeJobBoardHandler((entityId) => openJobBoard(this.world, this.playerId, entityId)));
-    this.interactionSystem.register(resourceNodeHandler);
+    // Each handler's reach is the SAME content value the server enforces on
+    // the corresponding command — tune game_config, restart the tile, and the
+    // client gate moves with it. Defaults hold pre-bootstrap.
+    const cfg = this.contentService?.getGameConfig();
+    const interactRange = cfg?.crafting.interactRange ?? 3;
+    const tradeRange    = cfg?.trade.rangeWorldUnits ?? 3;
+    const pickupRadius  = cfg?.items.pickupRadius ?? 2.5;
+    this.interactionSystem.register(makeWorkstationHandler((entityId) => openWorkstation(this.world, entityId), interactRange));
+    this.interactionSystem.register(makeContainerHandler((entityId) => openContainer(this.world, entityId), interactRange));
+    this.interactionSystem.register(makeTraderHandler((entityId) => openTrader(this.world, this.playerId, this.contentService, entityId), tradeRange));
+    this.interactionSystem.register(makeJobBoardHandler((entityId) => openJobBoard(this.world, entityId), interactRange));
+    this.interactionSystem.register(makeResourceNodeHandler(interactRange));
     this.interactionSystem.register(makeGroundItemHandler((entityId) =>
-      this._sendCommand({ cmd: CommandType.PickUp, entityId }),
+      this._sendCommand({ cmd: CommandType.PickUp, entityId }), pickupRadius,
     ));
     this.interactionSystem.register(makePoiInteractableHandler((entityId) =>
-      this._sendCommand({ cmd: CommandType.UseEntity, entityId }),
+      this._sendCommand({ cmd: CommandType.UseEntity, entityId }), interactRange,
     ));
 
     this._registerIntentHandlers();
@@ -1049,10 +1056,9 @@ export class VoximGame {
       priority: 50,
       claim: (intent: Intent) => {
         if (intent.kind !== "interact") return false;
-        const me = this.playerId ? this.world.get(this.playerId) : null;
-        const px = me?.position?.x ?? 0;
-        const py = me?.position?.y ?? 0;
-        this.interactionSystem?.activateNearest(px, py);
+        // Activation re-checks range against the SAME (predicted) position
+        // the per-frame selection used — never a second position source.
+        this.interactionSystem?.activateNearest();
         return true;
       },
     });

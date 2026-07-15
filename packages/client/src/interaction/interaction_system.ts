@@ -26,6 +26,12 @@ import { pickNearestInteractable, type InteractableCandidate } from "./nearest.t
 export class InteractionSystem {
   private readonly handlers: EntityInteractionHandler[] = [];
   private selectedEntityId: string | null = null;
+  /** Player position from the last update() — the ONE position source shared
+   *  by selection and activation, so an entity the prompt lit up for can never
+   *  silently refuse activation because a different source (predicted vs
+   *  networked) straddled the range line. */
+  private lastPlayerX = 0;
+  private lastPlayerY = 0;
 
   constructor(private readonly world: ClientWorld) {}
 
@@ -48,6 +54,8 @@ export class InteractionSystem {
    * `hoverState`. Called once per render frame with the player's world XY.
    */
   update(playerX: number, playerY: number): void {
+    this.lastPlayerX = playerX;
+    this.lastPlayerY = playerY;
     const candidates: InteractableCandidate[] = [];
     for (const [entityId, state] of this.world.entries()) {
       const pos = state.position;
@@ -72,15 +80,16 @@ export class InteractionSystem {
   /**
    * Fire the matching handler's activate (onClick) for the current selection —
    * the Use key's action. Returns true if a handler consumed it. Range is
-   * re-checked here too so a selection that drifted out of range this frame
-   * doesn't fire.
+   * re-checked here (against the SAME position update() last selected with)
+   * so a selection that drifted out of range this frame doesn't fire. This is
+   * the single client-side reach gate; the server re-checks every command.
    */
-  activateNearest(playerX: number, playerY: number): boolean {
+  activateNearest(): boolean {
     if (this.selectedEntityId === null) return false;
     const target = this._buildTarget(this.selectedEntityId);
     if (!target) return false;
-    const dx = target.worldX - playerX;
-    const dy = target.worldY - playerY;
+    const dx = target.worldX - this.lastPlayerX;
+    const dy = target.worldY - this.lastPlayerY;
     const distSq = dx * dx + dy * dy;
     for (const h of this.handlers) {
       if (!h.canHandle(target)) continue;
