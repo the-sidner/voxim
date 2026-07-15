@@ -39,13 +39,14 @@ function buildGateMarker(_edge: string): THREE.Group {
   return group;
 }
 
+const _screenPos = new THREE.Vector3();
+
 export class GateMarkerRenderer {
   private readonly meshes = new Map<string, THREE.Group>();
 
   constructor(
     private readonly scene: THREE.Scene,
     private readonly camera: THREE.Camera,
-    private readonly domElement: HTMLCanvasElement,
   ) {}
 
   /**
@@ -83,19 +84,21 @@ export class GateMarkerRenderer {
   /**
    * Project a gate's world position to screen space. WorldOverlay calls this
    * each frame to anchor the destination label above the pillar.
+   *
+   * `viewW`/`viewH` are the canvas CSS size, passed by the renderer from its
+   * resize-driven cache — reading `clientWidth` here would force a layout
+   * reflow per gate per frame between the overlay's style writes.
    */
-  screenPos(entityId: string): { x: number; y: number } | null {
+  screenPos(entityId: string, viewW: number, viewH: number): { x: number; y: number } | null {
     const group = this.meshes.get(entityId);
     if (!group) return null;
-    const top = group.position.clone();
+    const top = _screenPos.copy(group.position);
     top.y += 8; // top of the pillar in renderer coords
     top.project(this.camera);
     if (top.z > 1) return null; // behind camera
-    const w = this.domElement.clientWidth;
-    const h = this.domElement.clientHeight;
     return {
-      x: (top.x * 0.5 + 0.5) * w,
-      y: (-top.y * 0.5 + 0.5) * h,
+      x: (top.x * 0.5 + 0.5) * viewW,
+      y: (-top.y * 0.5 + 0.5) * viewH,
     };
   }
 

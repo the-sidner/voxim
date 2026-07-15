@@ -70,6 +70,7 @@ const PRE_BOOTSTRAP_RENDER_TUNING: PreBootstrapRenderTuning = {
 const SPRING_BONES = ["torso_lower", "torso_mid", "torso_upper", "head"] as const;
 const _springTargetQ = new THREE.Quaternion();
 const _springE = new THREE.Euler();
+const _entityScreenPos = new THREE.Vector3();
 
 /**
  * Ease the follow-through bones toward the composed target pose with a
@@ -199,6 +200,12 @@ export class VoximRenderer {
   readonly scene = new THREE.Scene();
   readonly cameraRig: CameraRig;
   readonly camera: THREE.PerspectiveCamera;
+
+  /** Canvas CSS size, cached at construction and on resize — per-frame
+   *  screen-projection helpers must never read clientWidth/clientHeight
+   *  themselves (each read between DOM style writes forces a full reflow). */
+  private viewW: number;
+  private viewH: number;
 
   /** Per-chunk terrain: one voxel Mesh per material present in the chunk (T-283). */
   private readonly terrainMeshes  = new Map<string, THREE.Mesh[]>();
@@ -435,13 +442,19 @@ export class VoximRenderer {
     // main scene + post-FX passes). render() resets manually at the top.
     this.renderer.info.autoReset = false;
 
-    const aspect = (canvas.clientWidth || canvas.width || 320) / (canvas.clientHeight || canvas.height || 180);
+    // Cache the canvas CSS size (refreshed by onResize). Screen-projection
+    // helpers (getEntityScreenPos / gate labels) run per entity per frame
+    // interleaved with the overlay's style writes — a live clientWidth read
+    // there forces a synchronous layout reflow per call.
+    this.viewW = canvas.clientWidth || canvas.width || 320;
+    this.viewH = canvas.clientHeight || canvas.height || 180;
+    const aspect = this.viewW / this.viewH;
     this.cameraRig = new CameraRig(aspect);
     this.camera = this.cameraRig.camera;
     // Boot placement before the first frame: no facing target yet, so the yaw
     // holds at its boot value (join screen / pre-spawn).
     this.cameraRig.update(this.cameraTarget);
-    this.gateMarkers = new GateMarkerRenderer(this.scene, this.camera, this.renderer.domElement);
+    this.gateMarkers = new GateMarkerRenderer(this.scene, this.camera);
     this.entities = new EntityMeshRegistry(
       this.scene, this.instancePool, this.weaponActionsMap, this.itemPrefabMap,
       this._skeletonOverlay, this.lightManager, this.debugOverlayManager,
@@ -919,7 +932,7 @@ export class VoximRenderer {
   }
 
   getGateScreenPos(entityId: string): { x: number; y: number } | null {
-    return this.gateMarkers.screenPos(entityId);
+    return this.gateMarkers.screenPos(entityId, this.viewW, this.viewH);
   }
 
   // ---- interaction system ----
@@ -961,8 +974,8 @@ export class VoximRenderer {
    * whatever its yaw).
    */
   getCursorWorldPos(canvasX: number, canvasY: number, groundHeight: number): { x: number; y: number } | null {
-    const w = this.renderer.domElement.clientWidth  || this.renderer.domElement.width;
-    const h = this.renderer.domElement.clientHeight || this.renderer.domElement.height;
+    const w = this.viewW;
+    const h = this.viewH;
     const raycaster = new THREE.Raycaster();
     raycaster.setFromCamera(
       new THREE.Vector2(
@@ -980,17 +993,18 @@ export class VoximRenderer {
     return { x: hit.x, y: hit.z };
   }
 
-  /** Project an entity's world position to canvas pixel coordinates, or null if not found. */
+  /** Project an entity's world position to canvas pixel coordinates, or null
+   *  if not found. Uses the resize-driven size cache + a scratch vector —
+   *  this runs once per health-barred entity per frame, interleaved with the
+   *  overlay's style writes, where a clientWidth read forces a reflow. */
   getEntityScreenPos(entityId: string): { x: number; y: number } | null {
     const mesh = this.entities.get(entityId);
     if (!mesh) return null;
-    const pos = mesh.group.position.clone();
+    const pos = _entityScreenPos.copy(mesh.group.position);
     pos.project(this.camera);
-    const w = this.renderer.domElement.clientWidth;
-    const h = this.renderer.domElement.clientHeight;
     return {
-      x: (pos.x * 0.5 + 0.5) * w,
-      y: (-pos.y * 0.5 + 0.5) * h,
+      x: (pos.x * 0.5 + 0.5) * this.viewW,
+      y: (-pos.y * 0.5 + 0.5) * this.viewH,
     };
   }
 
@@ -1744,6 +1758,8 @@ export class VoximRenderer {
   private onResize(canvas: HTMLCanvasElement): void {
     const w = canvas.clientWidth;
     const h = canvas.clientHeight;
+    this.viewW = w;
+    this.viewH = h;
     this.renderer.setSize(w, h, false);
     const aspect = w / h;
     this.cameraRig.resize(aspect);
