@@ -49,11 +49,12 @@ import { setClientWorld, setLocalPlayerId } from "./ui/client_world_ref.ts";
 import { setContentService } from "./ui/content_ref.ts";
 import { setFogRef } from "./ui/fog_ref.ts";
 import type { UIAction } from "./ui/ui_actions.ts";
+import { dispatchUIAction } from "./ui/ui_action_dispatch.ts";
 import { openWorkstation, openTrader, openJobBoard, openContainer } from "./ui/panel_bridge.ts";
 import { recordInput } from "./ui/network_capture.ts";
-import { setDebugLayer, setDebugItemList } from "./ui/debug_store.ts";
+import { setDebugItemList } from "./ui/debug_store.ts";
 import { loadLoginName } from "./ui/login.ts";
-import { ACTION_USE_SKILL, ACTION_JUMP, ACTION_CROUCH, hasAction, CommandType, EquipSlotIndex, EQUIP_SLOT_NAMES } from "@voxim/protocol";
+import { ACTION_USE_SKILL, ACTION_JUMP, ACTION_CROUCH, hasAction, CommandType } from "@voxim/protocol";
 import type { CommandPayload } from "@voxim/protocol";
 import type { HeirRitualStep } from "./ui/ui_store.ts";
 import { mapEquipmentToUI, worldClockPhase, vitalsPatch, mapLoreLoadoutToUI, deriveCastState, mapInventoryToUI } from "./state/state_mappers.ts";
@@ -920,7 +921,7 @@ export class VoximGame {
    * Send a CommandDatagram to the server.
    * Uses a separate monotonically increasing sequence space from movement datagrams.
    */
-  private _sendCommand(command: CommandPayload): void {
+  _sendCommand(command: CommandPayload): void {
     this.connection.sendCommand({ seq: ++this.commandSeq, command });
   }
 
@@ -1165,233 +1166,9 @@ export class VoximGame {
     });
   }
 
-  /**
-   * Translate UI intents into server messages.
-   * This is the single bridge between the UI layer and game logic.
-   */
+  /** Translate UI intents into server messages — see ui/ui_action_dispatch.ts. */
   private _handleUIAction(action: UIAction): void {
-    switch (action.type) {
-      case "respawn":
-        // Re-enter the world after death (T-270). The session stayed open; the
-        // server records the death (advancing the dynasty → heir) and spawns.
-        this._sendCommand({ cmd: CommandType.Respawn });
-        closePanel("death");
-        break;
-
-      case "dismiss_ritual":
-        this.ritualDismissed = true;
-        patchUI({ heirRitual: null });
-        break;
-
-      case "debug_toggle": {
-        const on = this.toggleDebug(action.layer);
-        setDebugLayer(action.layer, on);
-        break;
-      }
-
-      case "debug_scene_census":
-        this.renderer?.logSceneCensus();
-        break;
-
-      case "debug_give_item":
-        this._sendCommand({ cmd: CommandType.DebugGiveItem, itemType: action.itemType, quantity: action.quantity });
-        break;
-
-      case "debug_spawn_npc":
-        this._sendCommand({ cmd: CommandType.DebugSpawnNpc, npcTemplate: action.npcTemplate, quantity: action.quantity });
-        break;
-
-      case "debug_set_time":
-        this._sendCommand({ cmd: CommandType.DebugSetTime, hour: action.hour });
-        break;
-
-      case "debug_teleport":
-        this._sendCommand({ cmd: CommandType.DebugTeleport, worldX: action.worldX, worldY: action.worldY });
-        break;
-
-      case "debug_set_stat":
-        this._sendCommand({ cmd: CommandType.DebugSetStat, stat: action.stat, value: action.value });
-        break;
-
-      case "debug_kill_entity":
-        this._sendCommand({ cmd: CommandType.DebugKillEntity, entityId: action.entityId });
-        break;
-
-      case "debug_spawn_dummy":
-        this._sendCommand({ cmd: CommandType.DebugSpawnDummy, attackLoop: action.attackLoop });
-        break;
-
-      case "debug_set_action_param":
-        this._sendCommand({
-          cmd: CommandType.DebugSetActionParam,
-          actionId: action.actionId,
-          field: action.field,
-          value: action.value,
-        });
-        break;
-
-      case "equip":
-        this._sendCommand({ cmd: CommandType.Equip, fromInventorySlot: action.fromSlot });
-        break;
-
-      case "unequip": {
-        const slotIndex = EQUIP_SLOT_NAMES.indexOf(action.slot as typeof EQUIP_SLOT_NAMES[number]);
-        if (slotIndex !== -1) {
-          this._sendCommand({ cmd: CommandType.Unequip, equipSlot: slotIndex as EquipSlotIndex });
-        }
-        break;
-      }
-
-      case "move_item":
-        this._sendCommand({ cmd: CommandType.MoveItem, fromSlot: action.fromSlot, toSlot: action.toSlot });
-        break;
-
-      case "drop_item":
-        this._sendCommand({ cmd: CommandType.DropItem, fromSlot: action.fromSlot });
-        break;
-
-      case "use_item":
-        this._sendCommand({ cmd: CommandType.UseItem, fromSlot: action.fromSlot });
-        break;
-
-      case "read_tome":
-        // Internalise the Lore fragment carried by the tome in this inventory
-        // slot (T-020 server substrate; first client wiring, T-072).
-        this._sendCommand({ cmd: CommandType.Internalise, inventorySlot: action.fromSlot });
-        break;
-
-      case "load_workstation":
-        this._sendCommand({
-          cmd: CommandType.LoadWorkstation,
-          inventorySlot: action.inventorySlot,
-          bufferSlot: action.bufferSlot,
-        });
-        break;
-
-      case "take_workstation":
-        this._sendCommand({
-          cmd: CommandType.TakeWorkstation,
-          bufferSlot: action.bufferSlot,
-        });
-        break;
-
-      case "deposit_container":
-        this._sendCommand({
-          cmd: CommandType.ContainerDeposit,
-          containerId: action.containerId,
-          fromInventorySlot: action.inventorySlot,
-        });
-        break;
-
-      case "withdraw_container":
-        this._sendCommand({
-          cmd: CommandType.ContainerWithdraw,
-          containerId: action.containerId,
-          slotIndex: action.slotIndex,
-        });
-        break;
-
-      case "select_recipe":
-        this._sendCommand({ cmd: CommandType.SelectRecipe, recipeId: action.recipeId });
-        break;
-
-      case "deploy_item":
-        // Server uses forward-facing placement for kit items, so worldX/worldY
-        // are ignored — we send 0/0 to satisfy the codec without a cursor pick.
-        console.log(`[Deploy] sending Place from inventory slot=${action.fromSlot}`);
-        this._sendCommand({
-          cmd: CommandType.Place,
-          source: "inventory",
-          fromInventorySlot: action.fromSlot,
-          worldX: 0,
-          worldY: 0,
-        });
-        break;
-
-      case "place_blueprint":
-        console.log(`[Build] sending Place prefab=${action.structureType} world=(${action.worldX.toFixed(1)},${action.worldY.toFixed(1)})`);
-        this._sendCommand({
-          cmd: CommandType.Place,
-          source: "prefab",
-          prefabId: action.structureType,
-          worldX: action.worldX,
-          worldY: action.worldY,
-        });
-        break;
-
-      case "open_build_menu":
-        console.log(`[Build] opening radial menu at canvas=(${action.canvasX.toFixed(0)},${action.canvasY.toFixed(0)})`);
-        patchUI({ radialMenu: { x: action.canvasX, y: action.canvasY } });
-        break;
-
-      case "select_blueprint": {
-        console.log(`[Build] selected blueprint type=${action.structureType}`);
-        patchUI({ selectedBlueprint: action.structureType, radialMenu: null });
-        const prefab = this.contentService?.prefabs.get(action.structureType);
-        const placeable = prefab?.components.placeable as { tool?: "single" | "line" } | undefined;
-        const tool = placeable?.tool ?? "single";
-        const bld = this.contentService?.getGameConfig().building;
-        modeState.value = {
-          kind: "build",
-          blueprintId: action.structureType,
-          brush: {
-            tool,
-            voxelSize: bld?.defaultVoxelSize ?? 1.0,
-            spacing: bld?.defaultSpacing ?? 0,
-          },
-        };
-        break;
-      }
-
-      case "trade_buy":
-        this._sendCommand({ cmd: CommandType.TradeBuy, listingSlot: action.slot });
-        break;
-
-      case "trade_sell":
-        this._sendCommand({ cmd: CommandType.TradeSell, inventorySlot: action.slot });
-        break;
-
-      // Hotbar (T-309 prerequisite) — client-local only, no server command:
-      // assignment/selection just patch uiState.hotbar, then push the new
-      // occupancy to the renderer so slung body anchors stay in sync.
-      case "hotbar_assign": {
-        const hb = uiState.value.hotbar;
-        if (!hb) break;
-        const assignments = [...hb.assignments];
-        assignments[action.hotbarSlot] = action.inventorySlot;
-        patchUI({ hotbar: { ...hb, assignments } });
-        this._syncHotbarAttachments();
-        break;
-      }
-
-      case "hotbar_clear": {
-        const hb = uiState.value.hotbar;
-        if (!hb) break;
-        const assignments = [...hb.assignments];
-        assignments[action.hotbarSlot] = null;
-        patchUI({ hotbar: { ...hb, assignments } });
-        this._syncHotbarAttachments();
-        break;
-      }
-
-      case "hotbar_use": {
-        // Selects the "active" (in-hand) slot only — does not equip
-        // anything. The Hotbar UI only fires this for occupied slots.
-        const hb = uiState.value.hotbar;
-        if (!hb) break;
-        patchUI({ hotbar: { ...hb, activeIndex: action.hotbarSlot } });
-        this._syncHotbarAttachments();
-        break;
-      }
-
-      // Not yet implemented — log for discoverability during development.
-      case "split_stack":
-      case "dialogue_choice":
-      case "dialogue_close":
-      case "rebind_key":
-        console.debug("[UIAction unhandled]", action);
-        break;
-    }
+    dispatchUIAction(this, action);
   }
 
   /**
