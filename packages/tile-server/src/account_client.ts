@@ -12,9 +12,18 @@
  * callers decide whether to retry or accept a degraded path. We log but do
  * not swallow — a tile server that silently loses death events is worse
  * than one that tells the operator something is wrong.
+ *
+ * Every call carries an AbortSignal timeout: a rejection is a failure the
+ * caller can handle, but a gateway that ACCEPTS the TCP connection and then
+ * never answers (mid-deploy, wedged) would otherwise leave the returned
+ * promise pending FOREVER — no `.catch` fires, and whatever the caller
+ * sequenced after the await simply never runs.
  */
 import { heritageCodec } from "@voxim/codecs";
 import type { HeritageData } from "@voxim/codecs";
+
+/** Per-request timeout — generous for a LAN/same-host gateway hop. */
+const REQUEST_TIMEOUT_MS = 10_000;
 
 export interface HearthAnchor {
   tileId: string;
@@ -32,6 +41,7 @@ export class AccountClient {
   constructor(
     private readonly baseUrl: string,
     private readonly serviceSecret: string,
+    private readonly timeoutMs: number = REQUEST_TIMEOUT_MS,
   ) {
     if (!baseUrl) throw new Error("AccountClient: baseUrl required");
     if (!serviceSecret || serviceSecret.length < 16) {
@@ -43,6 +53,14 @@ export class AccountClient {
     return { "x-voxim-service-secret": this.serviceSecret, ...extra };
   }
 
+  /** `fetch` with the client-wide timeout — a hung gateway rejects, never wedges. */
+  private fetch(
+    url: string,
+    init: { method?: string; headers?: HeadersInit; body?: BodyInit | Uint8Array } = {},
+  ): Promise<Response> {
+    return fetch(url, { ...(init as RequestInit), signal: AbortSignal.timeout(this.timeoutMs) });
+  }
+
   /**
    * Validate a client-presented session token against the gateway and return
    * the associated user info. Returns null when the token is unknown,
@@ -51,7 +69,7 @@ export class AccountClient {
    * silently let unauthenticated players in.
    */
   async validateSession(token: string): Promise<SessionInfo | null> {
-    const res = await fetch(`${this.baseUrl}/internal/session/${encodeURIComponent(token)}`, {
+    const res = await this.fetch(`${this.baseUrl}/internal/session/${encodeURIComponent(token)}`, {
       headers: this.headers(),
     });
     if (res.status === 401) return null;
@@ -68,7 +86,7 @@ export class AccountClient {
    * just authenticated; treated as a soft error).
    */
   async getHeritage(userId: string): Promise<HeritageData | null> {
-    const res = await fetch(`${this.baseUrl}/internal/user/${encodeURIComponent(userId)}/heritage`, {
+    const res = await this.fetch(`${this.baseUrl}/internal/user/${encodeURIComponent(userId)}/heritage`, {
       headers: this.headers(),
     });
     if (res.status === 404) return null;
@@ -86,7 +104,7 @@ export class AccountClient {
    * hundred ms of cleanup, so we await.
    */
   async recordDeath(userId: string, cause: "damage" | "starvation" | "effect", killerId?: string): Promise<void> {
-    const res = await fetch(`${this.baseUrl}/internal/user/${encodeURIComponent(userId)}/death`, {
+    const res = await this.fetch(`${this.baseUrl}/internal/user/${encodeURIComponent(userId)}/death`, {
       method: "POST",
       headers: this.headers({ "content-type": "application/json" }),
       body: JSON.stringify({ cause, killerId }),
@@ -101,7 +119,7 @@ export class AccountClient {
    * next login routes back here. Also safe to call on join as a touch-up.
    */
   async updateLocation(userId: string, lastTileId: string): Promise<void> {
-    const res = await fetch(`${this.baseUrl}/internal/user/${encodeURIComponent(userId)}/location`, {
+    const res = await this.fetch(`${this.baseUrl}/internal/user/${encodeURIComponent(userId)}/location`, {
       method: "PATCH",
       headers: this.headers({ "content-type": "application/json" }),
       body: JSON.stringify({ lastTileId }),
@@ -118,7 +136,7 @@ export class AccountClient {
    */
   async updateHearth(userId: string, anchor: HearthAnchor | null): Promise<void> {
     const body = anchor ?? { tileId: null, position: null };
-    const res = await fetch(`${this.baseUrl}/internal/user/${encodeURIComponent(userId)}/hearth`, {
+    const res = await this.fetch(`${this.baseUrl}/internal/user/${encodeURIComponent(userId)}/hearth`, {
       method: "PATCH",
       headers: this.headers({ "content-type": "application/json" }),
       body: JSON.stringify(body),
@@ -134,7 +152,7 @@ export class AccountClient {
    * `seenEver` buffer; tile-server's FogState consumes it directly.  T-161.
    */
   async getFog(userId: string, tileId: string): Promise<Uint8Array | null> {
-    const res = await fetch(
+    const res = await this.fetch(
       `${this.baseUrl}/internal/user/${encodeURIComponent(userId)}/fog/${encodeURIComponent(tileId)}`,
       { headers: this.headers() },
     );
@@ -151,7 +169,7 @@ export class AccountClient {
    * be called periodically as a checkpoint if needed).  T-161.
    */
   async saveFog(userId: string, tileId: string, bitmap: Uint8Array): Promise<void> {
-    const res = await fetch(
+    const res = await this.fetch(
       `${this.baseUrl}/internal/user/${encodeURIComponent(userId)}/fog/${encodeURIComponent(tileId)}`,
       {
         method: "PUT",
