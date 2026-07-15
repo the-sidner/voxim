@@ -15,10 +15,10 @@ import { heightmapCodec, openMaskCodec, kindGridCodec, materialGridCodec, vegFie
 import type {
   VegFieldGridData, SurfaceStateGridData, WaterGridData, CliffGridData,
   HeightmapData, MaterialGridData, OpenMaskData, KindGridData, ModelRefData, AnimationStateData,
-  EquipmentData, InventoryData, BlueprintData, LightEmitterData, DarknessModifierData,
+  EquipmentData, InventoryData, BlueprintData, LightEmitterData,
   ResourceData, ActionCooldownsData, ActiveActionsData,
   LoreLoadoutData,
-  DurabilityData, CraftingQueueData, ItemDataData,
+  DurabilityData, ItemDataData,
   WorkstationBufferData, WorkstationTagData,
   StatsData, ProvenanceData,
   GateLinkData,
@@ -61,10 +61,8 @@ export interface EntityState {
   inventory?: InventoryData;
   blueprint?: BlueprintData;
   lightEmitter?: LightEmitterData;
-  darknessModifier?: DarknessModifierData;
   loreLoadout?: LoreLoadoutData;
   durability?: DurabilityData;
-  craftingQueue?: CraftingQueueData;
   itemData?: ItemDataData;
   workstationBuffer?: WorkstationBufferData;
   workstationTag?: WorkstationTagData;

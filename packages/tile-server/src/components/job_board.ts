@@ -18,8 +18,8 @@
  * dispatch arm in the BT node.
  */
 import { defineComponent } from "@voxim/engine";
-import { WireWriter, WireReader, jobBoardCodec } from "@voxim/codecs";
-import { ComponentType } from "@voxim/protocol";
+import { WireWriter, WireReader } from "@voxim/codecs";
+import { ComponentType, networkedCodec } from "@voxim/protocol";
 import type { JobBoardData } from "@voxim/codecs";
 
 // Re-export the shared wire types so existing consumers (the
@@ -30,7 +30,7 @@ export const JobBoard = defineComponent({
   name: "jobBoard" as const,
   wireId: ComponentType.jobBoard,
   requires: ["workstationTag"],
-  codec: jobBoardCodec,
+  codec: networkedCodec<JobBoardData>(ComponentType.jobBoard),
   default: (): JobBoardData => ({ pending: [] }),
 });
 

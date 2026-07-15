@@ -19,8 +19,7 @@
  */
 
 import { defineComponent } from "@voxim/engine";
-import { ComponentType } from "@voxim/protocol";
-import { resourceCodec } from "@voxim/codecs";
+import { ComponentType, networkedCodec } from "@voxim/protocol";
 import type { ResourceData, ResourceValue } from "@voxim/codecs";
 
 export type { ResourceData, ResourceValue };
@@ -28,6 +27,6 @@ export type { ResourceData, ResourceValue };
 export const Resource = defineComponent({
   name: "resource" as const,
   wireId: ComponentType.resource,
-  codec: resourceCodec,
+  codec: networkedCodec<ResourceData>(ComponentType.resource),
   default: (): ResourceData => ({ values: {} }),
 });

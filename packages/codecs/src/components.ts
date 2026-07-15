@@ -20,7 +20,6 @@ import type { ItemPart, ModelRefData, AnimationStateData, AnimationLayer, BodyPa
  */
 export const WIRE_LIMITS = {
   inventorySlots: 64,
-  craftingQueue: 16,
   traderListings: 64,
   containerSlots: 64,
   heritageTraits: 64,
@@ -757,37 +756,6 @@ export const itemDataCodec: Serialiser<ItemDataData> = {
   },
 };
 
-// ---- CraftingQueue ----------------------------------------------------------
-// { activeRecipeId: string|null, progressTicks: number, queued: string[] }
-
-export interface CraftingQueueData {
-  activeRecipeId: string | null;
-  progressTicks: number;
-  queued: string[];
-}
-
-export const craftingQueueCodec: Serialiser<CraftingQueueData> = {
-  encode(v: CraftingQueueData): Uint8Array {
-    assertMaxLen("CraftingQueue.queued", v.queued.length, WIRE_LIMITS.craftingQueue);
-    const w = new WireWriter();
-    if (v.activeRecipeId !== null) { w.writeU8(1); w.writeStr(v.activeRecipeId); } else { w.writeU8(0); }
-    w.writeI32(v.progressTicks);
-    w.writeU16(v.queued.length);
-    for (const id of v.queued) w.writeStr(id);
-    return w.toBytes();
-  },
-  decode(bytes: Uint8Array): CraftingQueueData {
-    const r = new WireReader(bytes);
-    const hasActive = r.readU8();
-    const activeRecipeId = hasActive ? r.readStr() : null;
-    const progressTicks = r.readI32();
-    const queueLen = r.readU16();
-    const queued: string[] = [];
-    for (let i = 0; i < queueLen; i++) queued.push(r.readStr());
-    return { activeRecipeId, progressTicks, queued };
-  },
-};
-
 // ---- TraderListing ----------------------------------------------------------
 // { itemType: string, buyPrice: number, sellPrice: number, stock: number }
 
@@ -1431,29 +1399,6 @@ export const lightEmitterCodec: Serialiser<LightEmitterData> = {
   },
 };
 
-// ---- DarknessModifier -------------------------------------------------------
-// Present on entities that suppress ambient light in a radius (deep corruption,
-// shadow-cursed creatures). Client darkens tiles within range.
-
-export interface DarknessModifierData {
-  radius: number;
-  /** 0–1: fraction of ambient light suppressed at the entity center. Falls off to 0 at radius. */
-  strength: number;
-}
-
-export const darknessModifierCodec: Serialiser<DarknessModifierData> = {
-  encode(v: DarknessModifierData): Uint8Array {
-    const w = new WireWriter();
-    w.writeF32(v.radius);
-    w.writeF32(v.strength);
-    return w.toBytes();
-  },
-  decode(bytes: Uint8Array): DarknessModifierData {
-    const r = new WireReader(bytes);
-    return { radius: r.readF32(), strength: r.readF32() };
-  },
-};
-
 // ---- Durability ---- instance-lifetime component.
 // Remaining / max uses before the item is worn out. Ticked down by DurabilitySystem
 // on each weapon swing; when remaining hits 0 the item is destroyed.
@@ -1473,46 +1418,6 @@ export const durabilityCodec: Serialiser<DurabilityData> = {
   decode(bytes: Uint8Array): DurabilityData {
     const r = new WireReader(bytes);
     return { remaining: r.readF32(), max: r.readF32() };
-  },
-};
-
-// ---- Inscribed ----
-// A lore fragment encoded into a unique item. Written at a scribe workstation;
-// read at the "internalise" interaction to grant the fragment to the reader.
-
-export interface InscribedData {
-  fragmentId: string;
-}
-
-export const inscribedCodec: Serialiser<InscribedData> = {
-  encode(v: InscribedData): Uint8Array {
-    const w = new WireWriter();
-    w.writeStr(v.fragmentId);
-    return w.toBytes();
-  },
-  decode(bytes: Uint8Array): InscribedData {
-    const r = new WireReader(bytes);
-    return { fragmentId: r.readStr() };
-  },
-};
-
-// ---- QualityStamped ----
-// Craft-time quality tier in [0, 1]. deriveItemStats() reads this and multiplies
-// the relevant derived stats (armour reduction, food/water value, light intensity).
-
-export interface QualityStampedData {
-  quality: number;
-}
-
-export const qualityStampedCodec: Serialiser<QualityStampedData> = {
-  encode(v: QualityStampedData): Uint8Array {
-    const w = new WireWriter();
-    w.writeF32(v.quality);
-    return w.toBytes();
-  },
-  decode(bytes: Uint8Array): QualityStampedData {
-    const r = new WireReader(bytes);
-    return { quality: r.readF32() };
   },
 };
 
@@ -1732,8 +1637,8 @@ export const gateLinkCodec: Serialiser<GateLinkData> = {
 // ---- Container --------------------------------------------------------------
 // A deployed family-chest fixture's slot store for UNIQUE item entities: the
 // library (kind "tome") and the treasury (kind "equipment"). Unlike
-// WorkstationBuffer (stack-only), every slot is an entity ref, so each tome's
-// Inscribed and each weapon's Durability/QualityStamped ride along per-instance.
+// WorkstationBuffer (stack-only), every slot is an entity ref, so each item's
+// networked instance components (Durability/Stats/Provenance) ride along.
 // Networked (T-077/T-078) so the deposit/withdraw panel mirrors slot contents.
 
 export type ContainerKind = "tome" | "equipment";
@@ -1822,31 +1727,6 @@ export const boneCodec: Serialiser<BoneData> = {
   decode(bytes: Uint8Array): BoneData {
     const r = new WireReader(bytes);
     return { boneId: r.readStr() };
-  },
-};
-
-// ---- ActorSlots ------------------------------------------------------------
-// The declared slot set for an actor (T-226). Set once at spawn from the
-// actor template's `actorSlots`; never mutated at runtime. Networked so the
-// client's mirrored World can dispatch/predict the same slots.
-
-export interface ActorSlotsData {
-  slots: string[];
-}
-
-export const actorSlotsCodec: Serialiser<ActorSlotsData> = {
-  encode(v: ActorSlotsData): Uint8Array {
-    const w = new WireWriter();
-    w.writeU16(v.slots.length);
-    for (const s of v.slots) w.writeStr(s);
-    return w.toBytes();
-  },
-  decode(bytes: Uint8Array): ActorSlotsData {
-    const r = new WireReader(bytes);
-    const n = r.readU16();
-    const slots: string[] = [];
-    for (let i = 0; i < n; i++) slots.push(r.readStr());
-    return { slots };
   },
 };
 

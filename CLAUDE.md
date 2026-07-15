@@ -202,25 +202,33 @@ late so it derives `AnimationState` from the tick's final `ActiveActions` + tags
 
 ## Adding or reworking a component
 
-### Adding a networked component (3 steps)
+### Adding a networked component
 
-1. **Define** the component in the appropriate file under `packages/tile-server/src/components/`,
-   adding both `wireId: ComponentType.X` and a codec from `@voxim/codecs`:
+1. **Add the codec** in `packages/codecs/src/components.ts`.
+2. **Reserve a wire ID** — add a new entry to the `ComponentType` const object in
+   `packages/protocol/src/component_types.ts`. Never reuse a retired numeric ID.
+3. **Register the pair once** — add `[ComponentType.foo, fooCodec]` to `CODEC_BY_WIREID`
+   in `packages/protocol/src/codec_registry.ts`. This is the ONLY place wire ID and codec
+   are paired (T-349): the client decode loop dispatches on it, and the server def pulls
+   its codec back out of it.
+4. **Define** the component in the appropriate file under `packages/tile-server/src/components/`,
+   resolving the codec via `networkedCodec` from `@voxim/protocol`:
    ```typescript
    export const Foo = defineComponent({
      name: "foo" as const,
      wireId: ComponentType.foo,
-     codec: fooCodec,
+     codec: networkedCodec<FooData>(ComponentType.foo),
      default: (): FooData => ({ ... }),
    });
    ```
-2. **Reserve a wire ID** — add a new entry to the `ComponentType` const object in
-   `packages/protocol/src/component_types.ts`. Never reuse a retired numeric ID.
-3. **Register** — add `Foo` to the `NETWORKED_DEFS` array in
+   A wireId missing from `CODEC_BY_WIREID` throws at import time.
+5. **Register** — add `Foo` to the `NETWORKED_DEFS` array in
    `packages/tile-server/src/component_registry.ts`. The `DEF_BY_TYPE_ID` map is derived
-   automatically from `def.wireId`. No separate `typeId` field in the registry.
-4. **Add the codec** in `packages/codecs/src/components.ts` so the client can decode it.
-5. **Write at spawn** in `spawner.ts` if all entities need it.
+   automatically from `def.wireId`. A boot cross-check there fails fast for any networked
+   def with no `CODEC_BY_WIREID` entry and no `PRESENCE_ONLY_WIRE_IDS` opt-out (the
+   `resource_node`-style presence marker: client checks `raw.has(name)`, never decodes —
+   such a def imports its codec straight from `@voxim/codecs`).
+6. **Write at spawn** in `spawner.ts` if all entities need it.
 
 ### Adding a server-only component (1 step)
 
@@ -237,7 +245,9 @@ messages, and the registry automatically. The codec may be defined inline in the
 ### Codec rules
 
 - **Networked codecs belong in `@voxim/codecs`** — the client and server must share them.
-  Never define a networked codec inline in a component file.
+  Never define a networked codec inline in a component file, and never import one directly
+  at a `defineComponent` call site — resolve it via `networkedCodec()` (T-349) so the
+  pairing stays single-sourced in `CODEC_BY_WIREID`.
 - **Server-only codecs** may be inline (the client never sees them).
 - Use `buildCodec<T>({ field: { type: "f32" } })` for flat structs with primitives.
 - Use `WireWriter` / `WireReader` for variable-length data (strings, arrays, nested objects).

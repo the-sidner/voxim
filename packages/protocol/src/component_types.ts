@@ -30,7 +30,8 @@ export const ComponentType = {
   heritage:           16,
   itemData:           17,
   inventory:          18,
-  craftingQueue:      19,
+  // 19 is retired (was craftingQueue) — written once at player spawn, read by
+  //    nobody; crafting is entirely WorkstationBuffer-based (T-350); do not reuse
   // 20 (interactCooldown) retired — server-only rate limiter, never needed on client
   blueprint:          21,
   resource_node:      22,
@@ -44,10 +45,13 @@ export const ComponentType = {
   hitbox:             29,
   workstationBuffer:  30,
   lightEmitter:       31,
-  darknessModifier:   32,
+  // 32 is retired (was darknessModifier) — zero writers ever spawned one; the
+  //    darkness-subtraction loop in getLightAt() was dead code (T-350); do not reuse
   durability:         33,
-  inscribed:          34,
-  qualityStamped:     35,
+  // 34 is retired (was inscribed) — server-only now (T-349): no client
+  //    consumer ever read it off the wire; do not reuse
+  // 35 is retired (was qualityStamped) — server-only now (T-349), same
+  //    reason; do not reuse
   // 36 (staggered) retired — stagger is a reaction action + `staggered`
   //    tag now; rendered from AnimationState. Never reuse.
   counterReady:       37,
@@ -60,7 +64,9 @@ export const ComponentType = {
   name:               44,
   // 45 (characterStateMachine) retired — CSM deleted (T-228)
   // 46 (swingChain) retired — swing chain folded into actions (T-227)
-  actorSlots: 47,
+  // 47 is retired (was actorSlots) — server-only now (T-349): the "client
+  //    runs slot dispatch for prediction" justification was never realized
+  //    (the predictor is position-only); do not reuse
   activeActions: 48,
   resource:           50,  // T-262: vitals (stamina/hunger/thirst/poise) on the wire for the HUD
   actionCooldowns:    51,  // T-265: per-action cooldowns + GCD for the skill bar sweep

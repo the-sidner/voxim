@@ -1,8 +1,7 @@
 import { defineComponent } from "@voxim/engine";
 import type { World } from "@voxim/engine";
-import { ComponentType } from "@voxim/protocol";
-import { lightEmitterCodec, darknessModifierCodec } from "@voxim/codecs";
-import type { LightEmitterData, DarknessModifierData } from "@voxim/codecs";
+import { ComponentType, networkedCodec } from "@voxim/protocol";
+import type { LightEmitterData } from "@voxim/codecs";
 import { Position } from "./game.ts";
 
 // ---- LightEmitter ----
@@ -14,26 +13,15 @@ import { Position } from "./game.ts";
 export const LightEmitter = defineComponent({
   name: "lightEmitter" as const,
   wireId: ComponentType.lightEmitter,
-  codec: lightEmitterCodec,
+  codec: networkedCodec<LightEmitterData>(ComponentType.lightEmitter),
   default: (): LightEmitterData => ({ color: 0xffaa44, intensity: 1.0, radius: 8.0, lightDefId: "torch" }),
-});
-
-// ---- DarknessModifier ----
-// Present on entities that suppress ambient light (deep corruption zones,
-// shadow-cursed creatures). Client darkens tiles within radius * strength.
-
-export const DarknessModifier = defineComponent({
-  name: "darknessModifier" as const,
-  wireId: ComponentType.darknessModifier,
-  codec: darknessModifierCodec,
-  default: (): DarknessModifierData => ({ radius: 6.0, strength: 0.5 }),
 });
 
 // ---- getLightAt ----
 // Pure on-demand light query — no precomputed grid, no stored state.
 // Returns the net light contribution at (x, y) as a 0–1 value:
 //   1.0 = fully lit (multiple bright emitters nearby)
-//   0.0 = completely dark (no emitters + full darkness suppression)
+//   0.0 = no emitters in range
 //
 // Usage: getLightAt(world, 120.5, 87.3)
 // Cost: O(emitters in AoI) — acceptable at query-time (not every tick).
@@ -54,19 +42,5 @@ export function getLightAt(world: World, x: number, y: number): number {
     light += t * lightEmitter.intensity;
   }
 
-  // Clamp to 0–1 before applying darkness suppression.
-  light = Math.min(1, light);
-
-  let darkness = 0;
-  for (const { position, darknessModifier } of world.query(Position, DarknessModifier)) {
-    const dx = x - position.x;
-    const dy = y - position.y;
-    const distSq = dx * dx + dy * dy;
-    const radiusSq = darknessModifier.radius * darknessModifier.radius;
-    if (distSq >= radiusSq) continue;
-    const t = 1 - Math.sqrt(distSq) / darknessModifier.radius;
-    darkness += t * darknessModifier.strength;
-  }
-
-  return Math.max(0, light - Math.min(1, darkness));
+  return Math.min(1, light);
 }

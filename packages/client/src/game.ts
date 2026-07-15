@@ -1133,14 +1133,13 @@ export class VoximGame {
       // acked.  The Map is pruned on lookup so it stays small even if
       // some inputs are dropped on the unreliable datagram channel.
       this.inputSentAt.set(datagram.seq, datagram.timestamp);
-      // Combo-chain swing prediction (T-188): pick the weapon action the
-      // server is about to fire by combining the networked SwingChain.index
-      // with the equipped weapon's swingable.chain and the local press-hold
-      // timer (heavy variant if held past swingable.heavyChargeMs). Feeds
-      // forceLocalAnimation so the trail / blade-attach catches up at press
-      // time instead of waiting RTT/2 for the next AnimationState delta.
-      // The predictor runs every frame, not just on press, so the heavy
-      // promotion crosses correctly when held past the threshold.
+      // Swing prediction (T-351): forecast the equipped weapon's opening
+      // move (chain[0]) from local press/hold timing (heavy past
+      // heavyChargeMs) so forceLocalAnimation doesn't wait RTT/2 for the
+      // AnimationState delta. Mid-combo continuation is server-authoritative
+      // (SwingChain, unnetworked) and arrives via AnimationState instead.
+      // Runs every frame, not just on press, so the heavy promotion crosses
+      // correctly when held past the threshold.
       {
         const pressed = hasAction(datagram.actions, ACTION_USE_SKILL);
         const player = this.playerId ? this.world.get(this.playerId) : undefined;
@@ -1148,14 +1147,8 @@ export class VoximGame {
         const prefab = weaponPrefabId
           ? this.contentService?.prefabs.get(weaponPrefabId)
           : undefined;
-        const swingable = prefab?.components?.["swingable"] as
-          | { chain: { light: string; heavy: string }[]; heavyChargeMs: number }
-          | undefined;
-        // Swing chains were folded into the action runtime (T-227) — there's no
-        // client-side chain tracking anymore. Predict a basic swing on press
-        // for responsiveness; chain-step variation arrives via the networked
-        // AnimationState (derived from ActiveActions).
-        const predicted = this.swingPredictor.predict(pressed, swingable ?? null, 0, performance.now());
+        const swingable = prefab?.components?.["swingable"] as SwingableData | undefined;
+        const predicted = this.swingPredictor.predict(pressed, swingable ?? null, performance.now());
         if (predicted) this.renderer?.forceLocalAnimation(predicted);
       }
 
