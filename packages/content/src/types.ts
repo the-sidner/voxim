@@ -1151,8 +1151,10 @@ export type ActionMovement = "free" | "locked" | number;
 
 /**
  * One phase of an Action. Iteration order follows declared key order in
- * `phases`. `ticks === -1` marks a perpetual phase (ambient actions only;
- * the dispatcher never advances past it).
+ * `phases`. `ticks === -1` marks a perpetual phase the dispatcher never
+ * advances past — valid on ambient actions (holds like `idle`), and as a
+ * reaction's terminal phase (a stable end state: `death` holds a lingering
+ * corpse's final pose).
  */
 export interface ActionPhase {
   ticks: number;
@@ -1319,8 +1321,8 @@ export interface ActionDef {
    * requests when the triggering input (ACTION_USE_SKILL) drops while this
    * action's CURRENT phase is perpetual (`ticks: -1`). Only meaningful on a
    * `kind: "ambient"` def that reaches a perpetual phase — the dispatcher's
-   * existing "hold" idiom (see `block`) — since `ticks: -1` is otherwise
-   * illegal (`validateActionDef` requires `kind === "ambient"` for it).
+   * existing "hold" idiom (see `block`); `validateActionDef` rejects it on
+   * any other kind.
    * Absent → releasing just lets intent re-resolve normally (nothing special
    * happens on release; this is what every non-hold action does today).
    *

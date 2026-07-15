@@ -65,9 +65,43 @@ Deno.test("validateActionDef rejects unknown kind", () => {
   assertThrows(() => validateActionDef(def), Error, "kind must be active|reaction|ambient");
 });
 
-Deno.test("validateActionDef rejects perpetual phase on non-ambient", () => {
+Deno.test("validateActionDef rejects perpetual phase on an active action", () => {
   const def = baseValidAction();
   def.phases.windup.ticks = -1;
+  assertThrows(() => validateActionDef(def), Error, "perpetual ticks (-1) is only valid for ambient");
+});
+
+Deno.test("validateActionDef rejects a perpetual TERMINAL phase on an active action", () => {
+  const def = baseValidAction();
+  def.phases.winddown.ticks = -1;
+  assertThrows(() => validateActionDef(def), Error, "perpetual ticks (-1) is only valid for ambient");
+});
+
+Deno.test("validateActionDef accepts a perpetual terminal phase on a reaction (death's held `dead` phase)", () => {
+  const def: ActionDef = {
+    id: "_death",
+    kind: "reaction",
+    slot: "reaction",
+    interruptPriority: 100,
+    phases: { play: { ticks: 30 }, dead: { ticks: -1 } },
+    cancel: { play: { into: [] }, dead: { into: [] } },
+    movement: { play: "locked", dead: "locked" },
+    effects: [],
+  };
+  validateActionDef(def);
+});
+
+Deno.test("validateActionDef rejects a perpetual NON-terminal phase on a reaction", () => {
+  const def: ActionDef = {
+    id: "_bad_reaction",
+    kind: "reaction",
+    slot: "reaction",
+    interruptPriority: 10,
+    phases: { hold: { ticks: -1 }, play: { ticks: 10 } },
+    cancel: { hold: { into: [] }, play: { into: [] } },
+    movement: { hold: "locked", play: "locked" },
+    effects: [],
+  };
   assertThrows(() => validateActionDef(def), Error, "perpetual ticks (-1) is only valid for ambient");
 });
 

@@ -3,9 +3,12 @@
   "kind": "reaction",
   "slot": "reaction",
   "interruptPriority": 100,
-  "phases": { "play": { "ticks": 30 } },
-  "cancel": { "play": { "into": [] } },
-  "movement": { "play": "locked" },
+  "phases": { "play": { "ticks": 30 }, "dead": { "ticks": -1 } },
+  "cancel": { "play": { "into": [] }, "dead": { "into": [] } },
+  "movement": { "play": "locked", "dead": "locked" },
   "effects": [],
-  "animation": { "play": { "clipId": "$death" } }
+  "animation": {
+    "play": { "clipId": "$death" },
+    "dead": { "clipId": "$death" }
+  }
 }

@@ -316,7 +316,10 @@ export function projectLocomotion(
     let sum = 0;
     for (const [pn, pe] of Object.entries(def.animation)) {
       const ref = crouched && pe.crouchClipId ? pe.crouchClipId : pe.clipId;
-      if (ref === clipRef) sum += def.phases[pn]?.ticks ?? 0;
+      // Perpetual phases (ticks: -1) contribute nothing to the fit — a
+      // terminal hold (death's `dead` phase) keeps showing the same clip
+      // clamped at its end; it doesn't stretch the finite one-shot span.
+      if (ref === clipRef) sum += Math.max(0, def.phases[pn]?.ticks ?? 0);
     }
     if (sum > 0) spanTicks = sum;
   }

@@ -20,8 +20,9 @@
  * while still in the phase; `:exit` fires when the phase ends, immediately
  * followed by the next phase's `:enter` (or, with no next phase, action
  * completion — slot cleared — or, for `ambient`, a loop back to the first
- * phase). A phase with `ticks: -1` is perpetual (ambient only): it never
- * advances out; `:tick` fires every tick.
+ * phase). A phase with `ticks: -1` is perpetual — an ambient hold, or a
+ * reaction's terminal phase (`death`): it never advances out; `:tick`
+ * fires every tick.
  *
  * Entity-generic: works for any entity with `ActiveActions`, not just
  * actors. Entities without `ActorSlots` (future buffs/projectiles) skip
@@ -170,8 +171,8 @@ export class ActionDispatcher implements System {
     }
 
     if (phase.ticks === -1) {
-      // Perpetual (ambient): never advances out. Keep counting so
-      // duration-style gates (windup-held) still work.
+      // Perpetual (ambient hold / reaction terminal phase): never advances
+      // out. Keep counting so duration-style gates (windup-held) still work.
       return { ...state, ticksInPhase: state.ticksInPhase + 1 };
     }
 
