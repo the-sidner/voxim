@@ -40,8 +40,8 @@ the static model, seed-unique per equipped instance, with zero change to the T-3
 
 ## Lore & Skills
 
-### T-328 · Externalise Lore UI — write a learned fragment to a blank tome
-Effort: S   Status: todo
+### T-360 · Externalise Lore UI — write a learned fragment to a blank tome
+Effort: S   Status: todo   (renumbered from a T-328 collision — T-328 is the landed camera ticket; numbers are never reused)
 
 Found while building T-072 (heir-ritual UI): `CommandType.Internalise` (read a
 tome, T-020) now has a client entry point (InventoryPanel's "Read" action),
