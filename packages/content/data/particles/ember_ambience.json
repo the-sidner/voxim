@@ -16,11 +16,11 @@
   ],
   "gravityScale": 0,
   "size": {
-    "start": 0.1,
-    "end": 0.1
+    "start": 0.06,
+    "end": 0.06
   },
   "ambience": {
-    "count": 320,
+    "count": 70,
     "boxHalfExtent": 44,
     "boxHeight": 44
   }
