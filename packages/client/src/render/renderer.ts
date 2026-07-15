@@ -843,10 +843,11 @@ export class VoximRenderer {
 
   removeEntity(entityId: string): void {
     this.entities.removeEntity(entityId);
-    // T-339: the ONE choke point that covers both a crumble corpse's
-    // natural end-of-timer destroy AND an early AoI-exit/tile-transition —
-    // clearMeshContent's own dispose-traverse can't reach a crumble-
-    // detached bone subtree (it lives in the controller's own container).
+    // T-339: covers a crumble corpse's natural end-of-timer destroy AND an
+    // early AoI-exit — clearMeshContent's own dispose-traverse can't reach
+    // a crumble-detached bone subtree (it lives in the controller's own
+    // container). Tile transitions do NOT come through here: they wipe via
+    // clearWorld(), which has its own crumbleController.disposeAll().
     this.crumbleController.dispose(entityId);
   }
 
@@ -859,6 +860,12 @@ export class VoximRenderer {
    */
   clearWorld(): void {
     this.entities.clear();
+    // Crumbling corpses are direct scene children in CrumbleController's own
+    // containers — entities.clear() can't reach them (the registry's
+    // removeEntity has no crumble hook), and without this a corpse killed
+    // near a gate keeps rendering at its OLD tile's local coordinates inside
+    // the new tile until its linger timer expires.
+    this.crumbleController.disposeAll();
     this.gateMarkers.dispose();
     for (const key of [...this.terrainMeshes.keys()]) {
       const [cx, cy] = key.split(",").map(Number);

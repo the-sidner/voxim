@@ -207,8 +207,8 @@ export class CrumbleController {
     }
   }
 
-  /** Tear down one corpse early (entity left AoI, tile transition, natural
-   *  destroy) — the ONLY disposal path for a crumble-detached bone subtree;
+  /** Tear down one corpse early (entity left AoI, natural destroy) — the
+   *  ONLY disposal path for a crumble-detached bone subtree;
    *  `clearMeshContent`'s own dispose-traverse correctly no-ops for a
    *  reparented bone group (its parent is this controller's container, not
    *  `mesh.group`), so this must run instead, not in addition. */
@@ -219,7 +219,7 @@ export class CrumbleController {
     this.corpses.delete(entityId);
   }
 
-  /** Renderer teardown (tile transition / page unload). */
+  /** Whole-world teardown (tile transition via clearWorld / renderer dispose). */
   disposeAll(): void {
     for (const [, corpse] of this.corpses) this.disposeCorpse(corpse);
     this.corpses.clear();
