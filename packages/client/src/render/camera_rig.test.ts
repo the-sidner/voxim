@@ -10,20 +10,11 @@
  */
 import { assert, assertAlmostEquals } from "jsr:@std/assert";
 import * as THREE from "three";
-import { CameraRig, type CameraConfig } from "./camera_rig.ts";
+import { CameraRig, PRE_BOOTSTRAP_CAMERA, type CameraConfig } from "./camera_rig.ts";
 
-// Shipped game_config.camera defaults (T-320).
-const CFG: CameraConfig = {
-  backDistance: 23.6,
-  heightAbove: 35.4,
-  lookAtBias: 1.0,
-  fovDeg: 34,
-  mouseSensitivity: 0.0022,
-  invertY: false,
-  pitchRestDeg: 55,
-  pitchMinDeg: 45,
-  pitchMaxDeg: 62,
-};
+// Shipped game_config.camera defaults (T-320) — the single fallback constant
+// (T-356), not a third hand-copied set of the same numbers.
+const CFG: CameraConfig = PRE_BOOTSTRAP_CAMERA;
 
 const rig = (over: Partial<CameraConfig> = {}): CameraRig => {
   const r = new CameraRig(16 / 9);
@@ -101,8 +92,10 @@ Deno.test("pitch clamps at the configured band", () => {
 Deno.test("invertY flips the pitch response sign", () => {
   const plain = rig();
   const inv = rig({ invertY: true });
-  plain.applyLookDelta(30);
-  inv.applyLookDelta(30);
+  // Small enough that neither direction hits the clamp band (rest 55° with
+  // only 7° down / 10° up of headroom at the shipped 0.011 sensitivity).
+  plain.applyLookDelta(10);
+  inv.applyLookDelta(10);
   // Same-magnitude opposite-direction delta from the shared rest pitch.
   assertAlmostEquals(plain.getPitch() - CFG.pitchRestDeg * Math.PI / 180,
     -(inv.getPitch() - CFG.pitchRestDeg * Math.PI / 180), 1e-12);

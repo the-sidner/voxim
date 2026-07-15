@@ -74,29 +74,48 @@ function clamp(v: number, lo: number, hi: number): number {
   return v < lo ? lo : v > hi ? hi : v;
 }
 
+/** Pre-bootstrap-only fallback (T-356) — one object mirroring
+ *  data/game_config.json's shipped `camera.*` values exactly (previously 8
+ *  hand-copied per-field literals that had drifted: mouseSensitivity sat at
+ *  0.0022 here while game_config.json had moved to 0.011). Keeps the rig
+ *  usable for the handful of frames before configure() installs the real
+ *  GameConfig, and stays authoritative in the no-bootstrap-blob degraded
+ *  path where configure() is never called. Mirrors PRE_BOOTSTRAP_GRADE
+ *  (edge_pass.ts). */
+export const PRE_BOOTSTRAP_CAMERA: CameraConfig = {
+  backDistance: 23.6,
+  heightAbove: 35.4,
+  lookAtBias: 1.0,
+  fovDeg: 34,
+  mouseSensitivity: 0.011,
+  invertY: false,
+  pitchRestDeg: 55,
+  pitchMinDeg: 45,
+  pitchMaxDeg: 62,
+};
+
 export class CameraRig {
   readonly camera: THREE.PerspectiveCamera;
 
   private yaw = DEFAULT_YAW;
   private readonly _target = new THREE.Vector3();
 
-  // Rig geometry + feel knobs. Defaults keep the rig usable pre-bootstrap
-  // (identical to the shipped game_config values); configure() overwrites
-  // them from game_config once the content blob arrives.
-  private backDistance = 23.6;
-  private heightAbove  = 35.4;
-  private lookAtBias   = 1.0;
-  private sensitivity  = 0.0022;         // rad per look pixel
-  private invertY      = false;
-  private pitchRestRad = 55 * Math.PI / 180;
-  private pitchMinRad  = 45 * Math.PI / 180;
-  private pitchMaxRad  = 62 * Math.PI / 180;
+  // Rig geometry + feel knobs, seeded from PRE_BOOTSTRAP_CAMERA (T-356);
+  // configure() overwrites them from game_config once the content blob arrives.
+  private backDistance = PRE_BOOTSTRAP_CAMERA.backDistance;
+  private heightAbove  = PRE_BOOTSTRAP_CAMERA.heightAbove;
+  private lookAtBias   = PRE_BOOTSTRAP_CAMERA.lookAtBias;
+  private sensitivity  = PRE_BOOTSTRAP_CAMERA.mouseSensitivity; // rad per look pixel
+  private invertY      = PRE_BOOTSTRAP_CAMERA.invertY;
+  private pitchRestRad = PRE_BOOTSTRAP_CAMERA.pitchRestDeg * Math.PI / 180;
+  private pitchMinRad  = PRE_BOOTSTRAP_CAMERA.pitchMinDeg * Math.PI / 180;
+  private pitchMaxRad  = PRE_BOOTSTRAP_CAMERA.pitchMaxDeg * Math.PI / 180;
 
   /** Current gaze pitch below horizontal (radians). Seeded to rest. */
-  private pitch = 55 * Math.PI / 180;
+  private pitch = PRE_BOOTSTRAP_CAMERA.pitchRestDeg * Math.PI / 180;
 
   constructor(aspect: number) {
-    this.camera = new THREE.PerspectiveCamera(34, aspect, 0.1, 600);
+    this.camera = new THREE.PerspectiveCamera(PRE_BOOTSTRAP_CAMERA.fovDeg, aspect, 0.1, 600);
   }
 
   /** Install the rig geometry + look feel from game_config. Idempotent. */
