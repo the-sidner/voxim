@@ -2482,6 +2482,8 @@ export interface GameConfig {
     minDigHeight: number;
     /** Max distance (world units) from digger to target cell centre. */
     digReach: number;
+    /** How far ahead of the digger, along facing, the target cell sits (world units). */
+    digTargetDistance: number;
     /** Maps material ID → item type dropped when a cell is dug. */
     materialDrops: Record<string, string>;
   };
