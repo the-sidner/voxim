@@ -163,13 +163,13 @@ export class TriggerSystem implements System {
           }
 
           if (icd > 0) {
-            this.stampIcd(world, ownerId, triggerId, icd);
-            let set = stampedThisRun.get(ownerId);
-            if (!set) {
-              set = new Set();
-              stampedThisRun.set(ownerId, set);
+            let stamped = stampedThisRun.get(ownerId);
+            this.stampIcd(world, ownerId, triggerId, icd, stamped !== undefined);
+            if (!stamped) {
+              stamped = new Set();
+              stampedThisRun.set(ownerId, stamped);
             }
-            set.add(triggerId);
+            stamped.add(triggerId);
           }
         }
       }
@@ -188,8 +188,24 @@ export class TriggerSystem implements System {
     return true;
   }
 
-  private stampIcd(world: World, ownerId: EntityId, triggerId: string, ticks: number): void {
-    if (world.has(ownerId, TriggerCooldowns)) {
+  /**
+   * `world.has` reads the COMMITTED view, so when two ICD-bearing triggers
+   * fire for the same fresh owner in one drain, both would take the
+   * creating `world.set` path and the second set would clobber the first
+   * stamp in the ordered op-log. `ownerStampedThisRun` closes that window:
+   * the first stamp for a committed-absent owner sets (creating the
+   * component), every later stamp this run mutates — the op-log guarantees
+   * the creating set has run by the time the mutate closure applies, and
+   * nothing ever removes TriggerCooldowns wholesale.
+   */
+  private stampIcd(
+    world: World,
+    ownerId: EntityId,
+    triggerId: string,
+    ticks: number,
+    ownerStampedThisRun: boolean,
+  ): void {
+    if (ownerStampedThisRun || world.has(ownerId, TriggerCooldowns)) {
       world.mutate(ownerId, TriggerCooldowns, (tc) => ({
         remaining: { ...tc.remaining, [triggerId]: ticks },
       }));

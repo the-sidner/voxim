@@ -21,6 +21,7 @@ import { BuffSpec } from "../components/buff.ts";
 import { HealthSkillResolver, damageBoostSkillEffect } from "../actions/resolvers/skill_effects.ts";
 import { adjustResourceResolver } from "../actions/resolvers/item_use.ts";
 import { healthBelowGate } from "../actions/resolvers/gates.ts";
+import { TriggerCooldowns } from "../components/trigger_cooldowns.ts";
 import { TriggerSystem } from "./trigger.ts";
 import { newTriggerCatalog } from "../triggers/catalog.ts";
 import { newTriggerSourceRegistry, equipmentTriggerSource, npcTemplateTriggerSource } from "../triggers/source.ts";
@@ -51,6 +52,10 @@ content.registerTrigger({
 content.registerTrigger({
   id: "test_icd", on: "hit_landed", as: "attacker", internalCooldownTicks: 1,
   effects: [{ kind: "record", params: { tag: "icd" } }],
+});
+content.registerTrigger({
+  id: "test_icd_2", on: "hit_landed", as: "attacker", internalCooldownTicks: 5,
+  effects: [{ kind: "record", params: { tag: "icd2" } }],
 });
 content.registerTrigger({
   id: "test_chain", on: "hit_landed", as: "attacker",
@@ -183,6 +188,35 @@ Deno.test("internal cooldown throttles: once per ICD window, even across buffere
   h.hit(h.owner, h.other);
   h.tick(4);
   assertEquals(h.fired.length, 2, "fires again after the ICD expires");
+});
+
+Deno.test("two ICD triggers stamping a FRESH owner in one drain both keep their stamps (no set/set clobber)", () => {
+  // The owner has never carried TriggerCooldowns (nothing seeds it at
+  // spawn). Both triggers fire off the same hit_landed event, so both
+  // stamp in the same drain — the second stamp must compose on the first
+  // stamp's creating world.set in the op-log, not replace it (the
+  // hollow_root double-phase-add / double-proc-gear failure).
+  const h = harness("test_double_icd_fang");
+  content.registerPrefab({ id: "test_double_icd_fang", components: {}, triggers: ["test_icd", "test_icd_2"] });
+  h.world.write(h.owner, Equipment, {
+    weapon: { entityId: "w1", prefabId: "test_double_icd_fang" },
+    offHand: null, head: null, chest: null, legs: null, feet: null, back: null,
+  });
+
+  h.hit(h.owner, h.other);
+  h.tick(1);
+  assertEquals(h.fired.filter((f) => f.tag === "icd").length, 1);
+  assertEquals(h.fired.filter((f) => f.tag === "icd2").length, 1);
+
+  const remaining = h.world.get(h.owner, TriggerCooldowns)!.remaining;
+  assert((remaining["test_icd"] ?? 0) > 0, "first trigger's ICD stamp committed");
+  assert((remaining["test_icd_2"] ?? 0) > 0, "second trigger's ICD stamp committed alongside it");
+
+  // The surviving stamps also THROTTLE: a hit next tick re-fires neither.
+  h.hit(h.owner, h.other);
+  h.tick(2);
+  assertEquals(h.fired.filter((f) => f.tag === "icd").length, 1, "test_icd still on ICD");
+  assertEquals(h.fired.filter((f) => f.tag === "icd2").length, 1, "test_icd_2 still on ICD");
 });
 
 Deno.test("no proc chains: trigger-fired events are tagged and dropped by collectors", () => {

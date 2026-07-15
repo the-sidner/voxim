@@ -79,6 +79,16 @@ export class ActionDispatcher implements System {
 
   private serverTick = 0;
 
+  /**
+   * Entities whose ActionCooldowns stamp already queued a write THIS run.
+   * `world.has` reads the committed view, so two same-run starts of
+   * cooldown-bearing actions (different slots) on a fresh entity would both
+   * take the creating `world.set` path and the second would clobber the
+   * first stamp in the op-log — same shape TriggerSystem.stampIcd closes.
+   * Cleared at the top of each run.
+   */
+  private cooldownsStampedThisRun = new Set<EntityId>();
+
   constructor(
     private readonly content: ContentService,
     private readonly gates: GateRegistry,
@@ -92,6 +102,8 @@ export class ActionDispatcher implements System {
   }
 
   run(world: World, events: EventEmitter, _dt: number): void {
+    this.cooldownsStampedThisRun.clear();
+
     // ── Cooldown tick-down (T-260; single writer: this system) ────────────
     // Spent keys are dropped. Stamps from this run's start() calls compose
     // with the decrement via the ordered op-log (T-249).
@@ -307,7 +319,11 @@ export class ActionDispatcher implements System {
     const cd = def.cooldownTicks ?? 0;
     const gcd = def.triggersGcd ? this.content.getGameConfig().lore.globalCooldownTicks : 0;
     if (cd > 0 || gcd > 0) {
-      if (world.has(entityId, ActionCooldowns)) {
+      // First stamp for a committed-absent entity sets (creating the
+      // component); every later same-run stamp mutates so it composes on
+      // the creating set in the op-log instead of clobbering it (see
+      // `cooldownsStampedThisRun`).
+      if (world.has(entityId, ActionCooldowns) || this.cooldownsStampedThisRun.has(entityId)) {
         world.mutate(entityId, ActionCooldowns, (ac) => ({
           gcd: Math.max(ac.gcd, gcd),
           remaining: cd > 0 ? { ...ac.remaining, [def.id]: cd } : ac.remaining,
@@ -318,6 +334,7 @@ export class ActionDispatcher implements System {
           remaining: cd > 0 ? { [def.id]: cd } : {},
         });
       }
+      this.cooldownsStampedThisRun.add(entityId);
     }
     const first = Object.keys(def.phases)[0];
     const state: ActiveActionState = { actionId: def.id, phase: first, ticksInPhase: 0, initiator };
