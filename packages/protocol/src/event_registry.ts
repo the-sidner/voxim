@@ -21,9 +21,10 @@
  *
  * Two events have no `fromTileEvent` binding by design:
  *   - ZoneEntered   — pushed directly via EventRouter.push() (zone tracker
- *     in server.ts has no TileEvents counterpart).
+ *     in handoff_coordinator.ts has no TileEvents counterpart).
  *   - GateCrossing  — built and encoded as a one-off BinaryStateMessage in
- *     server.ts's sendGateCrossing (deliberate bypass to guarantee delivery
+ *     handoff_coordinator.ts's sendGateCrossing (deliberate bypass to
+ *     guarantee delivery
  *     before session close); its relevance entry exists for exhaustiveness.
  */
 import { WireWriter, WireReader } from "@voxim/codecs";

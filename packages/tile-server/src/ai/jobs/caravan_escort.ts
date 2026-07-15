@@ -9,7 +9,8 @@
  * whose `destinationTileId` matches and walks toward it.
  *
  * v1 SCOPE: spawn-with-goods + walk-to-the-correct-gate. The cross-tile
- * handoff of an *NPC* (vs. the player path in server.ts / handoff.ts) is
+ * handoff of an *NPC* (vs. the player path in handoff_coordinator.ts /
+ * handoff.ts) is
  * multi-process and not verifiable from a single tile-server, so on arrival
  * the handler logs the intended handoff and clears the job. Wiring the NPC
  * through `initiateHandoff` is a follow-up (see T-048 note).
