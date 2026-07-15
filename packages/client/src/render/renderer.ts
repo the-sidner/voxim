@@ -21,6 +21,7 @@ import type { ClientChunk, ClientWorld, EntityState } from "../state/client_worl
 import type { ContentCache } from "../state/content_cache.ts";
 import type { WeaponActionDef, Prefab, AtmosphereDef, ParticleEmitterDef } from "@voxim/content";
 import { buildChunkAtoms, TERRAIN_DISP_MAG, type CliffFieldInput } from "./terrain_voxels.ts";
+import { RebakePlanner } from "./rebake_planner.ts";
 import { bakeVoxels, resolveMossResponse } from "./voxel_bake.ts";
 import { applySurfaceTreatment, setWetReflectSkyColor } from "./surface_treatments.ts";
 import { sampleField } from "./field_sample.ts";
@@ -199,6 +200,10 @@ export class VoximRenderer {
 
   /** Per-chunk terrain: one voxel Mesh per material present in the chunk (T-283). */
   private readonly terrainMeshes  = new Map<string, THREE.Mesh[]>();
+  /** Neighbour-rebake dedupe (T-361): per baked chunk, the neighbour edge
+   *  heights the bake consumed — updateTerrain rebakes only the neighbours
+   *  whose consumed edge went stale, not all four unconditionally. */
+  private readonly rebakePlanner = new RebakePlanner();
   /** Chunk keys whose bake was deferred because content wasn't hydrated yet
    *  (T-331) — `onContentHydrated()` rebuilds every one of these once the
    *  bootstrap ContentService is wired, so no chunk ever bakes with an
@@ -654,14 +659,22 @@ export class VoximRenderer {
   updateTerrain(chunk: ClientChunk): void {
     const cx = chunk.chunkX, cy = chunk.chunkY;
 
-    // Each cell's column floors to the lowest of its FOUR neighbours, so the new
-    // chunk changes the cliff depth along every shared edge — rebuild all four
-    // cardinal neighbours, not just W/N.
     this._rebuildChunk(cx, cy);
-    this._rebuildChunk(cx - 1, cy);
-    this._rebuildChunk(cx + 1, cy);
-    this._rebuildChunk(cx, cy - 1);
-    this._rebuildChunk(cx, cy + 1);
+
+    // Each cell's column floors to the lowest of its FOUR neighbours, so a
+    // heightmap change along a shared edge changes the neighbour's cliff
+    // depth — but ONLY the edge heights cross the border (buildChunkAtoms's
+    // neigh()). The planner rebakes exactly the already-baked neighbours
+    // whose consumed edge is now stale: an interior dig rebakes one chunk
+    // (was 5), the load-time flush bakes each chunk once (was ~5×), and a
+    // freshly streamed chunk still corrects neighbours baked against the
+    // no-wall fallback.
+    const hm = chunk.heightmap;
+    if (hm) {
+      for (const [nx, ny] of this.rebakePlanner.staleNeighbours(cx, cy, hm)) {
+        this._rebuildChunk(nx, ny);
+      }
+    }
   }
 
   private _rebuildChunk(cx: number, cy: number): void {
@@ -735,12 +748,13 @@ export class VoximRenderer {
 
     // Re-express the chunk as voxel atoms (column boxes) bucketed by material,
     // then bake one mesh per material through the shared voxel pipeline (T-283).
-    const byMat = buildChunkAtoms(hm, mat, {
+    const nb = {
       N: this.world?.getChunk(cx, cy - 1)?.heightmap ?? null,
       E: this.world?.getChunk(cx + 1, cy)?.heightmap ?? null,
       S: this.world?.getChunk(cx, cy + 1)?.heightmap ?? null,
       W: this.world?.getChunk(cx - 1, cy)?.heightmap ?? null,
-    }, surfaceInput,
+    };
+    const byMat = buildChunkAtoms(hm, mat, nb, surfaceInput,
       // Per-material relief response (render.relief, T-311 P4).
       (matId: number) => this.content?.getMaterialSync(matId)?.render?.relief,
       cliffInput);
@@ -798,6 +812,10 @@ export class VoximRenderer {
     const isNew = !this.terrainMeshes.has(key);
     this.terrainMeshes.set(key, meshes);
     if (isNew) this._chunkOverlay.addChunk(cx, cy, this.debugOverlayManager.isOn("chunks"));
+
+    // Record the neighbour edges this bake consumed — updateTerrain's
+    // stale-neighbour dedupe compares against exactly these copies.
+    this.rebakePlanner.recordBake(cx, cy, nb);
   }
 
   removeTerrain(chunkX: number, chunkY: number): void {
@@ -810,6 +828,7 @@ export class VoximRenderer {
         (me.material as THREE.Material).dispose();
       }
       this.terrainMeshes.delete(key);
+      this.rebakePlanner.forget(chunkX, chunkY);
       this._chunkOverlay.removeChunk(chunkX, chunkY);
     }
   }
@@ -876,6 +895,7 @@ export class VoximRenderer {
     // rebuild queued against the old world would either no-op (chunk not
     // loaded yet) or redo work a real spawn already triggered.
     this.pendingChunkRebuilds.clear();
+    this.rebakePlanner.clear(); // (removeTerrain above already forgot each baked chunk — belt and braces)
     this.attachedFog?.reset();
   }
 
