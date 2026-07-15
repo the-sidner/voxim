@@ -48,7 +48,10 @@ export class WeaponTrailRenderer {
         const slices = this.slices.get(entityId);
         if (slices && slices.length > 0) {
           for (const s of slices) s.alpha -= 0.04;
-          this.slices.set(entityId, slices.filter((s) => s.alpha > 0));
+          const alive = slices.filter((s) => s.alpha > 0);
+          // Fully faded → drop the map entry, don't park an empty array on it.
+          if (alive.length > 0) this.slices.set(entityId, alive);
+          else this.slices.delete(entityId);
           this.rebuild(entityId);
         }
         continue;
@@ -99,8 +102,13 @@ export class WeaponTrailRenderer {
       this.rebuild(entityId);
     }
 
-    // Drop trail meshes for entities no longer present.
-    for (const [entityId] of this.meshes) {
+    // Drop trail state for entities no longer present. Keyed on `slices`,
+    // not `meshes`: rebuild() tears the MESH down as soon as a trail thins
+    // below 2 slices while the slices entry stays behind, so a meshes-keyed
+    // sweep would leak one slices entry per despawned entity that ever
+    // swung (`slices ⊇ meshes` — a mesh only exists while its slices do;
+    // remove() tolerates the missing mesh).
+    for (const entityId of this.slices.keys()) {
       if (!entityMeshes.has(entityId)) this.remove(entityId);
     }
   }
@@ -193,6 +201,7 @@ export class WeaponTrailRenderer {
   }
 
   dispose(): void {
-    for (const id of [...this.meshes.keys()]) this.remove(id);
+    for (const id of [...this.slices.keys()]) this.remove(id);
+    for (const id of [...this.meshes.keys()]) this.remove(id); // meshes ⊆ slices; swept anyway for safety
   }
 }
