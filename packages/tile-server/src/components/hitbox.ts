@@ -17,7 +17,7 @@ export type { HitboxData };
  * and hand-authored or spawn-derived parts.
  *
  * An entity without this component (or with an empty parts array) is invisible
- * to ActionSystem's hit detection. This is the single gate for hittability.
+ * to hit detection. This is the single gate for hittability.
  */
 export const Hitbox = defineComponent({
   name: "hitbox" as const,

@@ -81,7 +81,7 @@ export const Equippable = defineComponent({
 });
 
 // ---------------------------------------------------------------------------
-// Swingable — item can be swung; drives ActionSystem + AnimationSystem
+// Swingable — item can be swung
 // ---------------------------------------------------------------------------
 
 const swingableSchema = v.object({

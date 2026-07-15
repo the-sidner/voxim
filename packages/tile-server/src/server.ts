@@ -193,7 +193,7 @@ export class TileServer {
   // caches (T-352).
   private handoffCoordinator!: HandoffCoordinator;
 
-  // Initialised in start() — ActionSystem needs tickRateHz and stateHistory
+  // Initialised in start() via wireGameSystems() (T-352).
   private systems: System[] = [];
 
   private saveManager: SaveManager | null = null;

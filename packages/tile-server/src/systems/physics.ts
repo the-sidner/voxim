@@ -134,9 +134,6 @@ export class PhysicsSystem implements System {
 
       let movement: { x: number; y: number };
       let physicsConfig = baseConfig;
-      // (T-227: swing root-motion push via ActionImpulse was removed with
-      // ActionSystem — root-motion is reintroduced later as an apply_force
-      // action effect.)
       if (locked) {
         // Hold whatever velocity the locking action's effect committed
         // (dodge_impulse wrote the dash vector on dash:enter).
