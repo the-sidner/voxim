@@ -45,6 +45,16 @@ content.registerAction({
   triggersGcd: true,
   effects: [],
 });
+// A cooldown-bearing action on a SECOND slot — two same-tick starts on a
+// fresh entity must both keep their stamps (the fresh-set clobber test).
+content.registerAction({
+  id: "test_cd_side", kind: "active", slot: "secondary",
+  phases: { act: { ticks: 1 } },
+  cancel: { act: { into: [] } },
+  movement: { act: "free" },
+  cooldownTicks: 4,
+  effects: [],
+});
 
 function harness(wantId: string | null) {
   const world = new World();
@@ -116,4 +126,32 @@ Deno.test("actions without cooldown fields never touch ActionCooldowns", () => {
   // nothing starts; the point is the decrement pass tolerates absence.
   h.tick(1);
   assertEquals(h.world.has(h.id, ActionCooldowns), false);
+});
+
+Deno.test("two slots starting cooldown-bearing actions the same tick on a FRESH entity both keep their stamps", () => {
+  // The entity has never carried ActionCooldowns. Both starts stamp in the
+  // same run — the second stamp must compose on the first stamp's creating
+  // world.set in the op-log, not replace it (same shape as
+  // TriggerSystem.stampIcd's fresh-owner clobber).
+  const world = new World();
+  const intent: IntentResolver = {
+    resolve: () => new Map([["primary", "test_cd_blast"], ["secondary", "test_cd_side"]]),
+  };
+  const d = new ActionDispatcher(content, newGateRegistry(), newEffectRegistry(), intent);
+  const id = newEntityId();
+  world.create(id);
+  world.write(id, ActorSlots, { slots: ["primary", "secondary"] });
+  world.write(id, ActiveActions, { states: {} });
+
+  d.prepare(1);
+  d.run(world, new EventBus(), 1 / 20);
+  world.applyChangeset();
+
+  const states = world.get(id, ActiveActions)!.states;
+  assertEquals(states["primary"]?.actionId, "test_cd_blast");
+  assertEquals(states["secondary"]?.actionId, "test_cd_side");
+
+  const cds = world.get(id, ActionCooldowns)!;
+  assert((cds.remaining["test_cd_blast"] ?? 0) > 0, "primary slot's stamp committed");
+  assert((cds.remaining["test_cd_side"] ?? 0) > 0, "secondary slot's stamp committed alongside it");
 });

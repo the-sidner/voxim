@@ -48,6 +48,12 @@ export interface HitContext {
    * Projectile hits: false — attacker is far away, parry deflects but cannot stagger them.
    */
   parryAllowed: boolean;
+  /**
+   * The CURRENT server tick (not the lag-comp rewind tick). Lets a handler
+   * scope per-tick state across separate onHit calls — HealthHitHandler's
+   * PendingReaction priority merge keys its staged-this-tick map on it.
+   */
+  serverTick: number;
 }
 
 /**

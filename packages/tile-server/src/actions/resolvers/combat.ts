@@ -280,6 +280,7 @@ export class WeaponTraceResolver implements EffectResolver {
           targetX: target.x, targetY: target.y,
           hitX: h.contact.x, hitY: h.contact.y, hitZ: h.contact.z,
           parryAllowed: true,
+          serverTick: ctx.serverTick,
         }),
       );
       if (hit) {

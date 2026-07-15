@@ -40,6 +40,7 @@ function axeContext(struckId: EntityId, attackerId: EntityId) {
     targetX: 0, targetY: 0,
     hitX: 0, hitY: 0, hitZ: 0.5,
     parryAllowed: true,
+    serverTick: 0,
   });
 }
 

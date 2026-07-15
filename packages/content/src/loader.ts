@@ -1395,8 +1395,19 @@ export function validateActionDef(def: ActionDef): void {
     if (phase.ticks < -1) {
       throw new Error(`Action '${def.id}' phase '${name}': ticks must be >= -1`);
     }
-    if (phase.ticks === -1 && def.kind !== "ambient") {
-      throw new Error(`Action '${def.id}' phase '${name}': perpetual ticks (-1) is only valid for ambient actions`);
+    if (phase.ticks === -1) {
+      // Perpetual phases: any phase of an ambient (holds like `idle`,
+      // hold-to-aim draws), or a REACTION's terminal phase (a stable end
+      // state — `death` holds a lingering corpse's final pose so the
+      // reaction slot never clears and the resolver's per-tick re-request
+      // no-ops instead of replaying the clip). Never valid on an active,
+      // and never before another phase the dispatcher could not reach.
+      const isTerminal = name === phaseNames[phaseNames.length - 1];
+      if (def.kind === "active" || (def.kind === "reaction" && !isTerminal)) {
+        throw new Error(
+          `Action '${def.id}' phase '${name}': perpetual ticks (-1) is only valid for ambient actions or a reaction's terminal phase`,
+        );
+      }
     }
   }
 

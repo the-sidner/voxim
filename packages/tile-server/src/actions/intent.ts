@@ -172,7 +172,12 @@ export const SkillIntentResolver: IntentResolver = {
  * Reaction slot (T-228) — event-driven, not intent-driven. Replaces the
  * CSM `reaction` layer:
  *
- *   - Health ≤ 0                 → `death` (stable condition, interrupt 100)
+ *   - Health ≤ 0                 → `death` (stable condition, interrupt 100).
+ *     The death def ends in a perpetual `dead` phase, so a lingering corpse
+ *     (T-311 P5c / T-339 — health pinned at 0 for the whole dissolve/crumble
+ *     window) keeps the slot occupied and this per-tick re-request no-ops
+ *     in the dispatcher ("already running it") instead of replaying the
+ *     death clip every 31 ticks.
  *   - `PendingReaction` present  → its action id (hit_front/back,
  *     stagger_light/heavy), consumed one-shot (component removed)
  *   - otherwise                  → null (slot empty, or a reaction running
