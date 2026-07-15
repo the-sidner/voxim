@@ -2342,7 +2342,7 @@ Pattern fixes:
 - `TerrainDigSystem` hardcodes dig reach (`* 1.0`) → game_config.
 
 ### T-358 · Client raw.has() presence checks are dead since T-284
-Effort: S   Status: in-progress
+Effort: S   Status: done   Commit: 5e46a487   (named-field checks; EntityState gained typed poiInteractable; user-visible fix: POI world props (pedestal/brazier/lever) were completely inert, ground-item Use-pickup dead — both restored; bug class confined to the 3 sites, resource_node presence marker regression-fenced; live-verified itemData named-field decode + clean raw via testplay EVAL)
 
 `interactable_handlers.ts` checks `raw.has("itemData")` and `hover_outline.ts`
 checks `raw.has("poiInteractable")`, but both components HAVE client decoders
@@ -2354,7 +2354,7 @@ degraded), switch the checks to the named fields, and live-verify via the
 testplay harness.
 
 ### T-359 · tile_events.ts payload interfaces drifted from live event shapes
-Effort: S   Status: in-progress
+Effort: S   Status: done   Commit: bad5258a   (15 wire-backed payloads now Omit<XEvent,"type"> — one type per event, event_registry translate params reference them; deleted dead ThirstCritical event + duplicate BuildingMaterial/EnclosedCell + unread DamageDealt.bodyPart; fixed NaN contact points on parry/life-drain/starvation publishers + npc_sensory self-damage aggro guard. Note: hunger has a critical wire signal, thirst no longer does — revisit if a thirst HUD cue is wanted)
 
 `HitSparkPayload` / `DamageDealtPayload` (and possibly siblings) in
 `tile-server/src/tile_events.ts` no longer match what publishers actually emit —
