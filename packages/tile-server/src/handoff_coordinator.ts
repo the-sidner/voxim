@@ -1,8 +1,8 @@
 /**
  * HandoffCoordinator — the cross-tile gate/zone side of TileServer (T-352).
  *
- * Owns the per-player handoff state (in-flight fetches, handed-off markers,
- * last-seen zone, hearth-anchor cache) plus the tick-time checks that feed
+ * Owns the per-player handoff state (in-flight fetches, last-seen zone,
+ * hearth-anchor cache) plus the tick-time checks that feed
  * it: gate-proximity polling (publishes GateApproached), zone-transition
  * tracking (pushes ZoneEntered), the handoff fetch itself, and the final
  * GateCrossing send before the session closes.
@@ -22,7 +22,6 @@ import { mirrorPosition } from "./gate.ts";
 import { Position, InputState } from "./components/game.ts";
 import { Heritage } from "./components/heritage.ts";
 import { serializePlayer } from "./handoff.ts";
-import { destroyCarriedItemEntities } from "./spawner.ts";
 import type { ClientSession } from "./session.ts";
 import type { TickLoop } from "./tick_loop.ts";
 import type { EventRouter } from "./event_router.ts";
@@ -57,7 +56,22 @@ export interface HandoffCoordinatorDeps {
   getGatewayLink: () => GatewayLink | null;
   /** Lazy — the EventRouter is constructed immediately after this coordinator. */
   getEvents: () => EventRouter;
+  /**
+   * The single "player leaves this tile" path (TileServer.teardownSession,
+   * T-354/T-361). The handoff success continuation invokes it with
+   * `handedOff` so the entity destroy, per-player cache clears, and the
+   * source-tile fog save all run through the one shared shape — while the
+   * death/location bookkeeping is skipped (the destination tile owns both).
+   */
+  teardownSession: (playerId: EntityId, opts: { handedOff: boolean }) => Promise<void>;
 }
+
+/**
+ * Timeout on the gateway /handoff POST. A gateway that accepts the socket
+ * but never answers would otherwise leave `handingOff` set forever — the
+ * player frozen and the dead-session sweep skipping them indefinitely.
+ */
+const HANDOFF_FETCH_TIMEOUT_MS = 10_000;
 
 export class HandoffCoordinator {
   /**
@@ -66,12 +80,6 @@ export class HandoffCoordinator {
    * duplicate handoff while the first is still pending its gateway round-trip.
    */
   private readonly handingOff = new Set<EntityId>();
-  /**
-   * Players whose entity was destroyed by a handoff (not by death). The
-   * disconnect-cleanup path checks this set so it skips recordDeath when the
-   * session unwinds for a moved-away player. Cleared on disconnect cleanup.
-   */
-  private readonly handedOff = new Set<EntityId>();
   /** Last zone id reported per player, to detect transitions. */
   private readonly playerLastZone = new Map<EntityId, number>();
   /**
@@ -86,16 +94,6 @@ export class HandoffCoordinator {
   /** True while a handoff fetch owns this player's entity (T-256). */
   isHandingOff(playerId: EntityId): boolean {
     return this.handingOff.has(playerId);
-  }
-
-  /**
-   * Consume the handed-off marker: deletes it and returns whether it was
-   * present. Called once per disconnect by TileServer.teardownSession —
-   * true means the entity was destroyed because the player MOVED tiles,
-   * so teardown must skip recordDeath / updateLocation.
-   */
-  consumeHandedOff(playerId: EntityId): boolean {
-    return this.handedOff.delete(playerId);
   }
 
   /** Drop the player's last-seen zone on disconnect. */
@@ -196,6 +194,21 @@ export class HandoffCoordinator {
     if (!this.deps.getGatewayUrl() || this.handingOff.has(payload.entityId)) return;
     this.handingOff.add(payload.entityId);
 
+    // Freeze the player for the round-trip (T-361). The payload below is a
+    // snapshot: anything the player does after it is built diverges the live
+    // world from what the destination restores — a dropped item would exist
+    // on both tiles, a picked-up one would be destroyed at the source but be
+    // absent from the payload. The tick loop's input drain discards this
+    // player's datagrams/commands while `handingOff` is set; neutralising
+    // InputState here stops the LAST drained frame (held movement / action
+    // bits) from replaying every tick of the freeze.
+    const input = this.deps.world.get(payload.entityId, InputState);
+    if (input) {
+      this.deps.world.write(payload.entityId, InputState, {
+        ...input, movementX: 0, movementY: 0, actions: 0, chargeMs: 0,
+      });
+    }
+
     const gateLink = this.deps.world.get(payload.gateId as EntityId, GateLink);
     const dynastyId = this.deps.world.get(payload.entityId, Heritage)?.dynastyId ?? payload.entityId;
     const handoffId = crypto.randomUUID();
@@ -230,6 +243,7 @@ export class HandoffCoordinator {
         [SERVICE_SECRET_HEADER]: this.deps.serviceSecret,
       },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(HANDOFF_FETCH_TIMEOUT_MS),
     }).then(async (r) => {
       if (r.ok) {
         const ack = await r.json().catch(() => null) as
@@ -250,25 +264,17 @@ export class HandoffCoordinator {
           );
           await session.flush();
         }
-        // Mark the player as handed-off BEFORE destroy/close so the
-        // disconnect-cleanup path in handleSession knows to skip the
-        // recordDeath branch — the entity is destroyed because we moved
-        // them, not because they died.
-        this.handedOff.add(payload.entityId);
-        if (this.deps.world.isAlive(payload.entityId)) {
-          // The destination tile already re-created the carried item
-          // entities from `body` (serializePlayer's payload, sent above) —
-          // the source tile's own copies (equipped AND plain inventory
-          // unique items) are now redundant and must not linger here.
-          // Found in passing while wiring destroySubtree (T-219): this call
-          // was missing relative to the other two disconnect/death paths,
-          // which both already take carried items along (T-252) — a
-          // pre-existing leak this closes as an incidental fix.
-          destroyCarriedItemEntities(this.deps.world, payload.entityId);
-          this.deps.world.destroySubtree(payload.entityId);
-        }
         session?.close();
-        this.deps.sessions.delete(payload.entityId);
+        // The one "player leaves this tile" path (T-361): its sync phase
+        // deletes the sessions entry, clears every per-player cache, and
+        // destroys the entity + carried items (the destination tile already
+        // re-created them from `body`, so the source copies must not
+        // linger); its async tail saves the source-tile fog. `handedOff`
+        // skips the death/location bookkeeping — the destination owns both.
+        // The sessions delete lands in the same microtask as close(), so
+        // handleSession's stale-session guard supersede-returns and the
+        // dead-session sweep never sees the entry.
+        await this.deps.teardownSession(payload.entityId, { handedOff: true });
         console.log(
           `[TileServer] handoff complete: ${payload.entityId.slice(0, 8)} → ${payload.destinationTileId}`,
         );
@@ -279,12 +285,6 @@ export class HandoffCoordinator {
       console.error("[TileServer] handoff fetch error:", err);
     }).finally(() => {
       this.handingOff.delete(payload.entityId);
-      // T-256: don't let a handedOff marker outlive the operation. The success
-      // path's own cleanup (destroy + sessions.delete) makes the subsequent
-      // disconnect-cleanup superseded-return before it consumes the marker, so
-      // a leaked entry would later swallow a real death's recordDeath for a
-      // player who returned to this tile.
-      this.handedOff.delete(payload.entityId);
     });
   }
 

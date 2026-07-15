@@ -36,7 +36,8 @@ import { StateHistoryBuffer } from "./state_history.ts";
 import { AccountClient } from "./account_client.ts";
 import type { SessionInfo } from "./account_client.ts";
 import { resolveHeirSpawn } from "./heir_spawn.ts";
-import { spawnPrefab, destroyCarriedItemEntities } from "./spawner.ts";
+import { spawnPrefab } from "./spawner.ts";
+import { teardownPlayer } from "./session_teardown.ts";
 import { resolveCharacterSelections, type ResolvedCharacter } from "./character_creation.ts";
 import { validatePrefabs } from "./prefab_validator.ts";
 import type { System } from "./system.ts";
@@ -476,6 +477,7 @@ export class TileServer {
       getGatewayUrl: () => this.gatewayUrl,
       getGatewayLink: () => this.gatewayLink,
       getEvents: () => this.events,
+      teardownSession: (playerId, opts) => this.teardownSession(playerId, opts),
     });
 
     // Subscribe to tile events that need to reach clients as GameEvents.
@@ -591,6 +593,19 @@ export class TileServer {
     const pendingCommands = new Map<string, CommandPayload[]>();
     for (const [playerId, session] of this.sessions) {
       if (!this.world.isAlive(playerId)) continue;
+
+      // T-361: an in-flight handoff already serialized this player — the
+      // destination restores THAT snapshot, so nothing they do here may land
+      // (a drop would duplicate the item across tiles; a pickup would be
+      // destroyed at the source yet missing from the payload). Discard, don't
+      // queue: on success the session closes anyway, on failure play resumes
+      // from live input next tick. InputState was neutralised at initiation,
+      // so no stale held-movement replays during the freeze either.
+      if (this.handoffCoordinator.isHandingOff(playerId)) {
+        session.inputBuffer.drain();
+        session.commandQueue.length = 0;
+        continue;
+      }
 
       // Drain movement datagrams into InputState — sanitized and merged
       // (T-253): non-finite fields zeroed, stale/replayed seqs discarded,
@@ -780,11 +795,13 @@ export class TileServer {
       if (!session.isOpen) {
         // T-256: an in-flight handoff owns this entity's fate — don't destroy
         // it out from under the fetch (that ghosts it on the destination).
-        // initiateHandoff destroys + deletes on success; the tile-sweep cleans
-        // it up after the handoff resolves and clears handingOff.
+        // The handoff's success continuation runs teardownSession(handedOff)
+        // itself; on failure this sweep picks the session up once the fetch
+        // settles (bounded by its abort timeout) and clears handingOff.
         if (this.handoffCoordinator.isHandingOff(playerId)) continue;
         // Fire-and-forget — the tick loop must not block on the account
-        // service's HTTP calls; the map deletes run synchronously regardless.
+        // service's HTTP calls; the map deletes AND the entity destroy run
+        // synchronously before teardownPlayer's first await.
         this.teardownSession(playerId).catch((err: unknown) => {
           console.error("[TileServer] teardownSession failed:", err);
         });
@@ -881,19 +898,29 @@ export class TileServer {
 
     // Fog of war (T-161): hydrate from the account service. Non-fatal;
     // pendingSnapshot stays true so the next state message ships the bitmap.
-    if (this.accountClient) {
-      const fogBitmap = await this.accountClient.getFog(playerId, this.tileId).catch((err: unknown) => {
-        console.error("[TileServer] fog fetch failed:", err);
-        return null;
-      });
-      if (fogBitmap) {
-        const fog = this.world.get(playerId, FogState);
-        if (fog && fogBitmap.byteLength === fog.seenEver.byteLength) {
-          fog.seenEver.set(fogBitmap);
-          console.log(`[TileServer] fog restored for ${playerId.slice(0, 8)} on ${this.tileId}`);
-        }
-      }
-    }
+    await this.hydrateFog(playerId);
+  }
+
+  /**
+   * Hydrate the player's FogState from the account service's per-(player,
+   * tile) bitmap (T-161). OR-merges into whatever the live entity already
+   * revealed (a handed-off entity stands in-world before its client joins,
+   * so a few cells may be lit already) and forces `pendingSnapshot` so the
+   * next state message ships the merged bitmap. Best-effort: no account
+   * client / no stored row / length mismatch → no-op.
+   */
+  private async hydrateFog(playerId: EntityId): Promise<void> {
+    if (!this.accountClient) return;
+    const fogBitmap = await this.accountClient.getFog(playerId, this.tileId).catch((err: unknown) => {
+      console.error("[TileServer] fog fetch failed:", err);
+      return null;
+    });
+    if (!fogBitmap) return;
+    const fog = this.world.get(playerId, FogState);
+    if (!fog || fogBitmap.byteLength !== fog.seenEver.byteLength) return;
+    for (let i = 0; i < fogBitmap.length; i++) fog.seenEver[i] |= fogBitmap[i];
+    fog.pendingSnapshot = true;
+    console.log(`[TileServer] fog restored for ${playerId.slice(0, 8)} on ${this.tileId}`);
   }
 
   /**
@@ -966,63 +993,28 @@ export class TileServer {
   }
 
   /**
-   * Single disconnect-teardown path (T-354) — called by both the tick loop's
-   * dead-session sweep and handleSession's end-of-session continuation.
-   * Whichever notices the disconnect first wins the race: the map deletes run
-   * synchronously before the first await, so handleSession's stale-session
-   * guard (and the sweep's own map iteration) sees the entry already gone and
-   * no-ops. Callers own the handingOff guard — an in-flight handoff owns the
-   * entity's fate, so neither caller invokes this for one.
+   * The single "player leaves this tile" path (T-354, T-361) — called by the
+   * tick loop's dead-session sweep, handleSession's end-of-session
+   * continuation, and (with `handedOff`) the handoff success continuation.
+   * Whichever caller notices first wins the race: the map deletes AND the
+   * entity destroy run synchronously before the first await (see
+   * `teardownPlayer`), so a late caller — or a reconnect landing mid-teardown
+   * — always sees the entry gone and the entity dead. Disconnect callers own
+   * the handingOff guard: an in-flight handoff owns the entity's fate.
    */
-  private async teardownSession(playerId: EntityId): Promise<void> {
-    this.sessions.delete(playerId);
-    this.handoffCoordinator.clearZone(playerId);
-    this.playerDisplayNames.delete(playerId);
-    this.playerCharacters.delete(playerId);
-    this.handoffCoordinator.clearHearthAnchor(playerId);
-    // Persist fog of war (T-161) before the entity (and its FogState) is
-    // dropped.  Ordered BEFORE the handed-off early-return (T-256: it used to
-    // run after, so fog was dropped on the rare crossing that reaches here).
-    // Best-effort: errors log but never block disconnect cleanup.
-    if (this.accountClient) {
-      const fog = this.world.get(playerId, FogState);
-      if (fog) {
-        await this.accountClient.saveFog(playerId, this.tileId, fog.seenEver).catch((err: unknown) => {
-          console.error("[TileServer] fog save failed:", err);
-        });
-      }
-    }
-    // Handoff already destroyed the entity + closed the session intentionally
-    // (player moved to another tile). Don't treat that as a death or rewrite
-    // the last_tile_id back to ours; the destination tile owns both now.
-    const wasHandedOff = this.handoffCoordinator.consumeHandedOff(playerId);
-    if (wasHandedOff) {
-      console.log(`[TileServer] player ${playerId.slice(0, 8)} handed off (no death recorded)`);
-      return;
-    }
-    if (this.world.isAlive(playerId)) {
-      // Entity still alive → clean disconnect, destroy locally.
-      // T-252: take the carried item entities along — players respawn fresh
-      // (save doctrine), so leaving them would leak forever.
-      // T-219: destroySubtree also takes the bone-entity subtree (and any
-      // scene-graph-parented equipment on it) along.
-      destroyCarriedItemEntities(this.world, playerId);
-      this.world.destroySubtree(playerId);
-      if (this.accountClient) {
-        // Tell the account service which tile the player last occupied so
-        // the next login routes back here.
-        await this.accountClient.updateLocation(playerId, this.tileId).catch((err: unknown) => {
-          console.error("[TileServer] updateLocation failed:", err);
-        });
-      }
-    } else if (this.accountClient) {
-      // Entity gone → combat death already destroyed it; inform the account
-      // service so heritage advances a generation.
-      await this.accountClient.recordDeath(playerId, "damage").catch((err: unknown) => {
-        console.error("[TileServer] recordDeath failed:", err);
-      });
-    }
-    console.log(`[TileServer] player ${playerId.slice(0, 8)} disconnected`);
+  private teardownSession(playerId: EntityId, opts: { handedOff?: boolean } = {}): Promise<void> {
+    return teardownPlayer({
+      world: this.world,
+      sessions: this.sessions,
+      accountClient: this.accountClient,
+      tileId: this.tileId,
+      clearPlayerCaches: (id) => {
+        this.handoffCoordinator.clearZone(id);
+        this.handoffCoordinator.clearHearthAnchor(id);
+        this.playerDisplayNames.delete(id);
+        this.playerCharacters.delete(id);
+      },
+    }, playerId, opts);
   }
 
   private async handleSession(session: WebTransportSession): Promise<void> {
@@ -1116,6 +1108,11 @@ export class TileServer {
 
     if (this.world.isAlive(playerId)) {
       console.log(`[TileServer] player ${playerId.slice(0, 8)} rejoining (post-handoff)`);
+      // A handed-off entity arrives with an EMPTY fog bitmap — fog is keyed
+      // per (player, tile) in the account service and never travels in the
+      // handoff payload (T-361). Hydrate THIS tile's stored exploration the
+      // same way a fresh spawn does.
+      await this.hydrateFog(playerId);
     } else {
       await this.spawnFreshPlayer(playerId, this.handoffCoordinator.getHearthAnchor(playerId));
     }
@@ -1220,8 +1217,8 @@ export class TileServer {
     // T-256: a handoff fetch is in flight — it owns the entity. A disconnect
     // here must NOT run normal cleanup (that records a wrong death / rewrites
     // last_tile_id back to ours / ghosts the entity on the destination). The
-    // handoff's success path (destroy + delete) or the tile-sweep (on failure)
-    // cleans up once handingOff clears.
+    // handoff's success continuation runs teardownSession(handedOff) itself;
+    // on failure the tile-sweep cleans up once handingOff clears.
     if (this.handoffCoordinator.isHandingOff(playerId)) {
       console.log(`[TileServer] player ${playerId.slice(0, 8)}: session ended mid-handoff — handoff owns the entity`);
       return;
