@@ -162,7 +162,7 @@ Deno.test("bossfight: boss_arena_link TriggerSource + health_below gate fires ph
   trig.registerSubscribers(bus);
 
   bus.publish(TileEvents.DamageDealt, {
-    sourceId: "attacker1", targetId: bossId, amount: 10, blocked: false, bodyPart: "torso",
+    sourceId: "attacker1", targetId: bossId, amount: 10, blocked: false,
     hitX: 50, hitY: 50, hitZ: 0,
   });
   trig.run(world, bus, DT); // drains next run — publish above buffers it

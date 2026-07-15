@@ -70,7 +70,7 @@ Deno.test("an NPC near a DamageDealt event aggros toward the attacker", () => {
   // hit lands at the victim's position; sourceId is the attacker.
   h.bus.publish(TileEvents.DamageDealt, {
     targetId: victim, sourceId: attacker, amount: 10, blocked: false,
-    bodyPart: "torso", hitX: 0, hitY: 0, hitZ: 0,
+    hitX: 0, hitY: 0, hitZ: 0,
   });
   h.tick();
 
@@ -88,7 +88,7 @@ Deno.test("an NPC outside perceptionRadius does not react", () => {
 
   h.bus.publish(TileEvents.DamageDealt, {
     targetId: victim, sourceId: attacker, amount: 10, blocked: false,
-    bodyPart: "torso", hitX: 0, hitY: 0, hitZ: 0,
+    hitX: 0, hitY: 0, hitZ: 0,
   });
   h.tick();
 
@@ -108,7 +108,7 @@ Deno.test("an NPC already attacking keeps its current target", () => {
 
   h.bus.publish(TileEvents.DamageDealt, {
     targetId: victim, sourceId: attacker, amount: 10, blocked: false,
-    bodyPart: "torso", hitX: 0, hitY: 0, hitZ: 0,
+    hitX: 0, hitY: 0, hitZ: 0,
   });
   h.tick();
 
@@ -126,11 +126,26 @@ Deno.test("the threat filter: no aggro toward a fellow NPC attacker", () => {
 
   h.bus.publish(TileEvents.DamageDealt, {
     targetId: victim, sourceId: wolfAttacker, amount: 10, blocked: false,
-    bodyPart: "torso", hitX: 0, hitY: 0, hitZ: 0,
+    hitX: 0, hitY: 0, hitZ: 0,
   });
   h.tick();
 
   assertEquals(h.jobOf(bystander), null, "the pack does not turn on its own");
+});
+
+Deno.test("self-inflicted damage (starvation DPS) is not a commotion", () => {
+  const h = harness();
+  const starving = h.spawnPlayer(0, 0); // modify_health publishes sourceId === targetId
+  const npc = h.spawnNpc(5, 0); // well within perceptionRadius
+  h.world.applyChangeset();
+
+  h.bus.publish(TileEvents.DamageDealt, {
+    targetId: starving, sourceId: starving, amount: 1.5, blocked: false,
+    hitX: 0, hitY: 0, hitZ: 0,
+  });
+  h.tick();
+
+  assertEquals(h.jobOf(npc), null, "a starving player draws no aggro");
 });
 
 Deno.test("EntityDied: nearby NPC aggros toward the killer at the killer's position", () => {
@@ -182,7 +197,7 @@ Deno.test("a dead/despawned threat produces no aggro", () => {
   // sourceId references an entity that was never created (despawned attacker).
   h.bus.publish(TileEvents.DamageDealt, {
     targetId: victim, sourceId: "ghost-attacker", amount: 10, blocked: false,
-    bodyPart: "torso", hitX: 0, hitY: 0, hitZ: 0,
+    hitX: 0, hitY: 0, hitZ: 0,
   });
   h.tick();
 
