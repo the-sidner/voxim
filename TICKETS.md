@@ -2307,7 +2307,7 @@ game_config/atmosphere content. Also fold in: `camera_rig.ts` pre-bootstrap
 fallbacks literally duplicate `game_config.json` values.
 
 ### T-357 · Housekeeping sweep — delete stale doc, small pattern fixes
-Effort: M   Status: in-progress
+Effort: M   Status: done   Commit: d1133b8a   (10 commits; every bullet re-verified against post-wave HEAD — swing_predictor CSM refs were already gone via T-351; the named lerp dupe didn't exist but a real lerpN dupe in renderer/environment_lighting did and was deduped; crumble handler now registers before the cross-check via ctor injection; CLAUDE.md datagram section thinned to pointers)
 
 Doc rot (DELETE, don't refresh — see section note):
 - `skeleton_evaluator.ts` header describes the retired CSM layer stack and
@@ -2340,4 +2340,26 @@ Pattern fixes:
 - `camera_rig.update` keeps a vestigial `_dt` param for symmetry with the
   deleted follow controller — drop it.
 - `TerrainDigSystem` hardcodes dig reach (`* 1.0`) → game_config.
+
+### T-358 · Client raw.has() presence checks are dead since T-284
+Effort: S   Status: todo
+
+`interactable_handlers.ts` checks `raw.has("itemData")` and `hover_outline.ts`
+checks `raw.has("poiInteractable")`, but both components HAVE client decoders
+and land as named `EntityState` fields — they never appear in `raw`, so both
+checks have been constantly false since the T-284 registry-dispatch decode
+rebuild (found during the T-349 work). Determine the intended behavior (item
+pickup interaction hint / POI hover outline presumably broken or silently
+degraded), switch the checks to the named fields, and live-verify via the
+testplay harness.
+
+### T-359 · tile_events.ts payload interfaces drifted from live event shapes
+Effort: S   Status: todo
+
+`HitSparkPayload` / `DamageDealtPayload` (and possibly siblings) in
+`tile-server/src/tile_events.ts` no longer match what publishers actually emit —
+the T-348 event-registry port deliberately copied the live inline types from
+the old event_router.ts translate params instead of these interfaces. Stale
+types on the bus boundary invite silently-wrong subscribers: reconcile each
+payload interface with its publishers, delete unused ones.
 
