@@ -10,16 +10,12 @@
  * is injected via the `onGateApproached` hook (a second, explicit subscribe
  * below) so the router stays ignorant of gateway / session management.
  */
-import type { EntityId, EventBus } from "@voxim/engine";
+import type { EventBus } from "@voxim/engine";
 import { TileEvents, subscribeAllEvents } from "@voxim/protocol";
-import type { GameEvent } from "@voxim/protocol";
+import type { GameEvent, GateApproachedPayload } from "@voxim/protocol";
 
 /** Optional callback fired when a player crosses a gate, after the event is queued for delivery. */
-export type GateApproachedHandler = (payload: {
-  entityId: EntityId;
-  gateId: string;
-  destinationTileId: string;
-}) => void;
+export type GateApproachedHandler = (payload: GateApproachedPayload) => void;
 
 export class EventRouter {
   private readonly pending: GameEvent[] = [];
@@ -55,11 +51,7 @@ export class EventRouter {
     // AFTER subscribeAllEvents so the GameEvent is queued before the handoff
     // fires (EventBus notifies subscribers in registration order), matching
     // the pre-registry behaviour.
-    this.eventBus.subscribe(TileEvents.GateApproached, (p: {
-      entityId: EntityId;
-      gateId: string;
-      destinationTileId: string;
-    }) => {
+    this.eventBus.subscribe(TileEvents.GateApproached, (p: GateApproachedPayload) => {
       this.onGateApproached?.(p);
     });
   }
