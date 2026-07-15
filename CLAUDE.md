@@ -97,7 +97,7 @@ deno check packages/tile-server/mod.ts packages/client/src/game.ts packages/code
 |---------|-------------|---------|
 | `packages/engine` | `@voxim/engine` | ECS core — World, ComponentDef, EventBus, physics math. Zero game dependencies. |
 | `packages/codecs` | `@voxim/codecs` | Binary codecs for every **networked** component. Shared by server and client. |
-| `packages/protocol` | `@voxim/protocol` | Wire message types, ComponentType enum, InputDatagram codec, action bitflags, length-prefixed framing. |
+| `packages/protocol` | `@voxim/protocol` | Wire message types, ComponentType enum, MovementDatagram codec, action bitflags, length-prefixed framing. |
 | `packages/content` | `@voxim/content` | Data-driven game definitions. ContentStore loads from per-item JSON files in `packages/content/data/`. |
 | `packages/world` | `@voxim/world` | Terrain generation, heightmaps, biome zones. |
 | `packages/tile-server` | — | Authoritative game server — systems, components, save/load, NPC AI. |
@@ -170,7 +170,7 @@ and `world.remove()`; the tick loop commits them all at once after all systems h
 
 ### Server tick sequence (20 Hz)
 
-1. **Drain input** — latest InputDatagram per player written to InputState via `world.write()`
+1. **Drain input** — latest MovementDatagram per player written to InputState via `world.write()`
 2. **Run systems** — in declared order; deferred writes accumulate in the changeset
 3. **Apply changeset** — `world.applyChangeset()` commits all deferred writes and removals
 4. **Fire events** — deferred EventBus queue flushed; subscribers see committed state
@@ -277,19 +277,16 @@ const raw = await readPayload();   // reads one length-prefixed binary payload
 
 Never roll a custom length-prefix implementation — always use these helpers.
 
-### InputDatagram (client → server, unreliable datagrams, ~60 Hz)
+### MovementDatagram (client → server, unreliable datagrams, ~60 Hz)
 
-36-byte fixed binary: `seq` (u32, monotonic), `timestamp` (f64, wall-clock ms for RTT),
-`facing` (f32 radians), `movementX/Y` (f32 normalised), `actions` (u32 bitfield),
-`interactSlot` (u32).
-
-Action bitflags (defined in `packages/protocol/src/messages.ts`):
-```
-ACTION_USE_SKILL = 1 << 0    ACTION_BLOCK  = 1 << 1    ACTION_JUMP     = 1 << 2
-ACTION_INTERACT  = 1 << 3    ACTION_DODGE  = 1 << 4    ACTION_CROUCH   = 1 << 5
-ACTION_CONSUME   = 1 << 6    ACTION_SKILL_1 = 1 << 7   ACTION_SKILL_2  = 1 << 8
-ACTION_SKILL_3   = 1 << 9    ACTION_SKILL_4 = 1 << 10
-```
+Fixed-size little-endian binary carrying the client's continuous intent:
+seq/tick/timestamp (reconciliation + lag comp), facing + aim pitch, movement
+axes, an `actions` bitfield, and the weapon-charge hold duration. Field-by-field
+doc comments live on the `MovementDatagram` interface and the `ACTION_*`
+bitflag consts in `packages/protocol/src/messages.ts`; the byte layout lives in
+`packages/protocol/src/codecs.ts` (`movementDatagramCodec`). Read those, not
+this file, for the schema — a prose copy of the byte layout is exactly what
+drifts. Retired action bits are left as comments and never reused.
 
 ### BinaryStateMessage (server → client, reliable stream, 20 Hz)
 

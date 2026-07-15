@@ -1,25 +1,8 @@
 /**
- * Binary codec for the reliable server→client state channel.
- *
- * Wire layout (all little-endian):
- *   u32  serverTick
- *   u32  ackInputSeq
- *   u16  numSpawns
- *     per spawn: [uuid16 entityId] [u16 numComponents]
- *       per component: [u8 typeId] [u16 dataLen] [bytes…]
- *   u16  numDeltas
- *     per delta: [uuid16 entityId] [u8 typeId] [u32 version] [u16 dataLen] [bytes…]
- *   u16  numRemovals
- *     per removal: [uuid16 entityId] [u8 typeId]
- *   u16  numDestroys
- *     per destroy: [uuid16 entityId]
- *   u16  numEvents
- *     per event: [u8 eventTypeId] [event-specific fields…]
- *       (per-event field layouts live on each descriptor in event_registry.ts)
- *   u8   hasFogSnapshot       (T-157)
- *     if 1: bytes (FOG_GRID_BYTES = 8192, bit-packed seenEver bitmap)
- *   u16  numFogReveals        (T-157)
- *     per reveal: u16 fog-cell index
+ * Binary codec for the reliable server→client state channel
+ * (BinaryStateMessage). The encode/decode functions below are the wire
+ * layout — no prose copy of it here (per-event field layouts live on each
+ * descriptor in event_registry.ts).
  */
 
 import type { Serialiser } from "@voxim/engine";
