@@ -234,8 +234,13 @@ export function wireConnectionHandlers(game: VoximGame, conn: TileConnection): v
           // freezes the scene. No wire field for the server's exact
           // hitStopTicks — the client derives a flat short window from the
           // existing DamageDealt payload (amount already rides the wire),
-          // scaling toward the longer end on a heavier hit.
-          if (!ev.blocked && ev.amount > 0) {
+          // scaling toward the longer end on a heavier hit. Only for hits
+          // the LOCAL player dealt or took — the server's freeze
+          // (collectHitStopFreezes) covers only attacker + targets, and a
+          // bystander's whole scene stuttering on someone else's fight
+          // reads as broken, not punchy.
+          if (!ev.blocked && ev.amount > 0
+              && (ev.targetId === game.playerId || ev.sourceId === game.playerId)) {
             const emphasis = Math.min(1, ev.amount / 25);
             game.renderer?.triggerHitStop(60 + emphasis * 60);
           }
