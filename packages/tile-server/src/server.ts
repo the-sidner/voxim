@@ -1544,7 +1544,8 @@ export class TileServer {
       }
     }
 
-    // Remove disconnected sessions
+    // Remove disconnected sessions — teardownSession (T-354) is the single
+    // cleanup path shared with handleSession's end-of-session continuation.
     for (const [playerId, session] of this.sessions) {
       if (!session.isOpen) {
         // T-256: an in-flight handoff owns this entity's fate — don't destroy
@@ -1552,19 +1553,11 @@ export class TileServer {
         // initiateHandoff destroys + deletes on success; the tile-sweep cleans
         // it up after the handoff resolves and clears handingOff.
         if (this.handingOff.has(playerId)) continue;
-        this.sessions.delete(playerId);
-        this.playerLastZone.delete(playerId);
-        this.playerDisplayNames.delete(playerId);
-        this.playerCharacters.delete(playerId);
-        this.playerHearthAnchors.delete(playerId);
-        if (this.world.isAlive(playerId)) {
-          // T-252: take the carried item entities along — players respawn
-          // fresh (save doctrine), so leaving them would leak forever.
-          // T-219: destroySubtree also takes the bone-entity subtree (and
-          // any scene-graph-parented equipment on it) along.
-          destroyCarriedItemEntities(this.world, playerId);
-          this.world.destroySubtree(playerId);
-        }
+        // Fire-and-forget — the tick loop must not block on the account
+        // service's HTTP calls; the map deletes run synchronously regardless.
+        this.teardownSession(playerId).catch((err: unknown) => {
+          console.error("[TileServer] teardownSession failed:", err);
+        });
       }
     }
 
@@ -1947,6 +1940,66 @@ export class TileServer {
     this.lastPushedGateSummary = this.currentGateSummary;
   }
 
+  /**
+   * Single disconnect-teardown path (T-354) — called by both the tick loop's
+   * dead-session sweep and handleSession's end-of-session continuation.
+   * Whichever notices the disconnect first wins the race: the map deletes run
+   * synchronously before the first await, so handleSession's stale-session
+   * guard (and the sweep's own map iteration) sees the entry already gone and
+   * no-ops. Callers own the handingOff guard — an in-flight handoff owns the
+   * entity's fate, so neither caller invokes this for one.
+   */
+  private async teardownSession(playerId: EntityId): Promise<void> {
+    this.sessions.delete(playerId);
+    this.playerLastZone.delete(playerId);
+    this.playerDisplayNames.delete(playerId);
+    this.playerCharacters.delete(playerId);
+    this.playerHearthAnchors.delete(playerId);
+    // Persist fog of war (T-161) before the entity (and its FogState) is
+    // dropped.  Ordered BEFORE the handed-off early-return (T-256: it used to
+    // run after, so fog was dropped on the rare crossing that reaches here).
+    // Best-effort: errors log but never block disconnect cleanup.
+    if (this.accountClient) {
+      const fog = this.world.get(playerId, FogState);
+      if (fog) {
+        await this.accountClient.saveFog(playerId, this.tileId, fog.seenEver).catch((err: unknown) => {
+          console.error("[TileServer] fog save failed:", err);
+        });
+      }
+    }
+    // Handoff already destroyed the entity + closed the session intentionally
+    // (player moved to another tile). Don't treat that as a death or rewrite
+    // the last_tile_id back to ours; the destination tile owns both now.
+    const wasHandedOff = this.handedOff.delete(playerId);
+    if (wasHandedOff) {
+      console.log(`[TileServer] player ${playerId.slice(0, 8)} handed off (no death recorded)`);
+      return;
+    }
+    if (this.world.isAlive(playerId)) {
+      // Entity still alive → clean disconnect, destroy locally.
+      // T-252: take the carried item entities along — players respawn fresh
+      // (save doctrine), so leaving them would leak forever.
+      // T-219: destroySubtree also takes the bone-entity subtree (and any
+      // scene-graph-parented equipment on it) along.
+      destroyCarriedItemEntities(this.world, playerId);
+      this.world.destroySubtree(playerId);
+      if (this.accountClient) {
+        // Tell the account service which tile the player last occupied so
+        // the next login routes back here.
+        await this.accountClient.updateLocation(playerId, this.tileId).catch((err: unknown) => {
+          console.error("[TileServer] updateLocation failed:", err);
+        });
+      }
+    } else if (this.accountClient) {
+      // Entity gone → combat death already destroyed it; inform the account
+      // service so heritage advances a generation.
+      await this.accountClient.recordDeath(playerId, "damage").catch((err: unknown) => {
+        console.error("[TileServer] recordDeath failed:", err);
+      });
+    }
+    console.log(`[TileServer] player ${playerId.slice(0, 8)} disconnected`);
+  }
+
   private async handleSession(session: WebTransportSession): Promise<void> {
     // Silence the session.closed rejection so it never becomes an uncaught promise
     // rejection that crashes the server process — we handle the close implicitly when
@@ -2128,18 +2181,15 @@ export class TileServer {
     // Input receiver runs concurrently — returns when the session closes
     await clientSession.receiveInputs(session);
 
-    // Session ended. Two paths:
-    //   - entity still alive → clean disconnect, destroy locally. Also tell
-    //     the account service which tile the player last occupied so the
-    //     next login routes back here.
-    //   - entity gone → combat death already destroyed it; inform the
-    //     account service so heritage advances a generation.
+    // Session ended — teardownSession (T-354) is the single cleanup path,
+    // shared with the tick loop's dead-session sweep.
     clientSession.close();
     // T-253: a reconnect may have replaced the map entry with a NEW session —
     // this (old) session's cleanup must not delete it or destroy the
-    // player the new session is serving.
+    // player the new session is serving. Also dedups against the tick-loop
+    // sweep, which deletes the entry synchronously when it wins the race.
     if (this.sessions.get(playerId) !== clientSession) {
-      console.log(`[TileServer] player ${playerId.slice(0, 8)}: stale session ended (superseded by reconnect)`);
+      console.log(`[TileServer] player ${playerId.slice(0, 8)}: stale session ended (superseded or already torn down)`);
       return;
     }
     // T-256: a handoff fetch is in flight — it owns the entity. A disconnect
@@ -2151,46 +2201,7 @@ export class TileServer {
       console.log(`[TileServer] player ${playerId.slice(0, 8)}: session ended mid-handoff — handoff owns the entity`);
       return;
     }
-    this.sessions.delete(playerId);
-    this.playerDisplayNames.delete(playerId);
-    this.playerCharacters.delete(playerId);
-    this.playerHearthAnchors.delete(playerId);
-    // Persist fog of war (T-161) before the entity (and its FogState) is
-    // dropped.  Ordered BEFORE the handed-off early-return (T-256: it used to
-    // run after, so fog was dropped on the rare crossing that reaches here).
-    // Best-effort: errors log but never block disconnect cleanup.
-    if (this.accountClient) {
-      const fog = this.world.get(playerId, FogState);
-      if (fog) {
-        await this.accountClient.saveFog(playerId, this.tileId, fog.seenEver).catch((err: unknown) => {
-          console.error("[TileServer] fog save failed:", err);
-        });
-      }
-    }
-    // Handoff already destroyed the entity + closed the session intentionally
-    // (player moved to another tile). Don't treat that as a death or rewrite
-    // the last_tile_id back to ours; the destination tile owns both now.
-    const wasHandedOff = this.handedOff.delete(playerId);
-    if (wasHandedOff) {
-      console.log(`[TileServer] player ${playerId.slice(0, 8)} handed off (no death recorded)`);
-      return;
-    }
-    if (this.world.isAlive(playerId)) {
-      // T-252: take the carried item entities along (players respawn fresh).
-      // T-219: destroySubtree also takes the bone-entity subtree along.
-      destroyCarriedItemEntities(this.world, playerId);
-      this.world.destroySubtree(playerId);
-      if (this.accountClient) {
-        await this.accountClient.updateLocation(playerId, this.tileId).catch((err: unknown) => {
-          console.error("[TileServer] updateLocation failed:", err);
-        });
-      }
-    } else if (this.accountClient) {
-      await this.accountClient.recordDeath(playerId, "damage").catch((err: unknown) => {
-        console.error("[TileServer] recordDeath failed:", err);
-      });
-    }
-    console.log(`[TileServer] player ${playerId.slice(0, 8)} disconnected`);
+    await this.teardownSession(playerId);
   }
 }
 
