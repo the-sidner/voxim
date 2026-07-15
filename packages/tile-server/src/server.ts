@@ -16,17 +16,16 @@
 import { World, EventBus, newEntityId } from "@voxim/engine";
 import type { EntityId, ChangesetSet, ChangesetRemoval } from "@voxim/engine";
 import type { AtlasTileInitRepo, AtlasWorldRepo, TileSaveRepo, WorldsRepo } from "@voxim/db";
-import { GateLink } from "./components/gate.ts";
-import { spawnGates, mirrorPosition } from "./gate.ts";
+import { spawnGates } from "./gate.ts";
 import { applyFieldsToChunks, chunksFromBuffers, TILE_SIZE } from "@voxim/world";
 import { loadTerrainFromAtlas } from "./atlas_terrain.ts";
 import { placePois, spawnMobPois } from "./poi_placer.ts";
-import { binaryStateMessageCodec, ACTION_BLOCK, ACTION_CROUCH, encodeFrame, makeFrameReader, SERVICE_SECRET_HEADER, TileEvents } from "@voxim/protocol";
+import { binaryStateMessageCodec, ACTION_BLOCK, ACTION_CROUCH, encodeFrame, makeFrameReader } from "@voxim/protocol";
 import { startAdminServer, registerWithGateway } from "./admin_server.ts";
 import { listenQuic } from "./quic_server.ts";
 import { GatewayLink } from "./gateway_link.ts";
 import { CommandType } from "@voxim/protocol";
-import type { BinaryComponentDelta, BinaryStateMessage, BootstrapHeader, CommandPayload, TileJoinRequest, TileJoinAck, WorldSnapshot } from "@voxim/protocol";
+import type { BinaryComponentDelta, BootstrapHeader, CommandPayload, TileJoinRequest, TileJoinAck, WorldSnapshot } from "@voxim/protocol";
 import { computeAoiSharedInputs, computeSessionUpdate } from "./aoi.ts";
 import { JsonSource, validateRecipeGraph, encodeBootstrap, type ContentService } from "@voxim/content";
 import { ClientSession } from "./session.ts";
@@ -35,7 +34,7 @@ import { TickLoop } from "./tick_loop.ts";
 import { DeferredEventQueue } from "./deferred_events.ts";
 import { StateHistoryBuffer } from "./state_history.ts";
 import { AccountClient } from "./account_client.ts";
-import type { SessionInfo, HearthAnchor } from "./account_client.ts";
+import type { SessionInfo } from "./account_client.ts";
 import { resolveHeirSpawn } from "./heir_spawn.ts";
 import { spawnPrefab, destroyCarriedItemEntities } from "./spawner.ts";
 import { resolveCharacterSelections, type ResolvedCharacter } from "./character_creation.ts";
@@ -49,12 +48,12 @@ import { placePoiTriggers } from "./poi_spawner.ts";
 import { placeStairs } from "./stair_spawner.ts";
 import { WorldClock } from "./components/world.ts";
 import { SaveManager } from "./save_manager.ts";
-import { serializePlayer } from "./handoff.ts";
 import { SpatialGrid } from "./spatial_grid.ts";
 import { ProceduralSpawner } from "./procedural_spawner.ts";
 import { EventRouter } from "./event_router.ts";
 import type { TickContext } from "./system.ts";
 import { wireGameSystems } from "./wiring.ts";
+import { HandoffCoordinator, type ZoneMeta } from "./handoff_coordinator.ts";
 
 // Action bits that represent *held* keys (block, crouch) — merged
 // latest-wins across a tick rather than OR-accumulated like one-shots.
@@ -189,6 +188,10 @@ export class TileServer {
   private contentBlob!: Uint8Array;
   // Initialised in start() — subscribes to the event bus and drained each tick.
   private events!: EventRouter;
+  // Initialised in start() (post-atlas-load) — gate proximity, zone
+  // transitions, cross-tile handoff, and the per-player handoff/zone/hearth
+  // caches (T-352).
+  private handoffCoordinator!: HandoffCoordinator;
 
   // Initialised in start() — ActionSystem needs tickRateHz and stateHistory
   private systems: System[] = [];
@@ -217,14 +220,7 @@ export class TileServer {
    */
   private zoneBuffer: Uint16Array | null = null;
   /** Zone metadata indexed by `zoneBuffer` ids. */
-  private zoneById = new Map<number, {
-    id: number;
-    name: string;
-    topologyRole: string;
-    traversal: "path" | "wilderness";
-  }>();
-  /** Last zone id reported per player, to detect transitions. */
-  private playerLastZone = new Map<EntityId, number>();
+  private zoneById = new Map<number, ZoneMeta>();
   /**
    * Active world this tile-server is serving. Set on atlas terrain load;
    * the bake-poll loop watches `activeWorldBaked` to detect a newer bake
@@ -232,18 +228,6 @@ export class TileServer {
    */
   private activeWorldId = "";
   private activeWorldBaked: Date = new Date(0);
-  /**
-   * Players for whom a handoff fetch is in flight. Prevents a second
-   * GateApproached event (or rapidly-repeated collisions) from initiating a
-   * duplicate handoff while the first is still pending its gateway round-trip.
-   */
-  private handingOff = new Set<EntityId>();
-  /**
-   * Players whose entity was destroyed by a handoff (not by death). The
-   * disconnect-cleanup path checks this set so it skips recordDeath when the
-   * session unwinds for a moved-away player. Cleared on disconnect cleanup.
-   */
-  private handedOff = new Set<EntityId>();
   /** Display name per connected player — cached so a respawn (no join msg) keeps the name. */
   private playerDisplayNames = new Map<EntityId, string>();
   /**
@@ -251,12 +235,6 @@ export class TileServer {
    * cached at join so a respawn (no join msg) keeps the chosen species + lore.
    */
   private playerCharacters = new Map<EntityId, ResolvedCharacter>();
-  /**
-   * Hearth anchor per connected player (T-079) — cached at join so a respawn
-   * (no join msg) can spawn the heir at the family hearth, or detect that the
-   * hearth was destroyed and spawn the heir displaced + weakened.
-   */
-  private playerHearthAnchors = new Map<EntityId, HearthAnchor | null>();
   /** Players with a respawn in flight — guards the async recordDeath→spawn from re-entry. */
   private respawning = new Set<EntityId>();
 
@@ -315,7 +293,7 @@ export class TileServer {
       accountClient: this.accountClient,
       getZoneBuffer: () => this.zoneBuffer,
       getSessionPlayerIds: () => this.sessions.keys(),
-      onHearthAnchorUpdate: (placerId, anchor) => this.playerHearthAnchors.set(placerId, anchor),
+      onHearthAnchorUpdate: (placerId, anchor) => this.handoffCoordinator.setHearthAnchor(placerId, anchor),
     });
 
     // Atlas is the source of truth for initial terrain, the gate-summary
@@ -481,9 +459,29 @@ export class TileServer {
       }
     }
 
+    // Handoff/gate/zone coordinator (T-352). Constructed after atlas load so
+    // zoneBuffer/zoneById are final; gatewayUrl/gatewayLink are assigned by
+    // the self-registration blocks below and `events` on the very next line,
+    // so those three are lazy getters — nothing invokes the coordinator
+    // before the tick loop starts.
+    this.handoffCoordinator = new HandoffCoordinator({
+      world: this.world,
+      eventBus: this.eventBus,
+      sessions: this.sessions,
+      tickLoop: this.tickLoop,
+      tileId: config.tileId,
+      serviceSecret: this.serviceSecret,
+      zoneBuffer: this.zoneBuffer,
+      zoneById: this.zoneById,
+      getGatewayUrl: () => this.gatewayUrl,
+      getGatewayLink: () => this.gatewayLink,
+      getEvents: () => this.events,
+    });
+
     // Subscribe to tile events that need to reach clients as GameEvents.
-    // The router is responsible for translation; handoff side-effects stay here.
-    this.events = new EventRouter(this.eventBus, (p) => this.initiateHandoff(p));
+    // The router is responsible for translation; the handoff side-effect
+    // lives on the coordinator.
+    this.events = new EventRouter(this.eventBus, (p) => this.handoffCoordinator.initiateHandoff(p));
 
     // Start the WebTransport QUIC server (Deno.QuicEndpoint, requires --unstable-net)
     listenQuic(config, (session) => this.handleSession(session));
@@ -680,13 +678,13 @@ export class TileServer {
     // Gate proximity check (T-140) — runs after systems so positions are
     // committed. Publishes GateApproached for any player within a gate's
     // trigger radius; the EventRouter routes it to initiateHandoff.
-    this.checkGateProximity();
+    this.handoffCoordinator.checkGateProximity();
 
     // Zone transition check (T-211) — also after-systems / post-changeset.
     // Walks every active session, looks up the zone under the player's
     // current voxel, and fires ZoneEntered when it differs from the last
     // recorded zone for that player.
-    this.checkZoneTransitions();
+    this.handoffCoordinator.checkZoneTransitions();
 
     // ── 5. BUILD DELTA ──────────────────────────────────────────────────────
     const events = this.events.drain();
@@ -784,7 +782,7 @@ export class TileServer {
         // it out from under the fetch (that ghosts it on the destination).
         // initiateHandoff destroys + deletes on success; the tile-sweep cleans
         // it up after the handoff resolves and clears handingOff.
-        if (this.handingOff.has(playerId)) continue;
+        if (this.handoffCoordinator.isHandingOff(playerId)) continue;
         // Fire-and-forget — the tick loop must not block on the account
         // service's HTTP calls; the map deletes run synchronously regardless.
         this.teardownSession(playerId).catch((err: unknown) => {
@@ -844,180 +842,7 @@ export class TileServer {
     return map;
   }
 
-  // ---- handoff side-effect ----
-
-  /**
-   * Per-tick proximity check: any player whose Position is within a
-   * GateLink's radius gets a GateApproached event published. The
-   * EventRouter forwards to initiateHandoff. The handingOff guard +
-   * destination tile's handoffId dedup prevent re-firing while a
-   * handoff is in flight.
-   */
-  private checkGateProximity(): void {
-    if (!this.gatewayUrl || this.sessions.size === 0) return;
-    const gates = this.world.query(Position, GateLink);
-    if (gates.length === 0) return;
-
-    for (const playerId of this.sessions.keys()) {
-      if (this.handingOff.has(playerId)) continue;
-      const pos = this.world.get(playerId, Position);
-      if (!pos) continue;
-      for (const { entityId: gateId, position: gp, gateLink } of gates) {
-        const dx = pos.x - gp.x;
-        const dy = pos.y - gp.y;
-        const r = gateLink.radius;
-        if (dx * dx + dy * dy <= r * r) {
-          this.eventBus.publish(TileEvents.GateApproached, {
-            entityId: playerId,
-            gateId,
-            destinationTileId: gateLink.destinationTileId,
-          });
-          break; // one gate per player per tick is plenty
-        }
-      }
-    }
-  }
-
-  /**
-   * T-211 zone tracker. For each active session, look up the zone id
-   * under the player's current voxel and fire a ZoneEntered game event
-   * when the zone has changed. The map is cleared on disconnect.
-   */
-  private checkZoneTransitions(): void {
-    const buf = this.zoneBuffer;
-    if (!buf || this.sessions.size === 0) return;
-    const stride = TILE_SIZE;
-    for (const playerId of this.sessions.keys()) {
-      const pos = this.world.get(playerId, Position);
-      if (!pos) continue;
-      const vx = pos.x | 0;
-      const vy = pos.y | 0;
-      if (vx < 0 || vy < 0 || vx >= stride || vy >= stride) continue;
-      const zoneId = buf[vy * stride + vx];
-      const lastZone = this.playerLastZone.get(playerId) ?? -1;
-      if (zoneId === lastZone) continue;
-      this.playerLastZone.set(playerId, zoneId);
-
-      // Sub-threshold / unzoned (0xFFFF for closed-pixel sentinel + water
-      // blobs) — emit anyway with an empty name so the client can clear
-      // its caption when the player walks across a no-zone band.
-      const meta = this.zoneById.get(zoneId);
-      this.events.push({
-        type: "ZoneEntered",
-        playerId,
-        zoneId,
-        zoneName:     meta?.name ?? "",
-        topologyRole: meta?.topologyRole ?? "",
-        traversal:    meta?.traversal ?? "path",
-      });
-    }
-  }
-
-  /**
-   * Fire-and-forget handoff to the destination tile via the gateway. The
-   * re-entry guard prevents a second GateApproached event from starting a
-   * parallel handoff while the first is still pending its round-trip; the
-   * destination tile deduplicates retries on handoffId.
-   *
-   * Position is mirrored to the destination's matching edge so the player
-   * lands just inside the new tile's gate (away from its own trigger
-   * radius — otherwise we'd bounce straight back).
-   */
-  private initiateHandoff(payload: { entityId: EntityId; gateId: string; destinationTileId: string }): void {
-    if (!this.gatewayUrl || this.handingOff.has(payload.entityId)) return;
-    this.handingOff.add(payload.entityId);
-
-    const gateLink = this.world.get(payload.gateId as EntityId, GateLink);
-    const dynastyId = this.world.get(payload.entityId, Heritage)?.dynastyId ?? payload.entityId;
-    const handoffId = crypto.randomUUID();
-    const body = serializePlayer(this.world, payload.entityId, dynastyId, payload.destinationTileId, handoffId);
-
-    // Land the player just inside the destination's matching gate. Mirror both
-    // the re-spawn coordinates and the Position overlay so spawnPrefab and the
-    // overlay agree.
-    if (gateLink) {
-      const arrival = mirrorPosition(body.z, gateLink.edge, gateLink.offset);
-      body.x = arrival.x; body.y = arrival.y; body.z = arrival.z;
-      body.player.position = arrival;
-    }
-
-    // Inform the coordinator (T-139 channel). Best-effort — gateway may
-    // be down or the link may not be open yet.
-    this.gatewayLink?.publish({
-      type: "world_event",
-      sourceTileId: this.tileId,
-      event: {
-        kind: "gate_approached",
-        playerId: payload.entityId,
-        destinationTileId: payload.destinationTileId,
-        edge: gateLink?.edge ?? "north",
-      },
-    }).catch(() => {/* best-effort */});
-
-    fetch(`${this.gatewayUrl}/handoff`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        [SERVICE_SECRET_HEADER]: this.serviceSecret,
-      },
-      body: JSON.stringify(body),
-    }).then(async (r) => {
-      if (r.ok) {
-        const ack = await r.json().catch(() => null) as
-          | { destinationTileAddress?: string; destinationTileCertHashHex?: string }
-          | null;
-        const session = this.sessions.get(payload.entityId);
-        // Send a final GateCrossing event on the reliable stream and AWAIT
-        // the flush — sendStateRaw queues writes via a Promise chain, and
-        // session.close() trips the queue's _closed guard if it runs before
-        // the queued microtask. Without the await the GateCrossing bytes
-        // never hit the wire and the client just sees the disconnect.
-        if (session && ack?.destinationTileAddress) {
-          this.sendGateCrossing(
-            session,
-            payload.entityId,
-            ack.destinationTileAddress,
-            ack.destinationTileCertHashHex ?? "",
-          );
-          await session.flush();
-        }
-        // Mark the player as handed-off BEFORE destroy/close so the
-        // disconnect-cleanup path in handleSession knows to skip the
-        // recordDeath branch — the entity is destroyed because we moved
-        // them, not because they died.
-        this.handedOff.add(payload.entityId);
-        if (this.world.isAlive(payload.entityId)) {
-          // The destination tile already re-created the carried item
-          // entities from `body` (serializePlayer's payload, sent above) —
-          // the source tile's own copies (equipped AND plain inventory
-          // unique items) are now redundant and must not linger here.
-          // Found in passing while wiring destroySubtree (T-219): this call
-          // was missing relative to the other two disconnect/death paths,
-          // which both already take carried items along (T-252) — a
-          // pre-existing leak this closes as an incidental fix.
-          destroyCarriedItemEntities(this.world, payload.entityId);
-          this.world.destroySubtree(payload.entityId);
-        }
-        session?.close();
-        this.sessions.delete(payload.entityId);
-        console.log(
-          `[TileServer] handoff complete: ${payload.entityId.slice(0, 8)} → ${payload.destinationTileId}`,
-        );
-      } else {
-        console.error(`[TileServer] handoff failed for ${payload.entityId}: ${r.status}`);
-      }
-    }).catch((err: unknown) => {
-      console.error("[TileServer] handoff fetch error:", err);
-    }).finally(() => {
-      this.handingOff.delete(payload.entityId);
-      // T-256: don't let a handedOff marker outlive the operation. The success
-      // path's own cleanup (destroy + sessions.delete) makes the subsequent
-      // disconnect-cleanup superseded-return before it consumes the marker, so
-      // a leaked entry would later swallow a real death's recordDeath for a
-      // player who returned to this tile.
-      this.handedOff.delete(payload.entityId);
-    });
-  }
+  // ---- player spawn / respawn ----
 
   /**
    * Spawn a fresh player entity for `playerId` — the join-time spawn pipeline,
@@ -1086,43 +911,11 @@ export class TileServer {
           console.error("[TileServer] respawn recordDeath failed:", err);
         });
       }
-      await this.spawnFreshPlayer(playerId, this.playerHearthAnchors.get(playerId) ?? null);
+      await this.spawnFreshPlayer(playerId, this.handoffCoordinator.getHearthAnchor(playerId));
       console.log(`[TileServer] player ${playerId.slice(0, 8)} respawned (heir)`);
     } finally {
       this.respawning.delete(playerId);
     }
-  }
-
-  /**
-   * Encode a one-off BinaryStateMessage carrying a single GateCrossing event
-   * and push it to the player's reliable stream. Sequenced through the
-   * session's write queue so it is delivered before the subsequent close().
-   */
-  private sendGateCrossing(
-    session: ClientSession,
-    entityId: EntityId,
-    destinationTileAddress: string,
-    destinationTileCertHashHex: string,
-  ): void {
-    const msg: BinaryStateMessage = {
-      serverTick: this.tickLoop.currentTick,
-      ackInputSeq: this.world.get(entityId, InputState)?.seq ?? 0,
-      spawns: [],
-      deltas: [],
-      removals: [],
-      destroys: [],
-      events: [{
-        type: "GateCrossing" as const,
-        entityId,
-        destinationTileAddress,
-        destinationTileCertHashHex,
-      }],
-      fogSnapshot: null,
-      fogReveals: new Uint16Array(0),
-      onlineCount: this.sessions.size,
-    };
-    const payload = binaryStateMessageCodec.encode(msg);
-    session.sendStateRaw(encodeFrame(payload));
   }
 
   private spawnWorldState(content: ContentService, biomeTag: string): void {
@@ -1183,10 +976,10 @@ export class TileServer {
    */
   private async teardownSession(playerId: EntityId): Promise<void> {
     this.sessions.delete(playerId);
-    this.playerLastZone.delete(playerId);
+    this.handoffCoordinator.clearZone(playerId);
     this.playerDisplayNames.delete(playerId);
     this.playerCharacters.delete(playerId);
-    this.playerHearthAnchors.delete(playerId);
+    this.handoffCoordinator.clearHearthAnchor(playerId);
     // Persist fog of war (T-161) before the entity (and its FogState) is
     // dropped.  Ordered BEFORE the handed-off early-return (T-256: it used to
     // run after, so fog was dropped on the rare crossing that reaches here).
@@ -1202,7 +995,7 @@ export class TileServer {
     // Handoff already destroyed the entity + closed the session intentionally
     // (player moved to another tile). Don't treat that as a death or rewrite
     // the last_tile_id back to ours; the destination tile owns both now.
-    const wasHandedOff = this.handedOff.delete(playerId);
+    const wasHandedOff = this.handoffCoordinator.consumeHandedOff(playerId);
     if (wasHandedOff) {
       console.log(`[TileServer] player ${playerId.slice(0, 8)} handed off (no death recorded)`);
       return;
@@ -1305,7 +1098,7 @@ export class TileServer {
     this.playerDisplayNames.set(playerId, displayName);
     // Cache the hearth anchor (T-079) so an in-session respawn can spawn the
     // heir at the hearth (or detect its destruction) — respawn has no join msg.
-    this.playerHearthAnchors.set(playerId, info?.hearthAnchor ?? null);
+    this.handoffCoordinator.setHearthAnchor(playerId, info?.hearthAnchor ?? null);
 
     // Character-creation selections (T-071): validate the client's join-time
     // species/lore picks against bootstrapped content and cache the resolved
@@ -1324,7 +1117,7 @@ export class TileServer {
     if (this.world.isAlive(playerId)) {
       console.log(`[TileServer] player ${playerId.slice(0, 8)} rejoining (post-handoff)`);
     } else {
-      await this.spawnFreshPlayer(playerId, this.playerHearthAnchors.get(playerId) ?? null);
+      await this.spawnFreshPlayer(playerId, this.handoffCoordinator.getHearthAnchor(playerId));
     }
 
     // Send ack with canonical playerId
@@ -1429,7 +1222,7 @@ export class TileServer {
     // last_tile_id back to ours / ghosts the entity on the destination). The
     // handoff's success path (destroy + delete) or the tile-sweep (on failure)
     // cleans up once handingOff clears.
-    if (this.handingOff.has(playerId)) {
+    if (this.handoffCoordinator.isHandingOff(playerId)) {
       console.log(`[TileServer] player ${playerId.slice(0, 8)}: session ended mid-handoff — handoff owns the entity`);
       return;
     }

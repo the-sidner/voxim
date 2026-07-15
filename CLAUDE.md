@@ -616,6 +616,7 @@ extracted into separate modules:
 |------|---------------|
 | `server.ts` | TileServer class, tick loop, delta build, state send |
 | `wiring.ts` | `wireGameSystems()` — registry composition root: every content registry, ~45 register() calls, ~15 boot fail-fast cross-checks, the EventBus subscriber wiring, the final dependency-sorted `System[]` |
+| `handoff_coordinator.ts` | `HandoffCoordinator` — gate-proximity + zone-transition polling, cross-tile handoff fetch, GateCrossing send; owns the in-flight/handed-off/zone/hearth-anchor per-player caches |
 | `admin_server.ts` | HTTP admin endpoint (`/status`, `/save`), gateway registration |
 | `quic_server.ts` | `listenQuic()` — opens Deno.QuicEndpoint, upgrades to WebTransport |
 | `session.ts` | `ClientSession` — per-player input ring buffer, reliable stream writer |
