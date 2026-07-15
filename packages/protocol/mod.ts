@@ -91,6 +91,7 @@ export { ComponentType, COMPONENT_TYPE_TO_NAME } from "./src/component_types.ts"
 export { BoundaryKind } from "./src/boundary_kind.ts";
 export { CODEC_BY_WIREID, networkedCodec, PRESENCE_ONLY_WIRE_IDS } from "./src/codec_registry.ts";
 export { EventType } from "./src/event_types.ts";
+export { isEventRelevant, subscribeAllEvents } from "./src/event_registry.ts";
 export { binaryStateMessageCodec } from "./src/state_binary.ts";
 export type {
   BinaryComponentEntry,
