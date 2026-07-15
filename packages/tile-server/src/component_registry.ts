@@ -157,10 +157,10 @@ export const NETWORKED_DEFS: ReadonlyArray<NetworkedComponentDef<any>> = [
   LightEmitter,
   DarknessModifier,
   // ── Instance-lifetime components — held unique items stream to the
-  //    holder's session via AoI inclusion in aoi.ts.
+  //    holder's session via AoI inclusion in aoi.ts. Only Durability/Stats/
+  //    Provenance remain here — Inscribed/QualityStamped went server-only
+  //    (T-349, see ALL_DEFS below).
   Durability,
-  Inscribed,
-  QualityStamped,
   Stats,
   Provenance,
   // 37 (counterReady) retired from the wire (T-250) — combat presence-flags
@@ -169,10 +169,9 @@ export const NETWORKED_DEFS: ReadonlyArray<NetworkedComponentDef<any>> = [
   //    (Staggered went server-only at T-232 for the same reason.)
   GateLink,
   Name,
-  // Action runtime (T-226): networked so the client's mirrored World runs
-  // the same slot dispatch for prediction. ActorSlots is spawn-immutable;
-  // ActiveActions changes only when a slot's phase/action changes.
-  ActorSlots,
+  // Action runtime (T-226): ActiveActions is networked — the client renders
+  // the cast bar off slot/phase; it only changes when a slot's phase/action
+  // changes. ActorSlots went server-only (T-349, see ALL_DEFS below).
   ActiveActions,
   // Resource (T-262) — vitals on the wire so the client HUD shows
   // stamina/hunger/thirst/poise. Server-only until now (T-238); the delta is
@@ -224,6 +223,10 @@ export const ALL_DEFS: ReadonlyArray<ComponentDef<any>> = [
   // CounterReady (T-250) — parry bonus-damage flag; server-only, bounded by
   // the counter_window Resource. Read by health_hit_handler.
   CounterReady,
+  // ActorSlots (T-349) — server-only now: the dispatcher's own slot-gate
+  // input, spawn-immutable; the "client predicts slot dispatch"
+  // justification never materialized (the predictor is position-only).
+  ActorSlots,
   // SpawnedFrom (T-251) — prefab id stamped by spawnPrefab; the re-completion
   // key for save/load and tile handoff. Server-only.
   SpawnedFrom,
@@ -276,6 +279,11 @@ export const ALL_DEFS: ReadonlyArray<ComponentDef<any>> = [
   // ── Instance-lifetime components (server-only) ──────────────────────────
   History,
   Owned,
+  // Inscribed/QualityStamped (T-349) — server-only now; no client consumer
+  // (tome-fragment UI, quality badge) ever materialized. Read purely
+  // server-side: deriveItemStats, the scribe workstation, dynasty.ts.
+  Inscribed,
+  QualityStamped,
   // ItemEffects (T-240): a unique item's per-instance generated effects.
   // Registered so SaveManager round-trips it for items banked in a treasury
   // (T-078); without this it silently drops on overlay.

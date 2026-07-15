@@ -1476,46 +1476,6 @@ export const durabilityCodec: Serialiser<DurabilityData> = {
   },
 };
 
-// ---- Inscribed ----
-// A lore fragment encoded into a unique item. Written at a scribe workstation;
-// read at the "internalise" interaction to grant the fragment to the reader.
-
-export interface InscribedData {
-  fragmentId: string;
-}
-
-export const inscribedCodec: Serialiser<InscribedData> = {
-  encode(v: InscribedData): Uint8Array {
-    const w = new WireWriter();
-    w.writeStr(v.fragmentId);
-    return w.toBytes();
-  },
-  decode(bytes: Uint8Array): InscribedData {
-    const r = new WireReader(bytes);
-    return { fragmentId: r.readStr() };
-  },
-};
-
-// ---- QualityStamped ----
-// Craft-time quality tier in [0, 1]. deriveItemStats() reads this and multiplies
-// the relevant derived stats (armour reduction, food/water value, light intensity).
-
-export interface QualityStampedData {
-  quality: number;
-}
-
-export const qualityStampedCodec: Serialiser<QualityStampedData> = {
-  encode(v: QualityStampedData): Uint8Array {
-    const w = new WireWriter();
-    w.writeF32(v.quality);
-    return w.toBytes();
-  },
-  decode(bytes: Uint8Array): QualityStampedData {
-    const r = new WireReader(bytes);
-    return { quality: r.readF32() };
-  },
-};
-
 // ---- WorkstationBuffer ----
 //
 // Discriminated-slot buffer. Each populated slot is either:
@@ -1732,8 +1692,8 @@ export const gateLinkCodec: Serialiser<GateLinkData> = {
 // ---- Container --------------------------------------------------------------
 // A deployed family-chest fixture's slot store for UNIQUE item entities: the
 // library (kind "tome") and the treasury (kind "equipment"). Unlike
-// WorkstationBuffer (stack-only), every slot is an entity ref, so each tome's
-// Inscribed and each weapon's Durability/QualityStamped ride along per-instance.
+// WorkstationBuffer (stack-only), every slot is an entity ref, so each item's
+// networked instance components (Durability/Stats/Provenance) ride along.
 // Networked (T-077/T-078) so the deposit/withdraw panel mirrors slot contents.
 
 export type ContainerKind = "tome" | "equipment";
@@ -1822,31 +1782,6 @@ export const boneCodec: Serialiser<BoneData> = {
   decode(bytes: Uint8Array): BoneData {
     const r = new WireReader(bytes);
     return { boneId: r.readStr() };
-  },
-};
-
-// ---- ActorSlots ------------------------------------------------------------
-// The declared slot set for an actor (T-226). Set once at spawn from the
-// actor template's `actorSlots`; never mutated at runtime. Networked so the
-// client's mirrored World can dispatch/predict the same slots.
-
-export interface ActorSlotsData {
-  slots: string[];
-}
-
-export const actorSlotsCodec: Serialiser<ActorSlotsData> = {
-  encode(v: ActorSlotsData): Uint8Array {
-    const w = new WireWriter();
-    w.writeU16(v.slots.length);
-    for (const s of v.slots) w.writeStr(s);
-    return w.toBytes();
-  },
-  decode(bytes: Uint8Array): ActorSlotsData {
-    const r = new WireReader(bytes);
-    const n = r.readU16();
-    const slots: string[] = [];
-    for (let i = 0; i < n; i++) slots.push(r.readStr());
-    return { slots };
   },
 };
 

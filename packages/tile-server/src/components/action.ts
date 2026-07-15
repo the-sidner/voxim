@@ -6,35 +6,52 @@
  *                  ["locomotion", "primary", "posture"]). Set once at spawn
  *                  from the actor template's `actorSlots`; never mutated.
  *                  The ActionDispatcher rejects any action whose `slot` the
- *                  actor does not declare.
+ *                  actor does not declare. Server-only (T-349): the "client
+ *                  mirrors slot dispatch for prediction" justification never
+ *                  materialized — the predictor is position-only and no
+ *                  client code ever read it (see T-351).
  *
  *   ActiveActions — one entry per occupied slot: which action is running
  *                  there, its phase, ticks-in-phase, who initiated it, and
  *                  an opaque per-resolver scratch blob. Absence of a slot
  *                  key means nothing is running in that slot. The
- *                  ActionDispatcher is the only writer.
- *
- * Both are networked so the client's mirrored World can run the same
- * dispatch for prediction. Payloads are small and only re-sent when a slot's
- * state changes — same bandwidth profile as the CSM component they will,
- * across the arc, replace.
+ *                  ActionDispatcher is the only writer. Networked — the
+ *                  client renders the cast bar off slot/phase progress;
+ *                  only re-sent when a slot's state changes.
  *
  * Lifetime: installed at spawn for any actor prefab declaring `actorSlots`;
- * persists for the entity's lifetime. Nothing installs these yet — the
- * locomotion/posture migration (next phase) is the first writer.
+ * persists for the entity's lifetime.
  */
 
 import { defineComponent } from "@voxim/engine";
 import type { Serialiser } from "@voxim/engine";
 import { ComponentType } from "@voxim/protocol";
-import { actorSlotsCodec, activeActionsCodec, WireWriter, WireReader } from "@voxim/codecs";
-import type { ActorSlotsData, ActiveActionsData } from "@voxim/codecs";
+import { activeActionsCodec, WireWriter, WireReader } from "@voxim/codecs";
+import type { ActiveActionsData } from "@voxim/codecs";
 
-export type { ActorSlotsData, ActiveActionsData, ActiveActionState } from "@voxim/codecs";
+export type { ActiveActionsData, ActiveActionState } from "@voxim/codecs";
+
+export interface ActorSlotsData { slots: string[] }
+
+const actorSlotsCodec: Serialiser<ActorSlotsData> = {
+  encode(v) {
+    const w = new WireWriter();
+    w.writeU16(v.slots.length);
+    for (const s of v.slots) w.writeStr(s);
+    return w.toBytes();
+  },
+  decode(b) {
+    const r = new WireReader(b);
+    const n = r.readU16();
+    const slots: string[] = [];
+    for (let i = 0; i < n; i++) slots.push(r.readStr());
+    return { slots };
+  },
+};
 
 export const ActorSlots = defineComponent({
   name: "actorSlots" as const,
-  wireId: ComponentType.actorSlots,
+  networked: false,
   codec: actorSlotsCodec,
   default: (): ActorSlotsData => ({ slots: [] }),
 });
