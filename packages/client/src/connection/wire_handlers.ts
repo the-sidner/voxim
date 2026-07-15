@@ -87,7 +87,7 @@ export function wireConnectionHandlers(game: VoximGame, conn: TileConnection): v
       const state = game.world.get(entityId);
       if (!state) continue;
       if (state.heightmap && state.materialGrid) {
-        game._noteTerrainChunkReceived();
+        game._noteTerrainChunkReceived(state.heightmap.chunkX, state.heightmap.chunkY);
         // During loading: don't push to renderer yet — keeps JS thread free so
         // QUIC flow control isn't starved.  _finishLoading() flushes everything.
         if (game.loadingComplete) {

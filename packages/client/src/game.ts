@@ -292,6 +292,10 @@ export class VoximGame {
   private static readonly TOTAL_CHUNKS = 256;
 
   private terrainChunksReceived = 0;
+  /** Chunk coords already counted toward the loading gate — a chunk DELTA
+   *  (e.g. a terrain dig re-sending heightmap/materialGrid) must not count
+   *  a chunk twice, or loading finishes early with terrain holes. */
+  private readonly countedChunkCoords = new Set<string>();
   /** True once all terrain AND all entity models are preloaded. */
   loadingComplete = false;
   /** Session token kept around so tile transitions can re-join without re-auth. */
@@ -459,7 +463,9 @@ export class VoximGame {
     // Count any terrain chunks that arrived during connect() (before renderer existed).
     // Don't push to renderer yet — _finishLoading() does that after all chunks arrive.
     for (const [entityId, state] of this.world.entries()) {
-      if (state.heightmap) this.terrainChunksReceived++;
+      // Deduped against the wire-handler path — messages processed DURING
+      // connect() already counted their chunks via _noteTerrainChunkReceived.
+      if (state.heightmap) this._noteTerrainChunkReceived(state.heightmap.chunkX, state.heightmap.chunkY);
       if (state.worldClock) {
         this.renderer?.setDayPhase(worldClockPhase(
           state.worldClock.ticksElapsed, state.worldClock.dayLengthTicks,
@@ -691,6 +697,7 @@ export class VoximGame {
     closePanel("job_board");
     patchUI({ workstation: null, container: null, trader: null, jobBoard: null });
     this.terrainChunksReceived = 0;
+    this.countedChunkCoords.clear();
     this.loadingComplete = false;
     this.predictor?.reset();
 
@@ -1234,8 +1241,14 @@ export class VoximGame {
     }
   }
 
-  /** Count one received terrain chunk toward the loading gate + progress UI. */
-  _noteTerrainChunkReceived(): void {
+  /** Count one terrain chunk's FIRST arrival toward the loading gate +
+   *  progress UI. Deduped by chunk coord: later deltas touching the same
+   *  chunk (digs) are counted zero times, so the gate can neither finish
+   *  early nor keep patching loadingProgress forever after load. */
+  _noteTerrainChunkReceived(chunkX: number, chunkY: number): void {
+    const coord = `${chunkX},${chunkY}`;
+    if (this.countedChunkCoords.has(coord)) return;
+    this.countedChunkCoords.add(coord);
     this.terrainChunksReceived++;
     patchUI({ loadingProgress: Math.min(1, this.terrainChunksReceived / VoximGame.TOTAL_CHUNKS) });
     if (this.terrainChunksReceived % 20 === 0 || this.terrainChunksReceived === VoximGame.TOTAL_CHUNKS) {
@@ -1325,6 +1338,7 @@ export class VoximGame {
     this.running = false;
     this.predictor = null;
     this.terrainChunksReceived = 0;
+    this.countedChunkCoords.clear();
     this.loadingComplete = false;
     cancelAnimationFrame(this.animFrameId);
     this.interactionSystem?.dispose();
