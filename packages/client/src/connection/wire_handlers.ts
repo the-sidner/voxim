@@ -25,6 +25,10 @@ export function wireConnectionHandlers(game: VoximGame, conn: TileConnection): v
     game.serverTick = snap.serverTick;
     game.world.applySnapshot(snap);
     recordSnapshot(snap);
+    // Same loading gate as onStateMessage below: during loading, positions
+    // only buffer in ClientWorld (mesh creation + model prefetch would starve
+    // QUIC flow control) — _finishLoading() flushes everything to the renderer.
+    if (!game.loadingComplete) return;
     for (const e of snap.entities) {
       const state = game.world.get(e.entityId);
       if (state?.position) game.renderer?.updateEntity(e.entityId, state);
