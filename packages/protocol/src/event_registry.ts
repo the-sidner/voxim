@@ -32,6 +32,24 @@ import type { EntityId, EventBus } from "@voxim/engine";
 import { EventType } from "./event_types.ts";
 import { TileEvents } from "./tile_events.ts";
 import type {
+  BuildingCompletedPayload,
+  BuildingMaterialsConsumedPayload,
+  BuildingMissingMaterialsPayload,
+  CraftingCompletedPayload,
+  DamageDealtPayload,
+  DayPhaseChangedPayload,
+  EnclosureChangedPayload,
+  EntityDiedPayload,
+  GateApproachedPayload,
+  HealedPayload,
+  HitSparkPayload,
+  HungerCriticalPayload,
+  LoreExternalisedPayload,
+  LoreInternalisedPayload,
+  NodeDepletedPayload,
+  TradeCompletedPayload,
+} from "./tile_events.ts";
+import type {
   GameEvent,
   DamageDealtEvent,
   HitSparkEvent,
@@ -126,15 +144,7 @@ const damageDealt: EventDescriptor<DamageDealtEvent> = {
   ),
   fromTileEvent: {
     event: TileEvents.DamageDealt,
-    translate(p: {
-      targetId: EntityId;
-      sourceId: EntityId;
-      amount: number;
-      blocked: boolean;
-      hitX: number;
-      hitY: number;
-      hitZ: number;
-    }): DamageDealtEvent {
+    translate(p: DamageDealtPayload): DamageDealtEvent {
       return {
         type: "DamageDealt",
         targetId: p.targetId,
@@ -164,7 +174,7 @@ const entityDied: EventDescriptor<EntityDiedEvent> = {
   relevance: known<EntityDiedEvent>("entityId"),
   fromTileEvent: {
     event: TileEvents.EntityDied,
-    translate(p: { entityId: EntityId; killerId?: EntityId }): EntityDiedEvent {
+    translate(p: EntityDiedPayload): EntityDiedEvent {
       return { type: "EntityDied", entityId: p.entityId, killerId: p.killerId };
     },
   },
@@ -182,7 +192,7 @@ const craftingCompleted: EventDescriptor<CraftingCompletedEvent> = {
   relevance: player<CraftingCompletedEvent>("crafterId"),
   fromTileEvent: {
     event: TileEvents.CraftingCompleted,
-    translate(p: { crafterId: EntityId; recipeId: string }): CraftingCompletedEvent {
+    translate(p: CraftingCompletedPayload): CraftingCompletedEvent {
       return { type: "CraftingCompleted", crafterId: p.crafterId, recipeId: p.recipeId };
     },
   },
@@ -209,11 +219,7 @@ const buildingCompleted: EventDescriptor<BuildingCompletedEvent> = {
   ),
   fromTileEvent: {
     event: TileEvents.BuildingCompleted,
-    translate(p: {
-      builderId: EntityId;
-      blueprintId: EntityId;
-      structureType: string;
-    }): BuildingCompletedEvent {
+    translate(p: BuildingCompletedPayload): BuildingCompletedEvent {
       return {
         type: "BuildingCompleted",
         builderId: p.builderId,
@@ -243,11 +249,7 @@ const buildingMaterialsConsumed: EventDescriptor<BuildingMaterialsConsumedEvent>
   relevance: player<BuildingMaterialsConsumedEvent>("builderId"),
   fromTileEvent: {
     event: TileEvents.BuildingMaterialsConsumed,
-    translate(p: {
-      builderId: EntityId;
-      structureType: string;
-      consumed: { itemType: string; quantity: number }[];
-    }): BuildingMaterialsConsumedEvent {
+    translate(p: BuildingMaterialsConsumedPayload): BuildingMaterialsConsumedEvent {
       return {
         type: "BuildingMaterialsConsumed",
         builderId: p.builderId,
@@ -277,11 +279,7 @@ const buildingMissingMaterials: EventDescriptor<BuildingMissingMaterialsEvent> =
   relevance: player<BuildingMissingMaterialsEvent>("builderId"),
   fromTileEvent: {
     event: TileEvents.BuildingMissingMaterials,
-    translate(p: {
-      builderId: EntityId;
-      structureType: string;
-      missing: { itemType: string; quantity: number }[];
-    }): BuildingMissingMaterialsEvent {
+    translate(p: BuildingMissingMaterialsPayload): BuildingMissingMaterialsEvent {
       return {
         type: "BuildingMissingMaterials",
         builderId: p.builderId,
@@ -303,7 +301,7 @@ const hungerCritical: EventDescriptor<HungerCriticalEvent> = {
   relevance: player<HungerCriticalEvent>("entityId"),
   fromTileEvent: {
     event: TileEvents.HungerCritical,
-    translate(p: { entityId: EntityId }): HungerCriticalEvent {
+    translate(p: HungerCriticalPayload): HungerCriticalEvent {
       return { type: "HungerCritical", entityId: p.entityId };
     },
   },
@@ -321,7 +319,7 @@ const healed: EventDescriptor<HealedEvent> = {
   relevance: known<HealedEvent>("entityId"),
   fromTileEvent: {
     event: TileEvents.Healed,
-    translate(p: { entityId: EntityId; amount: number }): HealedEvent {
+    translate(p: HealedPayload): HealedEvent {
       return { type: "Healed", entityId: p.entityId, amount: p.amount };
     },
   },
@@ -345,11 +343,7 @@ const gateApproached: EventDescriptor<GateApproachedEvent> = {
   relevance: player<GateApproachedEvent>("entityId"),
   fromTileEvent: {
     event: TileEvents.GateApproached,
-    translate(p: {
-      entityId: EntityId;
-      gateId: string;
-      destinationTileId: string;
-    }): GateApproachedEvent {
+    translate(p: GateApproachedPayload): GateApproachedEvent {
       return {
         type: "GateApproached",
         entityId: p.entityId,
@@ -400,11 +394,7 @@ const nodeDepleted: EventDescriptor<NodeDepletedEvent> = {
   ),
   fromTileEvent: {
     event: TileEvents.NodeDepleted,
-    translate(p: {
-      nodeId: EntityId;
-      nodeTypeId: string;
-      harvesterId: EntityId;
-    }): NodeDepletedEvent {
+    translate(p: NodeDepletedPayload): NodeDepletedEvent {
       return {
         type: "NodeDepleted",
         nodeId: p.nodeId,
@@ -427,7 +417,7 @@ const dayPhaseChanged: EventDescriptor<DayPhaseChangedEvent> = {
   relevance: ALWAYS,
   fromTileEvent: {
     event: TileEvents.DayPhaseChanged,
-    translate(p: { phase: string; timeOfDay: number }): DayPhaseChangedEvent {
+    translate(p: DayPhaseChangedPayload): DayPhaseChangedEvent {
       return { type: "DayPhaseChanged", phase: p.phase, timeOfDay: p.timeOfDay };
     },
   },
@@ -458,13 +448,7 @@ const tradeCompleted: EventDescriptor<TradeCompletedEvent> = {
   ),
   fromTileEvent: {
     event: TileEvents.TradeCompleted,
-    translate(p: {
-      buyerId: EntityId;
-      traderId: EntityId;
-      itemType: string;
-      quantity: number;
-      coinDelta: number;
-    }): TradeCompletedEvent {
+    translate(p: TradeCompletedPayload): TradeCompletedEvent {
       return {
         type: "TradeCompleted",
         buyerId: p.buyerId,
@@ -489,7 +473,7 @@ const loreExternalised: EventDescriptor<LoreExternalisedEvent> = {
   relevance: player<LoreExternalisedEvent>("entityId"),
   fromTileEvent: {
     event: TileEvents.LoreExternalised,
-    translate(p: { entityId: EntityId; fragmentId: string }): LoreExternalisedEvent {
+    translate(p: LoreExternalisedPayload): LoreExternalisedEvent {
       return { type: "LoreExternalised", entityId: p.entityId, fragmentId: p.fragmentId };
     },
   },
@@ -507,7 +491,7 @@ const loreInternalised: EventDescriptor<LoreInternalisedEvent> = {
   relevance: player<LoreInternalisedEvent>("entityId"),
   fromTileEvent: {
     event: TileEvents.LoreInternalised,
-    translate(p: { entityId: EntityId; fragmentId: string }): LoreInternalisedEvent {
+    translate(p: LoreInternalisedPayload): LoreInternalisedEvent {
       return { type: "LoreInternalised", entityId: p.entityId, fragmentId: p.fragmentId };
     },
   },
@@ -535,13 +519,7 @@ const hitSpark: EventDescriptor<HitSparkEvent> = {
   relevance: ALWAYS,
   fromTileEvent: {
     event: TileEvents.HitSpark,
-    translate(p: {
-      x: number;
-      y: number;
-      z: number;
-      attackerPart: string;
-      victimPart: string;
-    }): HitSparkEvent {
+    translate(p: HitSparkPayload): HitSparkEvent {
       return {
         type: "HitSpark",
         x: p.x,
@@ -595,7 +573,7 @@ const enclosureChanged: EventDescriptor<EnclosureChangedEvent> = {
   relevance: ALWAYS,
   fromTileEvent: {
     event: TileEvents.EnclosureChanged,
-    translate(p: { cells: { x: number; y: number }[] }): EnclosureChangedEvent {
+    translate(p: EnclosureChangedPayload): EnclosureChangedEvent {
       return { type: "EnclosureChanged", cells: p.cells };
     },
   },

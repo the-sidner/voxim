@@ -321,7 +321,11 @@ export interface DamageDealtEvent {
   sourceId: EntityId;
   amount: number;
   blocked: boolean;
-  /** World-space contact point for hit effects. */
+  /**
+   * World-space contact point for hit effects: the blade contact point for
+   * melee hits, the target's own position for non-spatial damage
+   * (starvation/dehydration DPS, a skill's life drain).
+   */
   hitX: number;
   hitY: number;
   hitZ: number;
@@ -436,7 +440,10 @@ export interface LoreInternalisedEvent {
   fragmentId: string;
 }
 
-/** One sealed world cell, integer coordinates. */
+/**
+ * One sealed world cell, integer coordinates (floor of the world position —
+ * matches EnclosureSystem.isEnclosed's convention).
+ */
 export interface EnclosedCell {
   x: number;
   y: number;

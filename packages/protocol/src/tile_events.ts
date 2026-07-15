@@ -4,11 +4,35 @@
  * Published by the tile server after applyChangeset() each tick.
  * Consumers: NPC AI, world event bus bridge, client-side UI/audio triggers.
  *
+ * Every event with a wire face derives its payload from the GameEvent
+ * interface in messages.ts (`Omit<XEvent, "type">`) — publisher, internal
+ * subscribers, and the event registry's `translate` all share that ONE
+ * shape, so the bus payload cannot drift from the wire again (T-359).
+ * Server-only events (no GameEvent counterpart) keep hand-written
+ * interfaces here.
+ *
  * Usage:
  *   bus.subscribe(TileEvents.EntityDied, (e: EntityDiedPayload) => { ... })
  *   bus.publish(TileEvents.DamageDealt, { ... })
  */
 import type { EntityId } from "@voxim/engine";
+import type {
+  BuildingCompletedEvent,
+  BuildingMaterialsConsumedEvent,
+  BuildingMissingMaterialsEvent,
+  CraftingCompletedEvent,
+  DamageDealtEvent,
+  DayPhaseChangedEvent,
+  EnclosureChangedEvent,
+  EntityDiedEvent,
+  GateApproachedEvent,
+  HealedEvent,
+  HitSparkEvent,
+  LoreExternalisedEvent,
+  LoreInternalisedEvent,
+  NodeDepletedEvent,
+  TradeCompletedEvent,
+} from "./messages.ts";
 
 export const TileEvents = {
   EntityDied: Symbol("EntityDied"),
@@ -19,7 +43,6 @@ export const TileEvents = {
   BuildingMaterialsConsumed: Symbol("BuildingMaterialsConsumed"),
   BuildingMissingMaterials: Symbol("BuildingMissingMaterials"),
   HungerCritical: Symbol("HungerCritical"),
-  ThirstCritical: Symbol("ThirstCritical"),
   Healed: Symbol("Healed"),
   GateApproached: Symbol("GateApproached"),
   NodeDepleted: Symbol("NodeDepleted"),
@@ -63,89 +86,36 @@ export const TileEvents = {
   EnclosureChanged: Symbol("EnclosureChanged"),
 } as const;
 
-export interface EntityDiedPayload {
-  entityId: EntityId;
-  killerId?: EntityId;
-}
+// ---- wire-backed payloads: the GameEvent shape minus the discriminant ----
 
-export interface HitSparkPayload {
-  x: number;
-  y: number;
-  z: number;
-}
+export type EntityDiedPayload = Omit<EntityDiedEvent, "type">;
+export type DamageDealtPayload = Omit<DamageDealtEvent, "type">;
+export type HitSparkPayload = Omit<HitSparkEvent, "type">;
+export type CraftingCompletedPayload = Omit<CraftingCompletedEvent, "type">;
+export type BuildingCompletedPayload = Omit<BuildingCompletedEvent, "type">;
+export type BuildingMaterialsConsumedPayload = Omit<BuildingMaterialsConsumedEvent, "type">;
+export type BuildingMissingMaterialsPayload = Omit<BuildingMissingMaterialsEvent, "type">;
+export type HealedPayload = Omit<HealedEvent, "type">;
+export type GateApproachedPayload = Omit<GateApproachedEvent, "type">;
+export type NodeDepletedPayload = Omit<NodeDepletedEvent, "type">;
+export type DayPhaseChangedPayload = Omit<DayPhaseChangedEvent, "type">;
+export type TradeCompletedPayload = Omit<TradeCompletedEvent, "type">;
+export type LoreExternalisedPayload = Omit<LoreExternalisedEvent, "type">;
+export type LoreInternalisedPayload = Omit<LoreInternalisedEvent, "type">;
+export type EnclosureChangedPayload = Omit<EnclosureChangedEvent, "type">;
 
-export interface DamageDealtPayload {
-  targetId: EntityId;
-  sourceId: EntityId;
-  amount: number;
-  blocked: boolean;
-  /** Which body part was struck. Empty string for parried hits (no contact). */
-  bodyPart: string;
-  /** World-space contact point — midpoint between closest points on blade and hit capsule. */
-  hitX: number;
-  hitY: number;
-  hitZ: number;
-}
-
-export interface CraftingCompletedPayload {
-  crafterId: EntityId;
-  recipeId: string;
-}
-
+/**
+ * Published by the generic `emit_event` resource effect, whose payload is
+ * always `{ entityId, value }` — the wire face (HungerCriticalEvent)
+ * carries only `entityId`; `value` is the resource reading at the
+ * threshold cross, available to server-side subscribers.
+ */
 export interface HungerCriticalPayload {
   entityId: EntityId;
   value: number;
 }
 
-export interface HealedPayload {
-  entityId: EntityId;
-  amount: number;
-}
-
-export interface ThirstCriticalPayload {
-  entityId: EntityId;
-  value: number;
-}
-
-export interface BuildingCompletedPayload {
-  builderId: EntityId;
-  blueprintId: EntityId;
-  structureType: string;
-}
-
-export interface BuildingMaterial {
-  itemType: string;
-  quantity: number;
-}
-
-export interface BuildingMaterialsConsumedPayload {
-  builderId: EntityId;
-  structureType: string;
-  consumed: BuildingMaterial[];
-}
-
-export interface BuildingMissingMaterialsPayload {
-  builderId: EntityId;
-  structureType: string;
-  missing: BuildingMaterial[];
-}
-
-export interface GateApproachedPayload {
-  entityId: EntityId;
-  gateId: string;
-  destinationTileId: string;
-}
-
-export interface NodeDepletedPayload {
-  nodeId: EntityId;
-  nodeTypeId: string;
-  harvesterId: EntityId;
-}
-
-export interface DayPhaseChangedPayload {
-  phase: string;
-  timeOfDay: number;
-}
+// ---- server-only payloads (no GameEvent counterpart) ----
 
 export interface HitLandedPayload {
   attackerId: EntityId;
@@ -172,36 +142,4 @@ export interface EntityDeployedPayload {
   worldX: number;
   worldY: number;
   worldZ: number;
-}
-
-export interface TradeCompletedPayload {
-  buyerId: EntityId;
-  traderId: EntityId;
-  itemType: string;
-  quantity: number;
-  coinDelta: number;
-}
-
-export interface LoreExternalisedPayload {
-  entityId: EntityId;
-  fragmentId: string;
-}
-
-export interface LoreInternalisedPayload {
-  entityId: EntityId;
-  fragmentId: string;
-}
-
-/**
- * One sealed world cell, integer coordinates (floor of the world position —
- * matches EnclosureSystem.isEnclosed's convention).
- */
-export interface EnclosedCell {
-  x: number;
-  y: number;
-}
-
-export interface EnclosureChangedPayload {
-  /** The full enclosed-cell set after this recompute (not a diff). */
-  cells: EnclosedCell[];
 }

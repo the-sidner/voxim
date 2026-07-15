@@ -59,7 +59,6 @@ export type {
   CraftingCompletedPayload,
   BuildingCompletedPayload,
   HungerCriticalPayload,
-  ThirstCriticalPayload,
   GateApproachedPayload,
   NodeDepletedPayload,
   DayPhaseChangedPayload,
