@@ -2202,7 +2202,7 @@ refreshed; the code is the reference. Only comments stating a constraint the
 code cannot show survive.
 
 ### T-348 · Event wire path → per-event descriptor registry
-Effort: L   Status: todo
+Effort: L   Status: in-progress
 
 The one subsystem the registry rebuild (T-279–284) never reached. Every GameEvent
 kind is hand-maintained at FOUR sites: the union in `protocol/src/messages.ts`,
@@ -2217,7 +2217,7 @@ Done when: adding a new game event touches exactly one registration site and the
 four switches are gone.
 
 ### T-349 · Single-source networked-component registry + boot fail-fast
-Effort: M   Status: todo
+Effort: M   Status: in-progress
 
 `NETWORKED_DEFS` (server encode) and `CODEC_BY_WIREID` (client decode) are two
 independently authored lists, plus a third hardcoded copy in
@@ -2233,7 +2233,7 @@ is unrealized — predictor is position-only), `Inscribed` (34), `QualityStamped
 spawn-size + delta bandwidth.
 
 ### T-350 · Retire dead components: CraftingQueue, DarknessModifier
-Effort: S   Status: todo
+Effort: S   Status: in-progress
 
 `CraftingQueue` is written once at spawn on every player and read by nobody —
 crafting is entirely WorkstationBuffer-based; it occupies a wire ID and a
@@ -2244,7 +2244,7 @@ checklist to both (spawner, registry, codec, client field, def; leave the numeri
 slots as retired comments) and simplify `getLightAt`.
 
 ### T-351 · SwingPredictor: real chain state or delete the combo apparatus
-Effort: M   Status: todo
+Effort: M   Status: in-progress
 
 `client/src/prediction/swing_predictor.ts` is premised on a networked SwingChain
 that no longer exists (wire id 46 retired, component is server-only). The caller
@@ -2254,7 +2254,7 @@ every combo continuation mispredicts. Either derive real chain state client-side
 and delete the `chainIndex` apparatus.
 
 ### T-352 · server.ts decomposition — composition root + HandoffCoordinator
-Effort: L   Status: todo
+Effort: L   Status: in-progress
 
 `server.ts` is 2196 lines; `start()` alone spans ~1000 and interleaves cert
 hashing, content validation, the entire registry composition root (8 registries,
@@ -2266,7 +2266,7 @@ into a `HandoffCoordinator`, per the "large subsystems are extracted into
 separate modules" table.
 
 ### T-353 · game.ts decomposition — connection wiring, panel mirrors, UIAction table, pose composer
-Effort: L   Status: todo
+Effort: L   Status: in-progress
 
 `game.ts` is 2220 lines with 200–370-line methods. Extraction seams:
 `_wireConnectionHandlers` (~370 lines); the panel-bridge family
@@ -2279,7 +2279,7 @@ registered producer list — compliant on "no per-weapon branches" today but not
 on "producers → generic solver".
 
 ### T-354 · Unify session teardown
-Effort: S   Status: todo
+Effort: S   Status: in-progress
 
 Two teardown paths have drifted: the tick-loop dead-session sweep deletes
 `playerLastZone` but skips fog-save + account calls; the `handleSession` end
@@ -2287,7 +2287,7 @@ path does the reverse — whichever fires first wins, so `playerLastZone` can
 leak. One `teardownSession(playerId)` method both paths call.
 
 ### T-355 · AoI: hoist session-independent per-tick work
-Effort: M   Status: todo
+Effort: M   Status: in-progress
 
 `computeSessionUpdate` re-runs `world.query(Heightmap)` (rebuilding
 `allChunkIds`), `WorldClock`, `GateLink`, and `Container` queries once per
@@ -2296,7 +2296,7 @@ known-set copy and an `[...inAoI]` spread per session. Compute the shared
 always-visible set + chunk inputs once in the tick loop and pass them in.
 
 ### T-356 · Renderer motion/lighting scalars → content
-Effort: S   Status: todo
+Effort: S   Status: in-progress
 
 The graphics arc migrated the color pipeline to content (grade, bloom, god rays,
 mist, atmosphere) but not the motion/lighting scalars: `CROUCH_DROP`/
@@ -2307,7 +2307,7 @@ game_config/atmosphere content. Also fold in: `camera_rig.ts` pre-bootstrap
 fallbacks literally duplicate `game_config.json` values.
 
 ### T-357 · Housekeeping sweep — delete stale doc, small pattern fixes
-Effort: M   Status: todo
+Effort: M   Status: in-progress
 
 Doc rot (DELETE, don't refresh — see section note):
 - `skeleton_evaluator.ts` header describes the retired CSM layer stack and
