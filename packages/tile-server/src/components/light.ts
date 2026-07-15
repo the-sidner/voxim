@@ -1,7 +1,6 @@
 import { defineComponent } from "@voxim/engine";
 import type { World } from "@voxim/engine";
-import { ComponentType } from "@voxim/protocol";
-import { lightEmitterCodec, darknessModifierCodec } from "@voxim/codecs";
+import { ComponentType, networkedCodec } from "@voxim/protocol";
 import type { LightEmitterData, DarknessModifierData } from "@voxim/codecs";
 import { Position } from "./game.ts";
 
@@ -14,7 +13,7 @@ import { Position } from "./game.ts";
 export const LightEmitter = defineComponent({
   name: "lightEmitter" as const,
   wireId: ComponentType.lightEmitter,
-  codec: lightEmitterCodec,
+  codec: networkedCodec<LightEmitterData>(ComponentType.lightEmitter),
   default: (): LightEmitterData => ({ color: 0xffaa44, intensity: 1.0, radius: 8.0, lightDefId: "torch" }),
 });
 
@@ -25,7 +24,7 @@ export const LightEmitter = defineComponent({
 export const DarknessModifier = defineComponent({
   name: "darknessModifier" as const,
   wireId: ComponentType.darknessModifier,
-  codec: darknessModifierCodec,
+  codec: networkedCodec<DarknessModifierData>(ComponentType.darknessModifier),
   default: (): DarknessModifierData => ({ radius: 6.0, strength: 0.5 }),
 });
 

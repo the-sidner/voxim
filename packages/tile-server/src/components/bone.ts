@@ -1,6 +1,5 @@
 import { defineComponent } from "@voxim/engine";
-import { ComponentType } from "@voxim/protocol";
-import { boneCodec } from "@voxim/codecs";
+import { ComponentType, networkedCodec } from "@voxim/protocol";
 import type { BoneData } from "@voxim/codecs";
 
 export type { BoneData };
@@ -23,6 +22,6 @@ export type { BoneData };
 export const Bone = defineComponent({
   name: "bone" as const,
   wireId: ComponentType.bone,
-  codec: boneCodec,
+  codec: networkedCodec<BoneData>(ComponentType.bone),
   default: (): BoneData => ({ boneId: "" }),
 });

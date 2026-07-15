@@ -20,14 +20,8 @@
  */
 import { defineComponent } from "@voxim/engine";
 import type { Serialiser } from "@voxim/engine";
-import { ComponentType } from "@voxim/protocol";
-import {
-  durabilityCodec,
-  statsCodec,
-  provenanceCodec,
-  WireReader,
-  WireWriter,
-} from "@voxim/codecs";
+import { ComponentType, networkedCodec } from "@voxim/protocol";
+import { WireReader, WireWriter } from "@voxim/codecs";
 import type {
   DurabilityData,
   StatsData,
@@ -42,7 +36,7 @@ export type { DurabilityData, StatsData, ProvenanceData };
 export const Durability = defineComponent({
   name: "durability" as const,
   wireId: ComponentType.durability,
-  codec: durabilityCodec,
+  codec: networkedCodec<DurabilityData>(ComponentType.durability),
   default: (): DurabilityData => ({ remaining: 100, max: 100 }),
 });
 
@@ -107,7 +101,7 @@ export const QualityStamped = defineComponent({
 export const Stats = defineComponent({
   name: "stats" as const,
   wireId: ComponentType.stats,
-  codec: statsCodec,
+  codec: networkedCodec<StatsData>(ComponentType.stats),
   default: (): StatsData => ({}),
 });
 
@@ -119,7 +113,7 @@ export const Stats = defineComponent({
 export const Provenance = defineComponent({
   name: "provenance" as const,
   wireId: ComponentType.provenance,
-  codec: provenanceCodec,
+  codec: networkedCodec<ProvenanceData>(ComponentType.provenance),
   default: (): ProvenanceData => ([]),
 });
 

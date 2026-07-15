@@ -1,6 +1,6 @@
 import { defineComponent } from "@voxim/engine";
-import { ComponentType } from "@voxim/protocol";
-import { worldClockCodec, type WorldClockData } from "@voxim/codecs";
+import { ComponentType, networkedCodec } from "@voxim/protocol";
+import type { WorldClockData } from "@voxim/codecs";
 import { timeOfDay01 } from "@voxim/content";
 
 // ---- WorldClock ----
@@ -16,7 +16,7 @@ export type { WorldClockData };
 export const WorldClock = defineComponent({
   name: "worldClock" as const,
   wireId: ComponentType.worldClock,
-  codec: worldClockCodec,
+  codec: networkedCodec<WorldClockData>(ComponentType.worldClock),
   default: (): WorldClockData => ({ ticksElapsed: 0, dayLengthTicks: 14400, biomeTag: "plains" }),
 });
 

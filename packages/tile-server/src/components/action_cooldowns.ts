@@ -16,8 +16,7 @@
  */
 
 import { defineComponent } from "@voxim/engine";
-import { ComponentType } from "@voxim/protocol";
-import { actionCooldownsCodec } from "@voxim/codecs";
+import { ComponentType, networkedCodec } from "@voxim/protocol";
 import type { ActionCooldownsData } from "@voxim/codecs";
 
 export type { ActionCooldownsData };
@@ -25,6 +24,6 @@ export type { ActionCooldownsData };
 export const ActionCooldowns = defineComponent({
   name: "actionCooldowns" as const,
   wireId: ComponentType.actionCooldowns,
-  codec: actionCooldownsCodec,
+  codec: networkedCodec<ActionCooldownsData>(ComponentType.actionCooldowns),
   default: (): ActionCooldownsData => ({ gcd: 0, remaining: {} }),
 });

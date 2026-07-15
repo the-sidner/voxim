@@ -1,19 +1,16 @@
 /**
  * Game component definitions for the tile server.
  *
- * All networked components use the shared codecs from @voxim/codecs so
- * client and server agree on the binary format by construction. This file
- * pairs each codec with a ComponentDef (wireId, schema, default); no codec
- * logic lives inline.
+ * All networked components resolve their codec through networkedCodec()
+ * from @voxim/protocol's CODEC_BY_WIREID — the one authoring site of the
+ * wireId→codec pairing (T-349) — so client and server agree on the binary
+ * format by construction. This file pairs each wireId with a ComponentDef
+ * (schema, default); no codec logic lives inline.
  */
 import { defineComponent } from "@voxim/engine";
-import { ComponentType } from "@voxim/protocol";
+import { ComponentType, networkedCodec } from "@voxim/protocol";
 import * as v from "valibot";
-import {
-  positionCodec, velocityCodec, facingCodec,
-  inputStateCodec, healthCodec,
-  modelRefCodec, animationStateCodec, nameCodec,
-} from "@voxim/codecs";
+import { inputStateCodec } from "@voxim/codecs";
 import type {
   PositionData, VelocityData, FacingData,
   InputStateData, HealthData,
@@ -35,21 +32,21 @@ export type { ModelRefData, AnimationStateData };
 export const Position = defineComponent({
   name: "position" as const,
   wireId: ComponentType.position,
-  codec: positionCodec,
+  codec: networkedCodec<PositionData>(ComponentType.position),
   default: (): PositionData => ({ x: 256, y: 256, z: 4.0 }), // tile centre, default terrain height
 });
 
 export const Velocity = defineComponent({
   name: "velocity" as const,
   wireId: ComponentType.velocity,
-  codec: velocityCodec,
+  codec: networkedCodec<VelocityData>(ComponentType.velocity),
   default: (): VelocityData => ({ x: 0, y: 0, z: 0 }),
 });
 
 export const Facing = defineComponent({
   name: "facing" as const,
   wireId: ComponentType.facing,
-  codec: facingCodec,
+  codec: networkedCodec<FacingData>(ComponentType.facing),
   default: (): FacingData => ({ angle: 0 }),
 });
 
@@ -98,7 +95,7 @@ const healthSchema = v.object({
 export const Health = defineComponent({
   name: "health" as const,
   wireId: ComponentType.health,
-  codec: healthCodec,
+  codec: networkedCodec<HealthData>(ComponentType.health),
   schema: healthSchema,
   default: (): HealthData => ({ current: 100, max: 100 }),
 });
@@ -116,7 +113,7 @@ export const Health = defineComponent({
 export const ModelRef = defineComponent({
   name: "modelRef" as const,
   wireId: ComponentType.modelRef,
-  codec: modelRefCodec,
+  codec: networkedCodec<ModelRefData>(ComponentType.modelRef),
   default: (): ModelRefData => ({ modelId: "human_base", scaleX: 0.35, scaleY: 0.35, scaleZ: 0.35, seed: 0 }),
 });
 
@@ -125,7 +122,7 @@ export const ModelRef = defineComponent({
 export const AnimationState = defineComponent({
   name: "animationState" as const,
   wireId: ComponentType.animationState,
-  codec: animationStateCodec,
+  codec: networkedCodec<AnimationStateData>(ComponentType.animationState),
   default: (): AnimationStateData => ({
     layers: [],
     weaponActionId: "",
@@ -145,7 +142,7 @@ const nameSchema = v.object({
 export const Name = defineComponent({
   name: "name" as const,
   wireId: ComponentType.name,
-  codec: nameCodec,
+  codec: networkedCodec<NameData>(ComponentType.name),
   schema: nameSchema,
   default: (): NameData => ({ value: "" }),
 });

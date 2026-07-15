@@ -25,8 +25,8 @@
 
 import { defineComponent } from "@voxim/engine";
 import type { Serialiser } from "@voxim/engine";
-import { ComponentType } from "@voxim/protocol";
-import { activeActionsCodec, WireWriter, WireReader } from "@voxim/codecs";
+import { ComponentType, networkedCodec } from "@voxim/protocol";
+import { WireWriter, WireReader } from "@voxim/codecs";
 import type { ActiveActionsData } from "@voxim/codecs";
 
 export type { ActiveActionsData, ActiveActionState } from "@voxim/codecs";
@@ -59,7 +59,7 @@ export const ActorSlots = defineComponent({
 export const ActiveActions = defineComponent({
   name: "activeActions" as const,
   wireId: ComponentType.activeActions,
-  codec: activeActionsCodec,
+  codec: networkedCodec<ActiveActionsData>(ComponentType.activeActions),
   default: (): ActiveActionsData => ({ states: {} }),
 });
 

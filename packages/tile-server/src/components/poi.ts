@@ -7,8 +7,8 @@
  */
 
 import { defineComponent } from "@voxim/engine";
-import { ComponentType } from "@voxim/protocol";
-import { WireReader, WireWriter, poiInteractableCodec } from "@voxim/codecs";
+import { ComponentType, networkedCodec } from "@voxim/protocol";
+import { WireReader, WireWriter } from "@voxim/codecs";
 import type { PoiInteractableData } from "@voxim/codecs";
 
 /**
@@ -79,6 +79,6 @@ export type { PoiInteractableData };
 export const PoiInteractable = defineComponent({
   name: "poiInteractable" as const,
   wireId: ComponentType.poiInteractable,
-  codec: poiInteractableCodec,
+  codec: networkedCodec<PoiInteractableData>(ComponentType.poiInteractable),
   default: (): PoiInteractableData => ({ poiInstanceId: "", verb: "use", consumable: false }),
 });

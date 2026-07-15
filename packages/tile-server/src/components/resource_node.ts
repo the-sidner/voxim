@@ -1,5 +1,9 @@
 import { defineComponent } from "@voxim/engine";
 import { ComponentType } from "@voxim/protocol";
+// Deliberately NOT networkedCodec() (T-349): resource_node is the one
+// presence-only networked component — the client never decodes it (it checks
+// `raw.has("resource_node")` for hover/interaction), so its codec is absent
+// from CODEC_BY_WIREID and its wire id is listed in PRESENCE_ONLY_WIRE_IDS.
 import { resourceNodeCodec } from "@voxim/codecs";
 
 export interface ResourceNodeData {

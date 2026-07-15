@@ -1,6 +1,5 @@
 import { defineComponent } from "@voxim/engine";
-import { ComponentType } from "@voxim/protocol";
-import { loreLoadoutCodec } from "@voxim/codecs";
+import { ComponentType, networkedCodec } from "@voxim/protocol";
 
 /**
  * The four equippable skill slots (T-260b): each names a skill `ActionDef`
@@ -19,7 +18,7 @@ export interface LoreLoadoutData {
 export const LoreLoadout = defineComponent({
   name: "loreLoadout" as const,
   wireId: ComponentType.loreLoadout,
-  codec: loreLoadoutCodec,
+  codec: networkedCodec<LoreLoadoutData>(ComponentType.loreLoadout),
   default: (): LoreLoadoutData => ({
     skills: [null, null, null, null],
     learnedFragmentIds: [],

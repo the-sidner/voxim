@@ -5,9 +5,8 @@
  * as players, NPCs, and items.
  */
 import { defineComponent } from "@voxim/engine";
-import { heightmapCodec, materialGridCodec, openMaskCodec, kindGridCodec, vegFieldGridCodec, surfaceStateGridCodec, waterGridCodec, cliffGridCodec } from "@voxim/codecs";
 import type { HeightmapData, MaterialGridData, OpenMaskData, KindGridData, VegFieldGridData, SurfaceStateGridData, WaterGridData, CliffGridData } from "@voxim/codecs";
-import { ComponentType } from "@voxim/protocol";
+import { ComponentType, networkedCodec } from "@voxim/protocol";
 import { CHUNK_CELLS } from "./terrain.ts";
 
 export type { HeightmapData, MaterialGridData, OpenMaskData, KindGridData, VegFieldGridData, SurfaceStateGridData, WaterGridData, CliffGridData };
@@ -20,7 +19,7 @@ export type { HeightmapData, MaterialGridData, OpenMaskData, KindGridData, VegFi
 export const Heightmap = defineComponent({
   name: "heightmap" as const,
   wireId: ComponentType.heightmap,
-  codec: heightmapCodec,
+  codec: networkedCodec<HeightmapData>(ComponentType.heightmap),
   default: (): HeightmapData => ({
     data: new Float32Array(CHUNK_CELLS),
     chunkX: 0,
@@ -36,7 +35,7 @@ export const Heightmap = defineComponent({
 export const MaterialGrid = defineComponent({
   name: "materialGrid" as const,
   wireId: ComponentType.materialGrid,
-  codec: materialGridCodec,
+  codec: networkedCodec<MaterialGridData>(ComponentType.materialGrid),
   default: (): MaterialGridData => ({
     data: new Uint16Array(CHUNK_CELLS),
   }),
@@ -60,7 +59,7 @@ export const MaterialGrid = defineComponent({
 export const OpenMask = defineComponent({
   name: "openMask" as const,
   wireId: ComponentType.openMask,
-  codec: openMaskCodec,
+  codec: networkedCodec<OpenMaskData>(ComponentType.openMask),
   default: (): OpenMaskData => ({
     // Default: every cell open — a default chunk doesn't block anything
     // until terrain authoring (atlas) writes a real mask.
@@ -81,7 +80,7 @@ export const OpenMask = defineComponent({
 export const KindGrid = defineComponent({
   name: "kindGrid" as const,
   wireId: ComponentType.kindGrid,
-  codec: kindGridCodec,
+  codec: networkedCodec<KindGridData>(ComponentType.kindGrid),
   default: (): KindGridData => ({
     data: new Uint16Array(CHUNK_CELLS),  // 0 = OPEN
   }),
@@ -96,7 +95,7 @@ export const KindGrid = defineComponent({
 export const VegFieldGrid = defineComponent({
   name: "vegFieldGrid" as const,
   wireId: ComponentType.vegFieldGrid,
-  codec: vegFieldGridCodec,
+  codec: networkedCodec<VegFieldGridData>(ComponentType.vegFieldGrid),
   default: (): VegFieldGridData => ({
     canopyLight: new Uint8Array(CHUNK_CELLS),
     corruption: new Uint8Array(CHUNK_CELLS),
@@ -108,7 +107,7 @@ export const VegFieldGrid = defineComponent({
 export const SurfaceStateGrid = defineComponent({
   name: "surfaceStateGrid" as const,
   wireId: ComponentType.surfaceStateGrid,
-  codec: surfaceStateGridCodec,
+  codec: networkedCodec<SurfaceStateGridData>(ComponentType.surfaceStateGrid),
   default: (): SurfaceStateGridData => ({
     wetness: new Uint8Array(CHUNK_CELLS),
     overgrowth: new Uint8Array(CHUNK_CELLS),
@@ -123,7 +122,7 @@ export const SurfaceStateGrid = defineComponent({
 export const WaterGrid = defineComponent({
   name: "waterGrid" as const,
   wireId: ComponentType.waterGrid,
-  codec: waterGridCodec,
+  codec: networkedCodec<WaterGridData>(ComponentType.waterGrid),
   default: (): WaterGridData => ({
     surfaceLevel: new Float32Array(CHUNK_CELLS).fill(NaN),
   }),
@@ -139,7 +138,7 @@ export const WaterGrid = defineComponent({
 export const CliffGrid = defineComponent({
   name: "cliffGrid" as const,
   wireId: ComponentType.cliffGrid,
-  codec: cliffGridCodec,
+  codec: networkedCodec<CliffGridData>(ComponentType.cliffGrid),
   default: (): CliffGridData => ({
     profileId: new Uint8Array(CHUNK_CELLS),
     erosion: new Uint8Array(CHUNK_CELLS),

@@ -1,6 +1,5 @@
 import { defineComponent } from "@voxim/engine";
-import { ComponentType } from "@voxim/protocol";
-import { equipmentCodec } from "@voxim/codecs";
+import { ComponentType, networkedCodec } from "@voxim/protocol";
 import type { EquipmentData } from "@voxim/codecs";
 
 export type { EquipmentData };
@@ -15,7 +14,7 @@ export type { EquipmentData };
 export const Equipment = defineComponent({
   name: "equipment" as const,
   wireId: ComponentType.equipment,
-  codec: equipmentCodec,
+  codec: networkedCodec<EquipmentData>(ComponentType.equipment),
   default: (): EquipmentData => ({
     weapon:  null,
     offHand: null,

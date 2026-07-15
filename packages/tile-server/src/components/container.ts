@@ -16,14 +16,14 @@
  * placer's Heritage on deploy) gates who may store/withdraw, `kind` gates what.
  */
 import { defineComponent } from "@voxim/engine";
-import { ComponentType } from "@voxim/protocol";
-import { containerCodec, type ContainerData } from "@voxim/codecs";
+import { ComponentType, networkedCodec } from "@voxim/protocol";
+import type { ContainerData } from "@voxim/codecs";
 
 export type { ContainerData, ContainerSlot, ContainerKind } from "@voxim/codecs";
 
 export const Container = defineComponent({
   name: "container" as const,
   wireId: ComponentType.container,
-  codec: containerCodec,
+  codec: networkedCodec<ContainerData>(ComponentType.container),
   default: (): ContainerData => ({ kind: "equipment", dynastyId: "", capacity: 12, slots: [] }),
 });

@@ -9,11 +9,15 @@
  *     "look up a component by name" consumer.
  *
  * To add a new component:
- *   1. Define its codec in @voxim/codecs (or inline for server-only defs).
+ *   1. Define its codec in @voxim/codecs and register the wireId→codec pair
+ *      in @voxim/protocol's CODEC_BY_WIREID (or inline the codec for
+ *      server-only defs).
  *   2. Define the ComponentDef in the appropriate component file. Networked
- *      defs need a wireId from @voxim/protocol's ComponentType enum.
+ *      defs take a wireId from ComponentType and pull the codec back out of
+ *      the shared table via `networkedCodec<FooData>(ComponentType.foo)`.
  *   3. Register it below — NETWORKED_DEFS if it's networked, ALL_DEFS
- *      otherwise.
+ *      otherwise. The cross-check at the bottom of this file fails the boot
+ *      for any networked def the client can't decode.
  *
  * IDs are wire format — never reassign or reuse one.
  */
@@ -21,6 +25,7 @@
 // deno-lint-ignore-file no-explicit-any
 import type { ComponentDef, NetworkedComponentDef } from "@voxim/engine";
 import { Parent } from "@voxim/engine";
+import { CODEC_BY_WIREID, PRESENCE_ONLY_WIRE_IDS } from "@voxim/protocol";
 import { Heightmap, KindGrid, MaterialGrid, OpenMask, VegFieldGrid, SurfaceStateGrid, WaterGrid, CliffGrid } from "@voxim/world";
 import {
   AnimationState,
@@ -208,6 +213,25 @@ export const DEF_BY_TYPE_ID: ReadonlyMap<number, NetworkedComponentDef<any>> =
   new Map(
     NETWORKED_DEFS.map((d) => [d.wireId, d]),
   );
+
+// Fail-fast cross-check (T-349): every networked def must either have a client
+// decoder in CODEC_BY_WIREID or be an explicit presence-only opt-out
+// (PRESENCE_ONLY_WIRE_IDS). This is exactly the shape the heritage(16) and
+// parent(49) silent-decode bugs had — present on one side, absent from the
+// other, discovered only when a feature needed the field. Runs at module load
+// (like the DEF_BY_NAME duplicate check below), so every server entry point
+// and test that touches the registry trips it immediately.
+for (const def of NETWORKED_DEFS) {
+  if (!CODEC_BY_WIREID.has(def.wireId) && !PRESENCE_ONLY_WIRE_IDS.has(def.wireId)) {
+    throw new Error(
+      `[component_registry] networked component "${def.name}" (wire id ${def.wireId}) ` +
+        `has no client decoder in CODEC_BY_WIREID and is not listed in ` +
+        `PRESENCE_ONLY_WIRE_IDS — it would ship bytes nobody reads. Register the ` +
+        `pair in packages/protocol/src/codec_registry.ts, opt out as ` +
+        `presence-only, or make the def networked: false.`,
+    );
+  }
+}
 
 /**
  * Every ComponentDef, networked and server-only. The prefab loader resolves

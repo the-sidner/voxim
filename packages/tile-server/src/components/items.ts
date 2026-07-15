@@ -1,6 +1,5 @@
 import { defineComponent } from "@voxim/engine";
-import { ComponentType } from "@voxim/protocol";
-import { itemDataCodec, inventoryCodec, craftingQueueCodec } from "@voxim/codecs";
+import { ComponentType, networkedCodec } from "@voxim/protocol";
 import type { ItemDataData, InventorySlot, InventoryData } from "@voxim/codecs";
 
 // ---- ItemData ----
@@ -12,7 +11,7 @@ export type { ItemDataData };
 export const ItemData = defineComponent({
   name: "itemData" as const,
   wireId: ComponentType.itemData,
-  codec: itemDataCodec,
+  codec: networkedCodec<ItemDataData>(ComponentType.itemData),
   default: (): ItemDataData => ({ prefabId: "unknown", quantity: 1 }),
 });
 
@@ -25,7 +24,7 @@ export type { InventorySlot, InventoryData };
 export const Inventory = defineComponent({
   name: "inventory" as const,
   wireId: ComponentType.inventory,
-  codec: inventoryCodec,
+  codec: networkedCodec<InventoryData>(ComponentType.inventory),
   default: (): InventoryData => ({ slots: [], capacity: 20 }),
 });
 
@@ -44,7 +43,7 @@ export interface CraftingQueueData {
 export const CraftingQueue = defineComponent({
   name: "craftingQueue" as const,
   wireId: ComponentType.craftingQueue,
-  codec: craftingQueueCodec,
+  codec: networkedCodec<CraftingQueueData>(ComponentType.craftingQueue),
   default: (): CraftingQueueData => ({
     activeRecipeId: null,
     progressTicks: 0,

@@ -1,6 +1,5 @@
 import { defineComponent } from "@voxim/engine";
-import { ComponentType } from "@voxim/protocol";
-import { blueprintCodec, workstationBufferCodec, workstationTagCodec } from "@voxim/codecs";
+import { ComponentType, networkedCodec } from "@voxim/protocol";
 import type { WorkstationBufferData, WorkstationTagData } from "@voxim/codecs";
 
 export interface BlueprintMaterial {
@@ -44,7 +43,7 @@ export interface BlueprintData {
 export const Blueprint = defineComponent({
   name: "blueprint" as const,
   wireId: ComponentType.blueprint,
-  codec: blueprintCodec,
+  codec: networkedCodec<BlueprintData>(ComponentType.blueprint),
   default: (): BlueprintData => ({
     structureType: "",
     chunkX: 0,
@@ -76,7 +75,7 @@ export const WorkstationTag = defineComponent({
   name: "workstationTag" as const,
   wireId: ComponentType.workstationTag,
   requires: ["workstationBuffer"],
-  codec: workstationTagCodec,
+  codec: networkedCodec<WorkstationTagData>(ComponentType.workstationTag),
   default: (): WorkstationTagData => ({ stationType: "", qualityTier: 1 }),
 });
 
@@ -89,7 +88,7 @@ export const WorkstationBuffer = defineComponent({
   name: "workstationBuffer" as const,
   wireId: ComponentType.workstationBuffer,
   requires: ["workstationTag"],
-  codec: workstationBufferCodec,
+  codec: networkedCodec<WorkstationBufferData>(ComponentType.workstationBuffer),
   default: (): WorkstationBufferData => ({
     slots: [],
     capacity: 4,

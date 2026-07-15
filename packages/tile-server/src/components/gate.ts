@@ -10,14 +10,14 @@
  * blindly into the proximity trigger.
  */
 import { defineComponent } from "@voxim/engine";
-import { ComponentType } from "@voxim/protocol";
-import { gateLinkCodec, type GateLinkData } from "@voxim/codecs";
+import { ComponentType, networkedCodec } from "@voxim/protocol";
+import type { GateLinkData } from "@voxim/codecs";
 
 export type { GateLinkData } from "@voxim/codecs";
 
 export const GateLink = defineComponent({
   name: "gateLink" as const,
   wireId: ComponentType.gateLink,
-  codec: gateLinkCodec,
+  codec: networkedCodec<GateLinkData>(ComponentType.gateLink),
   default: (): GateLinkData => ({ destinationTileId: "", edge: "north", radius: 4, offset: 0 }),
 });
