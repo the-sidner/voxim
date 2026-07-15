@@ -194,7 +194,7 @@ const handlers: UIActionHandlers = {
   },
 
   trade_sell: (game, action) => {
-    game._sendCommand({ cmd: CommandType.TradeSell, inventorySlot: action.slot });
+    game._sendCommand({ cmd: CommandType.TradeSell, listingSlot: action.slot });
   },
 
   // Hotbar (T-309 prerequisite) — client-local only, no server command:

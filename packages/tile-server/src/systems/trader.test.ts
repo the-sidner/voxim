@@ -88,7 +88,7 @@ Deno.test("sell: succeeds — item deducted, coins granted", () => {
   makeTrader(w, [{ itemType: "berries", buyPrice: 1, sellPrice: 8, stock: -1 }]);
   const player = makePlayer(w, [{ kind: "stack", prefabId: "berries", quantity: 3 }]);
 
-  runBatch(w, [[player, { cmd: CommandType.TradeSell, inventorySlot: 0 }]]);
+  runBatch(w, [[player, { cmd: CommandType.TradeSell, listingSlot: 0 }]]);
 
   const slots = w.get(player, Inventory)!.slots;
   assertEquals(slots, [{ kind: "stack", prefabId: "berries", quantity: 2 }, coins(8)]);
@@ -99,7 +99,7 @@ Deno.test("sell: declines cleanly when the item isn't held", () => {
   makeTrader(w, [{ itemType: "berries", buyPrice: 1, sellPrice: 8, stock: -1 }]);
   const player = makePlayer(w, [coins(5)]);
 
-  runBatch(w, [[player, { cmd: CommandType.TradeSell, inventorySlot: 0 }]]);
+  runBatch(w, [[player, { cmd: CommandType.TradeSell, listingSlot: 0 }]]);
 
   assertEquals(w.get(player, Inventory)!.slots, [coins(5)], "nothing sold, nothing paid");
 });
