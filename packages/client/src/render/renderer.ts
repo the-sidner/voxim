@@ -39,7 +39,8 @@ import { InstancePool } from "./instance_pool.ts";
 import { CrumbleController } from "./crumble_controller.ts";
 import { registerDeathStyle, getDeathStyleHandler } from "./death_style_registry.ts";
 import { evaluatePose } from "./skeleton_evaluator.ts";
-import { solveSwingPose, applyLocomotionPose, applyCrouchPose, applyFootTerrainIK, applyLookAtPose, applyGaitPose, timeOfDay01 } from "@voxim/content";
+import { composePose } from "./pose_composer.ts";
+import { timeOfDay01 } from "@voxim/content";
 import type { BoneRotation, LocoState } from "@voxim/content";
 import { CHUNK_SIZE } from "@voxim/world";
 
@@ -1225,13 +1226,10 @@ export class VoximRenderer {
         const layers = blendAnimationLayers(mesh.layerFades, rawLayers, animDtMs);
         const animForPose = anim ? { ...anim, layers } : (telegraph ? { layers, weaponActionId: "", ticksIntoAction: 0, dissolutionPhase: 0 } : null);
 
-        // Fused pose pipeline: gait/crouch (legs) → locomotion lean (spine) →
-        // swing overlay (arms) → foot-terrain IK → head stabilization, all
-        // composed on one skeleton, each producer taking the previous
-        // stage's pose as its basePose so they stack (T-308). The weapon-
-        // style clip's UPPER body (arms/spine/head) rides through untouched
-        // — only the gait/crouch/swing producers below override bones, and
-        // gait+crouch only ever touch the leg chain.
+        // Fused pose pipeline (pose_composer.ts): gait/crouch (legs) →
+        // locomotion lean (spine) → swing overlay (arms) → foot-terrain IK →
+        // head stabilization, each producer taking the previous stage's pose
+        // as its basePose so they stack (T-308).
         const swingWA = anim?.weaponActionId
           ? this.weaponActionsMap.get(anim.weaponActionId)
           : undefined;
@@ -1280,40 +1278,26 @@ export class VoximRenderer {
         if (skeleton && (swingWA?.swingPath || loco || dropY > 0)) {
           const boneIndex = this.content.getBoneIndex(mesh.skeletonId);
           const baseLayers = swingWA?.swingPath ? layers.filter((l) => l.clipId !== swingWA.clipId) : layers;
-          let rot: Map<string, BoneRotation> = evaluatePose(skeleton, clipIndex, maskIndex, anim ? { ...anim, layers: baseLayers } : null);
-          if (loco && gaitDef) {
-            // Gait OWNS the legs while moving — supersedes applyCrouchPose's
-            // own foot-replant, passing the SAME pelvis-drop rootOffset when
-            // also crouching so crouch + walk compose without either
-            // producer needing to run first (see applyGaitPose's doc).
-            const rootOffset = dropY > 0 ? { x: 0, y: -dropY, z: 0 } : undefined;
-            rot = applyGaitPose(skeleton, boneIndex, rot, mesh.modelScale, gaitDef, gaitPhase, loco, { rootOffset, morphParams: mesh.modelMorphs });
-          } else if (dropY > 0) {
-            rot = applyCrouchPose(skeleton, boneIndex, rot, mesh.modelScale, dropY, { morphParams: mesh.modelMorphs });
-          }
-          if (loco) rot = applyLocomotionPose(skeleton, boneIndex, rot, mesh.modelScale, loco, { morphParams: mesh.modelMorphs });
+          const base: Map<string, BoneRotation> = evaluatePose(skeleton, clipIndex, maskIndex, anim ? { ...anim, layers: baseLayers } : null);
+          // Normalised swing time — hoisted out of the swing producer because
+          // it reads per-mesh extrapolation state. `anim!` is safe: swingWA is
+          // looked up from anim.weaponActionId, so it resolving implies anim.
+          let swingT = 0;
           if (swingWA?.swingPath) {
             const total = swingWA.windupTicks + swingWA.activeTicks + swingWA.winddownTicks;
             const ticks = anim!.ticksIntoAction + (now - mesh.lastAnimUpdateMs) / 50;
-            const t = Math.max(0, Math.min(ticks / total, 1));
-            rot = solveSwingPose(skeleton, boneIndex, rot, mesh.modelScale, swingWA.swingPath, t, { morphParams: mesh.modelMorphs });
+            swingT = Math.max(0, Math.min(ticks / total, 1));
           }
-          // Foot-terrain IK (T-308/T-186): re-plant feet at the local ground
-          // height once something else already put this entity through the
-          // extra pose pass (walking/crouching/swinging) — a fully idle
-          // entity's rest pose has no lean to correct against a slope yet,
-          // see swing_pose.ts's applyFootTerrainIK doc for the scoping note.
-          if (this.world) {
-            const { x, y, facing } = ground;
-            const world = this.world;
-            rot = applyFootTerrainIK(
-              skeleton, boneIndex, rot, mesh.modelScale, { x, y }, facing,
-              (wx, wy) => world.getTerrainHeight(wx, wy), { morphParams: mesh.modelMorphs },
-            );
-          }
-          // Head/gaze stabilization — last, so it corrects the FINAL composed
-          // lean (crouch + locomotion + swing) rather than an intermediate one.
-          rot = applyLookAtPose(skeleton, boneIndex, rot, mesh.modelScale, this.lookAtGain, { morphParams: mesh.modelMorphs });
+          const world = this.world;
+          const rot = composePose({
+            skeleton, boneIndex,
+            scale: mesh.modelScale, morphParams: mesh.modelMorphs,
+            loco, gaitDef, gaitPhase, dropY,
+            swingPath: swingWA?.swingPath, swingT,
+            ground,
+            heightAt: world ? (wx, wy) => world.getTerrainHeight(wx, wy) : null,
+            lookAtGain: this.lookAtGain,
+          }, base);
           // rewrap the mixed map (THREE.Euler for untouched bones, {x,y,z} for overridden) to THREE.Euler
           pose = new Map<string, THREE.Euler>();
           for (const [bone, r] of rot) pose.set(bone, r instanceof THREE.Euler ? r : new THREE.Euler(r.x, r.y, r.z));
