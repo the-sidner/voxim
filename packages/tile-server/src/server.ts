@@ -20,7 +20,7 @@ import { spawnGates } from "./gate.ts";
 import { applyFieldsToChunks, chunksFromBuffers, TILE_SIZE } from "@voxim/world";
 import { loadTerrainFromAtlas } from "./atlas_terrain.ts";
 import { placePois, spawnMobPois } from "./poi_placer.ts";
-import { binaryStateMessageCodec, ACTION_BLOCK, ACTION_CROUCH, encodeFrame, makeFrameReader } from "@voxim/protocol";
+import { binaryStateMessageCodec, worldSnapshotCodec, ACTION_BLOCK, ACTION_CROUCH, encodeFrame, makeFrameReader } from "@voxim/protocol";
 import { startAdminServer, registerWithGateway } from "./admin_server.ts";
 import { listenQuic } from "./quic_server.ts";
 import { GatewayLink } from "./gateway_link.ts";
@@ -768,8 +768,12 @@ export class TileServer {
       for (let offset = 0; offset < snapEntitiesMapped.length || offset === 0; offset += PAGE_SIZE) {
         const page = snapEntitiesMapped.slice(offset, offset + PAGE_SIZE);
         const snap: WorldSnapshot = { serverTick, entities: page };
+        // A page's bytes are identical for every session — encode once,
+        // broadcast the shared buffer (same doctrine as buildDeltaMap's
+        // encode-each-component-once on the reliable path).
+        const bytes = worldSnapshotCodec.encode(snap);
         for (const session of this.sessions.values()) {
-          if (session.isOpen) session.sendSnapshot(snap);
+          if (session.isOpen) session.sendSnapshot(bytes);
         }
       }
     }
