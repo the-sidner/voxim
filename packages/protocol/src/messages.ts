@@ -138,7 +138,7 @@ export const enum CommandType {
   Externalise     = 6,  // payload: u8 fragIndex (index into learnedFragmentIds)
   Internalise     = 7,  // payload: u8 inventorySlot (slot holding the tome)
   TradeBuy        = 8,  // payload: u32 listingSlot
-  TradeSell       = 9,  // payload: u8 inventorySlot
+  TradeSell       = 9,  // payload: u8 listingSlot — index into the TRADER's listings (like TradeBuy)
   // 10 (PlaceBlueprint) retired — collapsed into Place (18)
   // 11 (DeployItem) retired — collapsed into Place (18)
   SelectRecipe    = 12, // payload: u8 strLen + UTF-8 recipeId — set active recipe on nearest workstation (assembly step)
@@ -232,7 +232,7 @@ export type CommandPayload =
   | { cmd: CommandType.Externalise;    fragIndex: number }
   | { cmd: CommandType.Internalise;    inventorySlot: number }
   | { cmd: CommandType.TradeBuy;       listingSlot: number }
-  | { cmd: CommandType.TradeSell;      inventorySlot: number }
+  | { cmd: CommandType.TradeSell;      listingSlot: number }
   | { cmd: CommandType.Place;          source: "prefab";    prefabId: string;        worldX: number; worldY: number }
   | { cmd: CommandType.Place;          source: "inventory"; fromInventorySlot: number; worldX: number; worldY: number }
   | { cmd: CommandType.PlaceVoxels;    prefabId: string; voxelSize: number; cells: ReadonlyArray<{ cellX: number; cellY: number }> }

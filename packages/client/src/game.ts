@@ -11,7 +11,7 @@
  */
 import { connectViaGateway } from "./connection/gateway_client.ts";
 import { TileConnection } from "./connection/tile_connection.ts";
-import { wireConnectionHandlers } from "./connection/wire_handlers.ts";
+import { wireConnectionHandlers, applyLocalPlayerState } from "./connection/wire_handlers.ts";
 import type { CharacterCreation } from "./connection/tile_connection.ts";
 import { InputCapture } from "./input/input_capture.ts";
 import { PointerLockController } from "./input/pointer_lock.ts";
@@ -42,7 +42,7 @@ import { CrumbleController } from "./render/crumble_controller.ts";
 import { AimIndicatorRenderer } from "./render/aim_indicator.ts";
 import { canopyFade } from "./render/canopy_fade.ts";
 import { InteractionSystem } from "./interaction/interaction_system.ts";
-import { makeWorkstationHandler, makeContainerHandler, makeTraderHandler, makeJobBoardHandler, resourceNodeHandler, makeGroundItemHandler, makePoiInteractableHandler } from "./interaction/interactable_handlers.ts";
+import { makeWorkstationHandler, makeContainerHandler, makeTraderHandler, makeJobBoardHandler, makeResourceNodeHandler, makeGroundItemHandler, makePoiInteractableHandler } from "./interaction/interactable_handlers.ts";
 import { WorldOverlay } from "./ui/world_overlay.ts";
 import { mountUI } from "./ui/mount_ui.tsx";
 import { uiState, patchUI, openPanel, closePanel, pushToast, hotbarItems } from "./ui/ui_store.ts";
@@ -58,7 +58,7 @@ import { loadLoginName } from "./ui/login.ts";
 import { ACTION_USE_SKILL, ACTION_JUMP, ACTION_CROUCH, hasAction, CommandType } from "@voxim/protocol";
 import type { CommandPayload } from "@voxim/protocol";
 import type { HeirRitualStep } from "./ui/ui_store.ts";
-import { mapEquipmentToUI, worldClockPhase, vitalsPatch, mapLoreLoadoutToUI, deriveCastState, mapInventoryToUI } from "./state/state_mappers.ts";
+import { worldClockPhase } from "./state/state_mappers.ts";
 import { DEFAULT_PHYSICS } from "@voxim/engine";
 import { Predictor } from "./prediction/predictor.ts";
 import { BootstrapSource } from "@voxim/content";
@@ -68,7 +68,6 @@ import { crossCheckTextureStyles } from "./render/material_textures.ts";
 import { crossCheckFlickerCurves } from "./render/flicker_curves.ts";
 import { crossCheckCliffVoxelisers } from "./render/cliff_voxeliser.ts";
 import type { ContentService, Prefab, SwingableData } from "@voxim/content";
-import gameConfigData from "../../content/data/game_config.json" with { type: "json" };
 
 export interface GameConfig {
   canvas: HTMLCanvasElement;
@@ -293,6 +292,10 @@ export class VoximGame {
   private static readonly TOTAL_CHUNKS = 256;
 
   private terrainChunksReceived = 0;
+  /** Chunk coords already counted toward the loading gate — a chunk DELTA
+   *  (e.g. a terrain dig re-sending heightmap/materialGrid) must not count
+   *  a chunk twice, or loading finishes early with terrain holes. */
+  private readonly countedChunkCoords = new Set<string>();
   /** True once all terrain AND all entity models are preloaded. */
   loadingComplete = false;
   /** Session token kept around so tile transitions can re-join without re-auth. */
@@ -459,22 +462,15 @@ export class VoximGame {
 
     // Count any terrain chunks that arrived during connect() (before renderer existed).
     // Don't push to renderer yet — _finishLoading() does that after all chunks arrive.
-    for (const [entityId, state] of this.world.entries()) {
-      if (state.heightmap) this.terrainChunksReceived++;
+    for (const [, state] of this.world.entries()) {
+      // Deduped against the wire-handler path — messages processed DURING
+      // connect() already counted their chunks via _noteTerrainChunkReceived.
+      if (state.heightmap) this._noteTerrainChunkReceived(state.heightmap.chunkX, state.heightmap.chunkY);
       if (state.worldClock) {
-        this.renderer?.setDayPhase(worldClockPhase(state.worldClock.ticksElapsed, state.worldClock.dayLengthTicks));
-      }
-      if (entityId === this.playerId) {
-        if (state.health)      patchUI({ health:       { current: state.health.current, max: state.health.max } });
-        if (state.resource)    patchUI(vitalsPatch(state.resource));
-        if (state.actionCooldowns) patchUI({ skillCooldowns: state.actionCooldowns });
-        if (state.activeActions)   patchUI({ castState: deriveCastState(state.activeActions, this.contentService) });
-        if (state.equipment)   patchUI({ equipment:    mapEquipmentToUI(state.equipment) });
-        if (state.inventory) {
-          patchUI({ inventory: mapInventoryToUI(state.inventory, this.world) });
-          this._syncHotbarAttachments();   // an assigned slot's item may have arrived/changed (T-309)
-        }
-        if (state.loreLoadout) patchUI({ skillLoadout: mapLoreLoadoutToUI(state.loreLoadout) });
+        this.renderer?.setDayPhase(worldClockPhase(
+          state.worldClock.ticksElapsed, state.worldClock.dayLengthTicks,
+          this.contentService?.getGameConfig().dayNight,
+        ));
       }
     }
     patchUI({ loadingProgress: Math.min(1, this.terrainChunksReceived / VoximGame.TOTAL_CHUNKS) });
@@ -493,6 +489,16 @@ export class VoximGame {
       // T-337: combat.aim (pitchMinDeg/pitchMaxDeg) rides the same configure()
       // call — the SAME band the server clamps InputState.pitch into.
       this.input.configure({ ...gameCfg.camera, bindings: gameCfg.input?.bindings, aim: gameCfg.combat?.aim });
+    }
+    // Apply the local player's join-time state through the SAME path the wire
+    // handlers use (applyLocalPlayerState is the one definition of "apply
+    // player state"). Doing it here — after this.input exists — is what lets
+    // the equipment-derived input flags (buildMode, aimWeaponActive) reflect
+    // the STARTING equipment: every message processed during connect() ran
+    // with game.input === null and skipped them.
+    {
+      const playerState = this.playerId ? this.world.get(this.playerId) : undefined;
+      if (playerState) applyLocalPlayerState(this, playerState);
     }
     const translator = this.input;
     this.inputCapture = new InputCapture(canvas, translator.handle, (e) => {
@@ -560,16 +566,23 @@ export class VoximGame {
     // (T-320). Selects the closest matching entity each frame and drives the
     // hover outline off proximity; the Use (E) key activates the selection.
     this.interactionSystem = new InteractionSystem(this.world);
-    this.interactionSystem.register(makeWorkstationHandler((entityId) => openWorkstation(this.world, this.playerId, entityId)));
-    this.interactionSystem.register(makeContainerHandler((entityId) => openContainer(this.world, this.playerId, entityId)));
-    this.interactionSystem.register(makeTraderHandler((entityId) => openTrader(this.world, this.playerId, this.contentService, entityId)));
-    this.interactionSystem.register(makeJobBoardHandler((entityId) => openJobBoard(this.world, this.playerId, entityId)));
-    this.interactionSystem.register(resourceNodeHandler);
+    // Each handler's reach is the SAME content value the server enforces on
+    // the corresponding command — tune game_config, restart the tile, and the
+    // client gate moves with it. Defaults hold pre-bootstrap.
+    const cfg = this.contentService?.getGameConfig();
+    const interactRange = cfg?.crafting.interactRange ?? 3;
+    const tradeRange    = cfg?.trade.rangeWorldUnits ?? 3;
+    const pickupRadius  = cfg?.items.pickupRadius ?? 2.5;
+    this.interactionSystem.register(makeWorkstationHandler((entityId) => openWorkstation(this.world, entityId), interactRange));
+    this.interactionSystem.register(makeContainerHandler((entityId) => openContainer(this.world, entityId), interactRange));
+    this.interactionSystem.register(makeTraderHandler((entityId) => openTrader(this.world, this.playerId, this.contentService, entityId), tradeRange));
+    this.interactionSystem.register(makeJobBoardHandler((entityId) => openJobBoard(this.world, entityId), interactRange));
+    this.interactionSystem.register(makeResourceNodeHandler(interactRange));
     this.interactionSystem.register(makeGroundItemHandler((entityId) =>
-      this._sendCommand({ cmd: CommandType.PickUp, entityId }),
+      this._sendCommand({ cmd: CommandType.PickUp, entityId }), pickupRadius,
     ));
     this.interactionSystem.register(makePoiInteractableHandler((entityId) =>
-      this._sendCommand({ cmd: CommandType.UseEntity, entityId }),
+      this._sendCommand({ cmd: CommandType.UseEntity, entityId }), interactRange,
     ));
 
     this._registerIntentHandlers();
@@ -627,12 +640,13 @@ export class VoximGame {
       this.contentService?.getGameConfig().building.roofHeightAboveFloor ?? 2.0,
     );
 
-    // Step 5: predictor + render loop
+    // Step 5: predictor + render loop. Tuning comes from the bootstrap-fresh
+    // ContentService like every other config read — never a static bundle-time
+    // game_config.json import, which would silently ignore server-side edits.
+    const prediction = this.contentService?.getGameConfig().prediction;
     this.predictor = new Predictor(DEFAULT_PHYSICS, {
-      // deno-lint-ignore no-explicit-any
-      correctionHalfLifeMs: (gameConfigData as any).prediction?.correctionHalfLifeMs ?? 60,
-      // deno-lint-ignore no-explicit-any
-      hardSnapThresholdUnits: (gameConfigData as any).prediction?.hardSnapThresholdUnits ?? 2.0,
+      correctionHalfLifeMs: prediction?.correctionHalfLifeMs ?? 60,
+      hardSnapThresholdUnits: prediction?.hardSnapThresholdUnits ?? 2.0,
     });
     this.lastFrameTime = performance.now();
     this.running = true;
@@ -671,7 +685,17 @@ export class VoximGame {
     this.world.clear();
     this.buildOccupancy.clear();
     this.renderer?.clearWorld();
+    // Entity-backed panels hold old-tile entity ids that world.clear() just
+    // invalidated — old-tile entities never traverse msg.destroys (the only
+    // other panel-closing path), so a panel left open across the gate would
+    // render stale slots and dispatch commands the new tile can't resolve.
+    closePanel("workstation");
+    closePanel("container");
+    closePanel("trader");
+    closePanel("job_board");
+    patchUI({ workstation: null, container: null, trader: null, jobBoard: null });
     this.terrainChunksReceived = 0;
+    this.countedChunkCoords.clear();
     this.loadingComplete = false;
     this.predictor?.reset();
 
@@ -1046,10 +1070,9 @@ export class VoximGame {
       priority: 50,
       claim: (intent: Intent) => {
         if (intent.kind !== "interact") return false;
-        const me = this.playerId ? this.world.get(this.playerId) : null;
-        const px = me?.position?.x ?? 0;
-        const py = me?.position?.y ?? 0;
-        this.interactionSystem?.activateNearest(px, py);
+        // Activation re-checks range against the SAME (predicted) position
+        // the per-frame selection used — never a second position source.
+        this.interactionSystem?.activateNearest();
         return true;
       },
     });
@@ -1216,8 +1239,14 @@ export class VoximGame {
     }
   }
 
-  /** Count one received terrain chunk toward the loading gate + progress UI. */
-  _noteTerrainChunkReceived(): void {
+  /** Count one terrain chunk's FIRST arrival toward the loading gate +
+   *  progress UI. Deduped by chunk coord: later deltas touching the same
+   *  chunk (digs) are counted zero times, so the gate can neither finish
+   *  early nor keep patching loadingProgress forever after load. */
+  _noteTerrainChunkReceived(chunkX: number, chunkY: number): void {
+    const coord = `${chunkX},${chunkY}`;
+    if (this.countedChunkCoords.has(coord)) return;
+    this.countedChunkCoords.add(coord);
     this.terrainChunksReceived++;
     patchUI({ loadingProgress: Math.min(1, this.terrainChunksReceived / VoximGame.TOTAL_CHUNKS) });
     if (this.terrainChunksReceived % 20 === 0 || this.terrainChunksReceived === VoximGame.TOTAL_CHUNKS) {
@@ -1307,6 +1336,7 @@ export class VoximGame {
     this.running = false;
     this.predictor = null;
     this.terrainChunksReceived = 0;
+    this.countedChunkCoords.clear();
     this.loadingComplete = false;
     cancelAnimationFrame(this.animFrameId);
     this.interactionSystem?.dispose();

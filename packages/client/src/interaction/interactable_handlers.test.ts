@@ -22,7 +22,7 @@ import type { InteractionTarget } from "./types.ts";
 import {
   makeGroundItemHandler,
   makePoiInteractableHandler,
-  resourceNodeHandler,
+  makeResourceNodeHandler,
 } from "./interactable_handlers.ts";
 
 /** Spawn one entity with the given wire components; return an InteractionTarget for it. */
@@ -48,8 +48,16 @@ Deno.test("ground-item handler: itemData decodes to the named field (never raw) 
   const state = world.get("e1")!;
   assertEquals(state.itemData, { prefabId: "wooden_sword", quantity: 1 });
   assertEquals(state.raw.has("itemData"), false, "decoded components must never land in raw");
-  assertEquals(makeGroundItemHandler(noop).canHandle(target), true);
-  assertEquals(makePoiInteractableHandler(noop).canHandle(target), false);
+  assertEquals(makeGroundItemHandler(noop, 2.5).canHandle(target), true);
+  assertEquals(makePoiInteractableHandler(noop, 3).canHandle(target), false);
+});
+
+Deno.test("interaction range is threaded from content at construction, never a module constant", () => {
+  // The factories carry whatever range the caller (game.ts, post-bootstrap)
+  // read from game_config — the value the server enforces on the command.
+  assertEquals(makeGroundItemHandler(noop, 4.5).interactionRange, 4.5);
+  assertEquals(makePoiInteractableHandler(noop, 5).interactionRange, 5);
+  assertEquals(makeResourceNodeHandler(6).interactionRange, 6);
 });
 
 Deno.test("POI handler: poiInteractable decodes to the named field (never raw) and canHandle sees it", () => {
@@ -66,8 +74,8 @@ Deno.test("POI handler: poiInteractable decodes to the named field (never raw) a
   const state = world.get("e1")!;
   assertEquals(state.poiInteractable, { poiInstanceId: "poi-1", verb: "drink", consumable: true });
   assertEquals(state.raw.has("poiInteractable"), false, "decoded components must never land in raw");
-  assertEquals(makePoiInteractableHandler(noop).canHandle(target), true);
-  assertEquals(makeGroundItemHandler(noop).canHandle(target), false);
+  assertEquals(makePoiInteractableHandler(noop, 3).canHandle(target), true);
+  assertEquals(makeGroundItemHandler(noop, 2.5).canHandle(target), false);
 });
 
 Deno.test("resource_node stays the presence-only exception: lands in raw, handler keys off raw", () => {
@@ -79,12 +87,12 @@ Deno.test("resource_node stays the presence-only exception: lands in raw, handle
   ]);
   const state = world.get("e1")!;
   assertEquals(state.raw.has("resource_node"), true, "PRESENCE_ONLY_WIRE_IDS opt-out: no decode");
-  assertEquals(resourceNodeHandler.canHandle(target), true);
+  assertEquals(makeResourceNodeHandler(3).canHandle(target), true);
 });
 
 Deno.test("an entity with none of the marker components matches no handler", () => {
   const { target } = spawnTarget([]);
-  assertEquals(makeGroundItemHandler(noop).canHandle(target), false);
-  assertEquals(makePoiInteractableHandler(noop).canHandle(target), false);
-  assertEquals(resourceNodeHandler.canHandle(target), false);
+  assertEquals(makeGroundItemHandler(noop, 2.5).canHandle(target), false);
+  assertEquals(makePoiInteractableHandler(noop, 3).canHandle(target), false);
+  assertEquals(makeResourceNodeHandler(3).canHandle(target), false);
 });

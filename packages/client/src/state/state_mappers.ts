@@ -6,7 +6,7 @@
  */
 import type { ActiveActionsData, EquipmentData, InventoryData, LoreLoadoutData, ResourceData } from "@voxim/codecs";
 import type { EquipmentState, InventoryState, ItemStack, SkillLoadoutState, UIState } from "../ui/ui_store.ts";
-import type { ContentService, SwingableData, ToolData } from "@voxim/content";
+import type { ContentService, GameConfig, SwingableData, ToolData } from "@voxim/content";
 import type { ClientWorld } from "./client_world.ts";
 import { humanizeItemType } from "../ui/item_names.ts";
 
@@ -35,14 +35,22 @@ export function mapEquipmentToUI(eq: EquipmentData): EquipmentState {
 }
 
 /**
- * Derive a day-phase name from raw WorldClock fields.
- * Boundaries: midnight 0–0.25, dawn 0.25–0.5, noon 0.5–0.75, dusk 0.75–1.
+ * Derive a day-phase name from raw WorldClock fields — the ONE client-side
+ * day-phase source (renderer.setDayPhase's only writer). Boundaries come from
+ * the same content values the server's DayNightSystem reads
+ * (game_config.dayNight.dawnStart/noonStart/duskStart), so tuning them
+ * server-side moves the client's lighting phase in lockstep with the
+ * DayPhaseChanged toast. Defaults hold pre-bootstrap.
  */
-export function worldClockPhase(ticksElapsed: number, dayLengthTicks: number): string {
+export function worldClockPhase(
+  ticksElapsed: number,
+  dayLengthTicks: number,
+  dayNight?: Pick<GameConfig["dayNight"], "dawnStart" | "noonStart" | "duskStart">,
+): string {
   const t = (ticksElapsed % dayLengthTicks) / dayLengthTicks;
-  if (t < 0.25) return "midnight";
-  if (t < 0.5)  return "dawn";
-  if (t < 0.75) return "noon";
+  if (t < (dayNight?.dawnStart ?? 0.25)) return "midnight";
+  if (t < (dayNight?.noonStart ?? 0.5))  return "dawn";
+  if (t < (dayNight?.duskStart ?? 0.75)) return "noon";
   return "dusk";
 }
 

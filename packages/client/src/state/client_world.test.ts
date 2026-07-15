@@ -130,6 +130,23 @@ Deno.test("ClientWorld: clear() empties the index", () => {
   assertEquals(w.has("child"), false);
 });
 
+Deno.test("ClientWorld: clear() re-arms the snapshot staleness guard (tile transition to a younger server)", () => {
+  const w = new ClientWorld();
+  const ent = (x: number) => ({ entityId: "e1", x, y: 0, z: 0, facing: 0, vx: 0, vy: 0, vz: 0 });
+
+  // Long-running old tile: snapshot at a high tick latches the guard.
+  w.applySpawn({ entityId: "e1", components: [] });
+  w.applySnapshot({ serverTick: 500_000, entities: [ent(1)] });
+  assertEquals(w.get("e1")?.position?.x, 1);
+
+  // Tile transition: clear(), then the freshly booted destination sends
+  // snapshots with much lower ticks — they must be accepted, not discarded.
+  w.clear();
+  w.applySpawn({ entityId: "e1", components: [] });
+  w.applySnapshot({ serverTick: 2_000, entities: [ent(7)] });
+  assertEquals(w.get("e1")?.position?.x, 7, "post-clear snapshot from a younger server must apply");
+});
+
 Deno.test("ClientWorld: reparenting away from null (initial spawn with no parent) is a no-op for the index", () => {
   const w = new ClientWorld();
   w.applySpawn({ entityId: "loner", components: [] });

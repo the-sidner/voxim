@@ -100,7 +100,7 @@ function encodeCommandPayload(cmd: CommandPayload): Uint8Array {
     }
 
     case CommandType.TradeSell:
-      return new Uint8Array([cmd.inventorySlot]);
+      return new Uint8Array([cmd.listingSlot]);
 
     case CommandType.Place: {
       // Layout: u8 source (0=prefab, 1=inventory) + f32 worldX + f32 worldY
@@ -311,7 +311,7 @@ function decodeCommandPayload(cmdType: number, bytes: Uint8Array): CommandPayloa
       return { cmd: CommandType.TradeBuy, listingSlot: v.getUint32(0, true) };
 
     case CommandType.TradeSell:
-      return { cmd: CommandType.TradeSell, inventorySlot: bytes[0] };
+      return { cmd: CommandType.TradeSell, listingSlot: bytes[0] };
 
     case CommandType.Place: {
       // See encodeCommandPayload for the wire layout. Source discriminant

@@ -105,7 +105,7 @@ export class TraderSystem implements System {
         }
 
         if (cmd.cmd === CommandType.TradeSell) {
-          const slot = cmd.inventorySlot;
+          const slot = cmd.listingSlot;
           if (slot < 0 || slot >= traderInv.listings.length) continue;
           const listing = traderInv.listings[slot];
 
