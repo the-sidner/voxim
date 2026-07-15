@@ -13,7 +13,7 @@ import { Position } from "./components/game.ts";
 import { Bone } from "./components/bone.ts";
 import { ClientSession } from "./session.ts";
 import { SpatialGrid } from "./spatial_grid.ts";
-import { computeSessionUpdate } from "./aoi.ts";
+import { computeAoiSharedInputs, computeSessionUpdate } from "./aoi.ts";
 
 function setup() {
   const world = new World();
@@ -32,7 +32,7 @@ function run(s: ReturnType<typeof setup>) {
   s.spatial.rebuild(s.world);
   const events: GameEvent[] = [];
   return computeSessionUpdate(
-    s.world, s.session, s.spatial, s.playerId,
+    s.world, computeAoiSharedInputs(s.world), s.session, s.spatial, s.playerId,
     new Map(), new Map(), new Set(), events,
     /*serverTick*/ 10, /*ackInputSeq*/ 0, /*aoiRadius*/ 128, /*onlineCount*/ 1,
   );

@@ -29,7 +29,7 @@ import { listenQuic } from "./quic_server.ts";
 import { GatewayLink } from "./gateway_link.ts";
 import { CommandType } from "@voxim/protocol";
 import type { BinaryComponentDelta, BinaryStateMessage, BootstrapHeader, CommandPayload, TileJoinRequest, TileJoinAck, WorldSnapshot } from "@voxim/protocol";
-import { computeSessionUpdate } from "./aoi.ts";
+import { computeAoiSharedInputs, computeSessionUpdate } from "./aoi.ts";
 import { JsonSource, validateRecipeGraph, encodeBootstrap, type ContentService } from "@voxim/content";
 import { ClientSession } from "./session.ts";
 import { sanitizeAndMergeInputs } from "./input_merge.ts";
@@ -1473,12 +1473,15 @@ export class TileServer {
       const removedComponents = this.buildRemovalMap(changeset.removals);
       const worldDestroys = new Set(changeset.destroys);
       const aoiRadius = this.content.getGameConfig().network.aoiRadius;
+      // Session-independent AoI inputs (chunk ids, always-visible set, container
+      // list) are computed once per tick, not once per session (T-355).
+      const sharedAoi = computeAoiSharedInputs(this.world);
       for (const [playerId, session] of this.sessions) {
         if (!session.isOpen) { console.warn(`[TileServer] tick ${serverTick}: session ${playerId.slice(-8)} is closed, skipping`); continue; }
         const inputState = this.world.get(playerId, InputState);
         const ackInputSeq = inputState?.seq ?? 0;
         const msg = computeSessionUpdate(
-          this.world, session, this.spatial, playerId,
+          this.world, sharedAoi, session, this.spatial, playerId,
           changedComponents, removedComponents, worldDestroys, events, serverTick, ackInputSeq,
           aoiRadius, this.sessions.size,
         );
@@ -2150,7 +2153,7 @@ export class TileServer {
     // while we were awaiting createUnidirectionalStream() above.
     {
       const initialMsg = computeSessionUpdate(
-        this.world, clientSession, this.spatial, playerId,
+        this.world, computeAoiSharedInputs(this.world), clientSession, this.spatial, playerId,
         new Map(), new Map(), new Set(), [], this.tickLoop.currentTick, 0,
         this.content.getGameConfig().network.aoiRadius,
         this.sessions.size,

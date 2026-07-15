@@ -30,7 +30,7 @@ import { WorldClock } from "./components/world.ts";
 import { Position } from "./components/game.ts";
 import { Inventory } from "./components/items.ts";
 import { Equipment } from "./components/equipment.ts";
-import { Container } from "./components/container.ts";
+import { Container, type ContainerData } from "./components/container.ts";
 import { Heritage } from "./components/heritage.ts";
 import { GateLink } from "./components/gate.ts";
 import { FogState } from "./components/fog_state.ts";
@@ -118,6 +118,51 @@ function isEventRelevant(
   }
 }
 
+export interface AoiSharedInputs {
+  /** Every currently-loaded terrain chunk entity id (Heightmap query), in query order. */
+  readonly allChunkIds: readonly EntityId[];
+  /** Entities visible to every session regardless of position: chunks ∪ WorldClock ∪ GateLink. */
+  readonly alwaysVisible: ReadonlySet<EntityId>;
+  /** Raw Container query results this tick; computeSessionUpdate filters by the viewer's dynastyId. */
+  readonly containers: ReadonlyArray<{ entityId: EntityId; container: ContainerData }>;
+}
+
+/**
+ * Query results identical for every connected session this tick. Computed
+ * once in the tick loop (and once more, fresh, for the join-handshake's
+ * immediate first message) and threaded into computeSessionUpdate per
+ * session — replaces four world.query() calls per session per tick (T-355).
+ */
+export function computeAoiSharedInputs(world: World): AoiSharedInputs {
+  const allChunkIds: EntityId[] = [];
+  const alwaysVisible = new Set<EntityId>();
+
+  // Terrain chunks are always visible — they never leave AoI
+  for (const { entityId } of world.query(Heightmap)) {
+    allChunkIds.push(entityId);
+    alwaysVisible.add(entityId);
+  }
+
+  // The WorldClock is a POSITIONLESS SINGLETON (T-347). It has no Position, no
+  // Heightmap and no GateLink, so not one of the rules around it would ever admit
+  // it — and the client therefore never received it at all. Everything
+  // time-of-day is keyed off this one entity: the sun arc, the atmosphere
+  // selection (and with it mist, god rays and the T-340 ambient drift), and the
+  // day/night cycle itself. Without it the renderer's `if (clock)` never fires and
+  // the whole T-311 atmosphere layer silently falls back to constructor defaults —
+  // which looks like "the lighting is a bit off", not like a replication hole, and
+  // is why it survived this long.
+  for (const { entityId } of world.query(WorldClock)) alwaysVisible.add(entityId);
+
+  // Gates are always visible — there's at most one per edge (≤4 per tile),
+  // and they're navigational landmarks. Streaming them only on proximity
+  // (T-145 visual rendered them invisible until ~128 units away) hid the
+  // tile-edge structure from the player.
+  for (const { entityId } of world.query(GateLink)) alwaysVisible.add(entityId);
+
+  return { allChunkIds, alwaysVisible, containers: world.query(Container) };
+}
+
 /**
  * Compute the full per-session state message for one tick.
  *
@@ -125,6 +170,7 @@ function isEventRelevant(
  */
 export function computeSessionUpdate(
   world: World,
+  shared: AoiSharedInputs,
   session: ClientSession,
   spatial: SpatialGrid,
   playerId: EntityId,
@@ -138,14 +184,11 @@ export function computeSessionUpdate(
   onlineCount: number,
 ): BinaryStateMessage {
   // ── 1. Build visible entity set ─────────────────────────────────────────────
-  const inAoI = new Set<EntityId>();
-
-  // Terrain chunks are always visible — they never leave AoI
-  const allChunkIds: EntityId[] = [];
-  for (const { entityId } of world.query(Heightmap)) {
-    inAoI.add(entityId);
-    allChunkIds.push(entityId);
-  }
+  // Chunks ∪ WorldClock ∪ GateLink are identical for every session this tick
+  // (T-355) — seed from the precomputed always-visible set instead of
+  // re-running three world.query() calls per session. Copy, don't alias:
+  // inAoI is mutated per-session below.
+  const inAoI = new Set<EntityId>(shared.alwaysVisible);
 
   // Positioned entities within radius
   const pos = world.get(playerId, Position);
@@ -157,25 +200,6 @@ export function computeSessionUpdate(
 
   // The player's own entity is always visible
   inAoI.add(playerId);
-
-  // The WorldClock is a POSITIONLESS SINGLETON (T-347). It has no Position, no
-  // Heightmap and no GateLink, so not one of the rules around it would ever admit
-  // it — and the client therefore never received it at all. Everything
-  // time-of-day is keyed off this one entity: the sun arc, the atmosphere
-  // selection (and with it mist, god rays and the T-340 ambient drift), and the
-  // day/night cycle itself. Without it the renderer's `if (clock)` never fires and
-  // the whole T-311 atmosphere layer silently falls back to constructor defaults —
-  // which looks like "the lighting is a bit off", not like a replication hole, and
-  // is why it survived this long.
-  for (const { entityId } of world.query(WorldClock)) inAoI.add(entityId);
-
-  // Gates are always visible — there's at most one per edge (≤4 per tile),
-  // and they're navigational landmarks. Streaming them only on proximity
-  // (T-145 visual rendered them invisible until ~128 units away) hid the
-  // tile-edge structure from the player.
-  for (const { entityId } of world.query(GateLink)) {
-    inAoI.add(entityId);
-  }
 
   // Unique item entities the player carries have no Position (they don't sit
   // in the spatial grid) yet the holder's client must see them — their prefab
@@ -204,7 +228,7 @@ export function computeSessionUpdate(
   // dynasty so a player can't snoop a rival chest's contents over the wire.
   const myDynasty = world.get(playerId, Heritage)?.dynastyId;
   if (myDynasty) {
-    for (const { entityId, container } of world.query(Container)) {
+    for (const { entityId, container } of shared.containers) {
       if (container.dynastyId !== myDynasty || !inAoI.has(entityId)) continue;
       for (const slot of container.slots) inAoI.add(slot.entityId as EntityId);
     }
@@ -243,7 +267,7 @@ export function computeSessionUpdate(
   // processed in subsequent ticks until all 256 are delivered.
   const px = pos?.x ?? 256;
   const py = pos?.y ?? 256;
-  const pendingChunks = allChunkIds.filter((id) => !session.knownEntities.has(id));
+  const pendingChunks = shared.allChunkIds.filter((id) => !session.knownEntities.has(id));
   pendingChunks.sort((a, b) => {
     const ha = world.get(a, Heightmap)!;
     const hb = world.get(b, Heightmap)!;
