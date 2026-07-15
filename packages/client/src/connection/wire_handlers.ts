@@ -11,7 +11,9 @@
  */
 import type { VoximGame } from "../game.ts";
 import type { TileConnection } from "./tile_connection.ts";
-import type { ClientChunk } from "../state/client_world.ts";
+import type { ClientChunk, EntityState } from "../state/client_world.ts";
+import { ComponentType } from "@voxim/protocol";
+import type { UIState } from "../ui/ui_store.ts";
 import { uiState, patchUI, openPanel, closePanel, pushToast } from "../ui/ui_store.ts";
 import { currentZoneName, currentZoneRole, currentZoneTraversal } from "../ui/zone_ref.ts";
 import { humanizeItemType } from "../ui/item_names.ts";
@@ -19,6 +21,74 @@ import { recordState, recordSnapshot } from "../ui/network_capture.ts";
 import { modeState } from "../input/context.ts";
 import { mirrorWorkstationToUi, mirrorTraderToUi, mirrorJobBoardToUi, mirrorContainerToUi } from "../ui/panel_bridge.ts";
 import { worldClockPhase, vitalsPatch, mapEquipmentToUI, mapInventoryToUI, mapLoreLoadoutToUI, deriveCastState, getToolType, isHoldToAimWeapon } from "../state/state_mappers.ts";
+
+/**
+ * Apply the local player's components to the UI store + the input-derived
+ * flags (buildMode, aimWeaponActive) + heritage observation — the ONE
+ * definition of "apply player state". Called per state message with `changed`
+ * = the component types that actually arrived this tick (a plain Position
+ * delta at 20 Hz must not re-run the full inventory/equipment mapping suite),
+ * and once from start() WITHOUT `changed` after the input system is
+ * constructed, so join-time equipment reaches the input flags (messages
+ * during connect() run with game.input === null and skip them).
+ * All resulting UI fields land in a single patchUI so uiState subscribers
+ * wake once per message, not once per field.
+ */
+export function applyLocalPlayerState(
+  game: VoximGame,
+  state: EntityState,
+  changed?: ReadonlySet<number>,
+): void {
+  const arrived = (t: number) => !changed || changed.has(t);
+  const patch: Partial<UIState> = {};
+  if (state.health && arrived(ComponentType.health)) {
+    patch.health = { current: state.health.current, max: state.health.max };
+  }
+  if (state.resource && arrived(ComponentType.resource)) {
+    Object.assign(patch, vitalsPatch(state.resource));
+  }
+  if (state.actionCooldowns && arrived(ComponentType.actionCooldowns)) {
+    patch.skillCooldowns = state.actionCooldowns;
+  }
+  if (state.activeActions && arrived(ComponentType.activeActions)) {
+    patch.castState = deriveCastState(state.activeActions, game.contentService);
+  }
+  if (state.equipment && arrived(ComponentType.equipment)) {
+    patch.equipment = mapEquipmentToUI(state.equipment);
+    if (game.input) {
+      const toolType = getToolType(state.equipment.weapon?.prefabId, game.contentService);
+      const newBuildMode = toolType === "hammer";
+      if (newBuildMode !== game.input.buildMode) {
+        console.log(`[Build] buildMode=${newBuildMode} weapon=${state.equipment.weapon?.prefabId ?? "none"} toolType=${toolType ?? "none"}`);
+        game.input.buildMode = newBuildMode;
+        // Hammer unequipped while in build mode → cancel any staged
+        // blueprint selection. Routed through the intent so handlers
+        // stay the single source of mode-clear logic.
+        if (!newBuildMode && modeState.value.kind === "build") {
+          game.intentRouter?.dispatch({ kind: "build-cancel" });
+        }
+      }
+      // T-337: hold-to-aim weapon detection — drives IntentTranslator's
+      // held-vs-tap ACTION_USE_SKILL branch and the pointer-lock
+      // pitch-capture branch.
+      game.input.aimWeaponActive = isHoldToAimWeapon(state.equipment.weapon?.prefabId, game.contentService);
+    }
+  }
+  const inventoryChanged = state.inventory && arrived(ComponentType.inventory);
+  if (inventoryChanged) {
+    patch.inventory = mapInventoryToUI(state.inventory!, game.world);
+  }
+  if (state.loreLoadout && arrived(ComponentType.loreLoadout)) {
+    patch.skillLoadout = mapLoreLoadoutToUI(state.loreLoadout);
+  }
+  if (Object.keys(patch).length > 0) patchUI(patch);
+  // After patchUI so the hotbar derivation reads the fresh inventory:
+  // an assigned slot's item may have changed/emptied (T-309).
+  if (inventoryChanged) game._syncHotbarAttachments();
+  if (state.heritage && arrived(ComponentType.heritage)) {
+    game._observeHeritageGeneration(state.heritage.generation);
+  }
+}
 
 export function wireConnectionHandlers(game: VoximGame, conn: TileConnection): void {
   conn.onSnapshot = (snap) => {
@@ -59,10 +129,20 @@ export function wireConnectionHandlers(game: VoximGame, conn: TileConnection): v
       game.fog.applyReveals(msg.fogReveals);
     }
 
-    const updated = new Set<string>();
+    // Per-entity set of component types that actually arrived this message —
+    // the local-player UI application is keyed on THIS, never on the merged
+    // EntityState (which is always fully populated after join, so keying on
+    // it re-ran every mapper 20x/s while merely moving).
+    const updated = new Map<string, Set<number>>();
+    const changedFor = (entityId: string): Set<number> => {
+      let set = updated.get(entityId);
+      if (!set) { set = new Set(); updated.set(entityId, set); }
+      return set;
+    };
     for (const spawn of msg.spawns) {
       game.world.applySpawn(spawn);
-      updated.add(spawn.entityId);
+      const set = changedFor(spawn.entityId);
+      for (const comp of spawn.components) set.add(comp.componentType);
       // Mirror placed voxels (blueprint entities) into the build occupancy so
       // the cursor stacks on top of them (T-284). Single source = ClientWorld.
       const e = game.world.get(spawn.entityId);
@@ -72,11 +152,11 @@ export function wireConnectionHandlers(game: VoximGame, conn: TileConnection): v
     }
     for (const delta of msg.deltas) {
       game.world.applyDelta(delta);
-      updated.add(delta.entityId);
+      changedFor(delta.entityId).add(delta.componentType);
     }
     for (const rm of msg.removals) {
       game.world.applyRemoval(rm.entityId, rm.componentType);
-      updated.add(rm.entityId);
+      changedFor(rm.entityId).add(rm.componentType);
     }
     for (const entityId of msg.destroys) {
       game.buildOccupancy.remove(entityId);
@@ -87,7 +167,7 @@ export function wireConnectionHandlers(game: VoximGame, conn: TileConnection): v
       game.overlay?.removeGateLabel(entityId);
     }
 
-    for (const entityId of updated) {
+    for (const [entityId, changed] of updated) {
       const state = game.world.get(entityId);
       if (!state) continue;
       if (state.heightmap && state.materialGrid) {
@@ -118,39 +198,7 @@ export function wireConnectionHandlers(game: VoximGame, conn: TileConnection): v
         ));
       }
       if (entityId === game.playerId) {
-        if (state.health)    patchUI({ health:    { current: state.health.current, max: state.health.max } });
-        if (state.resource)  patchUI(vitalsPatch(state.resource));
-        if (state.actionCooldowns) patchUI({ skillCooldowns: state.actionCooldowns });
-        if (state.activeActions)   patchUI({ castState: deriveCastState(state.activeActions, game.contentService) });
-        if (state.equipment) {
-          patchUI({ equipment: mapEquipmentToUI(state.equipment) });
-          if (game.input) {
-            const toolType = getToolType(state.equipment.weapon?.prefabId, game.contentService);
-            const newBuildMode = toolType === "hammer";
-            if (newBuildMode !== game.input.buildMode) {
-              console.log(`[Build] buildMode=${newBuildMode} weapon=${state.equipment.weapon?.prefabId ?? "none"} toolType=${toolType ?? "none"}`);
-              game.input.buildMode = newBuildMode;
-              // Hammer unequipped while in build mode → cancel any staged
-              // blueprint selection. Routed through the intent so handlers
-              // stay the single source of mode-clear logic.
-              if (!newBuildMode && modeState.value.kind === "build") {
-                game.intentRouter?.dispatch({ kind: "build-cancel" });
-              }
-            }
-            // T-337: hold-to-aim weapon detection — drives IntentTranslator's
-            // held-vs-tap ACTION_USE_SKILL branch and the pointer-lock
-            // pitch-capture branch.
-            game.input.aimWeaponActive = isHoldToAimWeapon(state.equipment.weapon?.prefabId, game.contentService);
-          }
-        }
-        if (state.inventory) {
-          patchUI({ inventory: mapInventoryToUI(state.inventory, game.world) });
-          game._syncHotbarAttachments();   // an assigned slot's item may have changed/emptied (T-309)
-        }
-        if (state.loreLoadout) patchUI({ skillLoadout: mapLoreLoadoutToUI(state.loreLoadout) });
-        if (state.heritage) {
-          game._observeHeritageGeneration(state.heritage.generation);
-        }
+        applyLocalPlayerState(game, state, changed);
       }
       // Mirror buffer/tag updates on the open workstation entity into uiState
       // so the panel reflects loads/takes/recipe progress without polling.

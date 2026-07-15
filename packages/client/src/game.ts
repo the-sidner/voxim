@@ -11,7 +11,7 @@
  */
 import { connectViaGateway } from "./connection/gateway_client.ts";
 import { TileConnection } from "./connection/tile_connection.ts";
-import { wireConnectionHandlers } from "./connection/wire_handlers.ts";
+import { wireConnectionHandlers, applyLocalPlayerState } from "./connection/wire_handlers.ts";
 import type { CharacterCreation } from "./connection/tile_connection.ts";
 import { InputCapture } from "./input/input_capture.ts";
 import { PointerLockController } from "./input/pointer_lock.ts";
@@ -58,7 +58,7 @@ import { loadLoginName } from "./ui/login.ts";
 import { ACTION_USE_SKILL, ACTION_JUMP, ACTION_CROUCH, hasAction, CommandType } from "@voxim/protocol";
 import type { CommandPayload } from "@voxim/protocol";
 import type { HeirRitualStep } from "./ui/ui_store.ts";
-import { mapEquipmentToUI, worldClockPhase, vitalsPatch, mapLoreLoadoutToUI, deriveCastState, mapInventoryToUI } from "./state/state_mappers.ts";
+import { worldClockPhase } from "./state/state_mappers.ts";
 import { DEFAULT_PHYSICS } from "@voxim/engine";
 import { Predictor } from "./prediction/predictor.ts";
 import { BootstrapSource } from "@voxim/content";
@@ -462,7 +462,7 @@ export class VoximGame {
 
     // Count any terrain chunks that arrived during connect() (before renderer existed).
     // Don't push to renderer yet — _finishLoading() does that after all chunks arrive.
-    for (const [entityId, state] of this.world.entries()) {
+    for (const [, state] of this.world.entries()) {
       // Deduped against the wire-handler path — messages processed DURING
       // connect() already counted their chunks via _noteTerrainChunkReceived.
       if (state.heightmap) this._noteTerrainChunkReceived(state.heightmap.chunkX, state.heightmap.chunkY);
@@ -471,18 +471,6 @@ export class VoximGame {
           state.worldClock.ticksElapsed, state.worldClock.dayLengthTicks,
           this.contentService?.getGameConfig().dayNight,
         ));
-      }
-      if (entityId === this.playerId) {
-        if (state.health)      patchUI({ health:       { current: state.health.current, max: state.health.max } });
-        if (state.resource)    patchUI(vitalsPatch(state.resource));
-        if (state.actionCooldowns) patchUI({ skillCooldowns: state.actionCooldowns });
-        if (state.activeActions)   patchUI({ castState: deriveCastState(state.activeActions, this.contentService) });
-        if (state.equipment)   patchUI({ equipment:    mapEquipmentToUI(state.equipment) });
-        if (state.inventory) {
-          patchUI({ inventory: mapInventoryToUI(state.inventory, this.world) });
-          this._syncHotbarAttachments();   // an assigned slot's item may have arrived/changed (T-309)
-        }
-        if (state.loreLoadout) patchUI({ skillLoadout: mapLoreLoadoutToUI(state.loreLoadout) });
       }
     }
     patchUI({ loadingProgress: Math.min(1, this.terrainChunksReceived / VoximGame.TOTAL_CHUNKS) });
@@ -501,6 +489,16 @@ export class VoximGame {
       // T-337: combat.aim (pitchMinDeg/pitchMaxDeg) rides the same configure()
       // call — the SAME band the server clamps InputState.pitch into.
       this.input.configure({ ...gameCfg.camera, bindings: gameCfg.input?.bindings, aim: gameCfg.combat?.aim });
+    }
+    // Apply the local player's join-time state through the SAME path the wire
+    // handlers use (applyLocalPlayerState is the one definition of "apply
+    // player state"). Doing it here — after this.input exists — is what lets
+    // the equipment-derived input flags (buildMode, aimWeaponActive) reflect
+    // the STARTING equipment: every message processed during connect() ran
+    // with game.input === null and skipped them.
+    {
+      const playerState = this.playerId ? this.world.get(this.playerId) : undefined;
+      if (playerState) applyLocalPlayerState(this, playerState);
     }
     const translator = this.input;
     this.inputCapture = new InputCapture(canvas, translator.handle, (e) => {
