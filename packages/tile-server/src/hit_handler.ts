@@ -3,7 +3,7 @@ import type { EventEmitter } from "./system.ts";
 import type { DerivedItemStats } from "@voxim/content";
 
 /**
- * All data available to a HitHandler when ActionSystem confirms a blade-capsule hit.
+ * All data available to a HitHandler for a confirmed blade-capsule hit.
  *
  * Positions and snapshot values are lag-compensated — they reflect the state at the
  * rewind tick used for hit resolution, not necessarily the current server tick.
@@ -51,7 +51,7 @@ export interface HitContext {
 }
 
 /**
- * A HitHandler is called by ActionSystem for every confirmed hit, once per handler
+ * A HitHandler is called for every confirmed hit, once per handler
  * per hit. Each handler is responsible for checking whether the target has the
  * component(s) it cares about, and returning immediately if not.
  *
@@ -59,7 +59,6 @@ export interface HitContext {
  * other system writes this tick. Handlers must not call world.write() (immediate
  * writes are reserved for spawn-time initialisation).
  *
- * Registration: pass the handler array to ActionSystem's constructor in server.ts.
  * Order matters only when two handlers might both react to the same target (currently
  * no such overlap exists). The array is fixed at startup and never modified at runtime.
  */

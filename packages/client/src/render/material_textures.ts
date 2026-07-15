@@ -13,7 +13,7 @@
 
 import * as THREE from "three";
 import type { ContentService } from "@voxim/content";
-import { mulberry32 as makePrng } from "@voxim/engine";
+import { clamp, mulberry32 as makePrng } from "@voxim/engine";
 
 // ---- colour helpers ---------------------------------------------------------
 
@@ -23,7 +23,7 @@ function hexToRgb(hex: number): [number, number, number] {
 
 /** Clamp to [0,255] integer. */
 function clamp8(v: number): number {
-  return Math.max(0, Math.min(255, Math.round(v)));
+  return Math.round(clamp(v, 0, 255));
 }
 
 function rgba(r: number, g: number, b: number, a = 255): string {

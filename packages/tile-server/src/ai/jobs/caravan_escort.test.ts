@@ -12,7 +12,7 @@ import { Caravan, type CaravanData } from "../../components/caravan.ts";
 import { caravanEscortJob } from "./caravan_escort.ts";
 import type { JobContext, JobTickInput } from "../job_handler.ts";
 import type { Job } from "../../components/npcs.ts";
-import { npcJobQueueCodec } from "@voxim/codecs";
+import { npcJobQueueCodec } from "../../components/npcs.ts";
 
 const content = await JsonSource.load();
 

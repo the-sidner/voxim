@@ -41,6 +41,7 @@
  * T-317 geometry (asserted in camera_rig.test.ts).
  */
 import * as THREE from "three";
+import { clamp } from "@voxim/engine";
 
 // Boot value only: the yaw before the first frame's facing arrives (join
 // screen, pre-spawn). setYaw() owns the yaw from the first render() call on.
@@ -68,10 +69,6 @@ export interface CameraConfig {
   pitchMinDeg: number;
   /** Upper clamp (degrees below horizontal) — larger = steeper top-down. */
   pitchMaxDeg: number;
-}
-
-function clamp(v: number, lo: number, hi: number): number {
-  return v < lo ? lo : v > hi ? hi : v;
 }
 
 /** Pre-bootstrap-only fallback (T-356) — one object mirroring
@@ -187,11 +184,8 @@ export class CameraRig {
    * we rotate that offset rigidly in its vertical plane by (pitch − rest) so
    * the gaze pans while the look-at point stays pinned to the player's chest.
    * At pitch == rest this is byte-identical to the T-317 geometry.
-   *
-   * `dt` is accepted for call-site symmetry with the old follow controller but
-   * is unused — direct rotation has no per-frame integration.
    */
-  update(targetPos: THREE.Vector3, _dt: number): void {
+  update(targetPos: THREE.Vector3): void {
     // Look-at point: chest height above the player root.
     const lookY = targetPos.y + this.lookAtBias;
     this._target.set(targetPos.x, lookY, targetPos.z);

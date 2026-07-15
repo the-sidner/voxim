@@ -152,8 +152,8 @@ export function DebugPanel({ onAction }: { onAction: (a: UIAction) => void }) {
         />
       </Section>
 
-      {/* ── Character state machine ──────────────────────────────────────── */}
-      <CSMSection />
+      {/* ── Animation ────────────────────────────────────────────────────── */}
+      <AnimationSection />
 
       {/* ── Scene graph ───────────────────────────────────────────────────── */}
       <Section
@@ -218,21 +218,19 @@ export function DebugPanel({ onAction }: { onAction: (a: UIAction) => void }) {
 
 type ActionProps = { onAction: (a: UIAction) => void };
 
-// ── Character state machine section ───────────────────────────────────────────
+// ── Animation section ──────────────────────────────────────────────────────
 //
-// Live readout of the local player's CSM: one line per layer showing the
-// active node and how long we've been there. Re-reads every signal tick so
-// it follows transitions in real time.
+// Live readout of the local player's networked AnimationState (derived
+// server-side from ActiveActions): the current weapon action plus the clip
+// playing on each layer. Re-reads every signal tick so it follows
+// transitions in real time.
 
-function CSMSection() {
+function AnimationSection() {
   const world = clientWorld.value;
   const id = localPlayerId.value;
   const entity = world && id ? world.get(id) : undefined;
   const anim = entity?.animationState;
 
-  // The CSM was retired (T-228); the action runtime drives animation now. The
-  // client sees its result as the networked AnimationState (derived from
-  // ActiveActions), so that's what this debug view reflects.
   if (!anim) {
     return (
       <Section title="Animation">

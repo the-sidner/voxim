@@ -1037,8 +1037,8 @@ export interface GaitDef {
  * animation clip, and the blade-capsule geometry attached to the holding
  * hand.
  *
- * For melee: the SM combat layer plays `clipId`; on each active tick,
- * ActionSystem evaluates the clip on the attacker's skeleton, reads the
+ * For melee: the combat animation layer plays `clipId`; on each active tick,
+ * the weapon_trace resolver evaluates the clip on the attacker's skeleton, reads the
  * holding hand's world transform, and sweeps a capsule between
  * `blade.baseLocal` → `blade.tipLocal` at this tick and last tick. Same
  * lag-comp rewind mechanism as before — just with a clip-driven blade
@@ -2482,6 +2482,8 @@ export interface GameConfig {
     minDigHeight: number;
     /** Max distance (world units) from digger to target cell centre. */
     digReach: number;
+    /** How far ahead of the digger, along facing, the target cell sits (world units). */
+    digTargetDistance: number;
     /** Maps material ID → item type dropped when a cell is dug. */
     materialDrops: Record<string, string>;
   };

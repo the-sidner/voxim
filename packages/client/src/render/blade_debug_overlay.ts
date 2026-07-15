@@ -2,7 +2,7 @@
  * BladeDebugOverlay — live visualisation of the weapon blade capsule.
  *
  * Renders the exact hilt→tip segment and endpoint spheres (at blade radius)
- * that the server's ActionSystem uses for hit detection. Both client overlay
+ * that the server uses for hit detection. Both client overlay
  * and server hit detection sample the same `WeaponActionDef.blade` endpoints
  * transformed by the holding-hand bone — so what you see is a faithful
  * real-time projection of the server hitbox onto the client scene.

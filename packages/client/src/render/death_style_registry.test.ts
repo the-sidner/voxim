@@ -7,16 +7,14 @@ import { StaticContentStore, JsonSource } from "@voxim/content";
 import type { DeathStyleDef } from "@voxim/content";
 import {
   registerBuiltinDeathStyles,
+  registerDeathStyle,
   getDeathStyleHandler,
-  deathStyleIds,
   crossCheckDeathStyles,
 } from "./death_style_registry.ts";
 
-Deno.test("registerBuiltinDeathStyles: dissolve and crumble are both registered (crumble as a placeholder until VoximRenderer overwrites it)", () => {
+Deno.test("registerBuiltinDeathStyles: dissolve is registered (the one stateless builtin)", () => {
   registerBuiltinDeathStyles();
   assert(getDeathStyleHandler("dissolve"));
-  assert(getDeathStyleHandler("crumble"));
-  assertEquals(deathStyleIds().sort(), ["crumble", "dissolve"]);
 });
 
 Deno.test("crossCheckDeathStyles: throws on a DeathStyleDef naming an unregistered style", () => {
@@ -27,6 +25,9 @@ Deno.test("crossCheckDeathStyles: throws on a DeathStyleDef naming an unregister
 });
 
 Deno.test("crossCheckDeathStyles: passes clean against the real loaded content (dissolve.json + crumble.json)", async () => {
+  // game.ts registers the real CrumbleController-backed handler before the
+  // cross-check runs; a stub stands in for it here.
+  registerDeathStyle("crumble", () => {});
   const content = await JsonSource.load();
   crossCheckDeathStyles(content); // must not throw
   assertEquals([...content.deathStyles.values()].map((d) => d.id).sort(), ["crumble", "dissolve"]);

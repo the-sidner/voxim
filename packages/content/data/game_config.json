@@ -119,6 +119,7 @@
     "digStep": 0.25,
     "minDigHeight": 1.0,
     "digReach": 3.5,
+    "digTargetDistance": 1.0,
     "materialDrops": {
       "1": "dirt",
       "2": "stone",

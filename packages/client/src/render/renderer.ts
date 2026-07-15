@@ -16,6 +16,7 @@
  * radius from the player have their groups hidden.
  */
 import * as THREE from "three";
+import { lerp } from "@voxim/engine";
 import type { ClientChunk, ClientWorld, EntityState } from "../state/client_world.ts";
 import type { ContentCache } from "../state/content_cache.ts";
 import type { WeaponActionDef, Prefab, AtmosphereDef, ParticleEmitterDef } from "@voxim/content";
@@ -36,8 +37,8 @@ import { updateSkeletonPose, blendAnimationLayers, type EntityMeshGroup } from "
 import { computeTelegraphLayer } from "./telegraph.ts";
 import { computeIframeFlash, applyIframeFlash } from "./iframe_flash.ts";
 import { InstancePool } from "./instance_pool.ts";
-import { CrumbleController } from "./crumble_controller.ts";
-import { registerDeathStyle, getDeathStyleHandler } from "./death_style_registry.ts";
+import type { CrumbleController } from "./crumble_controller.ts";
+import { getDeathStyleHandler } from "./death_style_registry.ts";
 import { evaluatePose } from "./skeleton_evaluator.ts";
 import { composePose } from "./pose_composer.ts";
 import { timeOfDay01 } from "@voxim/content";
@@ -162,9 +163,6 @@ const DEPTH_BLIT_FRAG = /* glsl */`
  */
 const CULL_RADIUS_SQ = 160 * 160;
 
-/** Lerp a number toward target, returning new value. */
-function lerpN(a: number, b: number, t: number): number { return a + (b - a) * t; }
-
 /** Short-path angle lerp (handles ±π wrap). */
 function lerpAngle(a: number, b: number, t: number): number {
   const d = ((b - a) % (2 * Math.PI) + 3 * Math.PI) % (2 * Math.PI) - Math.PI;
@@ -251,8 +249,9 @@ export class VoximRenderer {
   private readonly _skeletonOverlay: SkeletonOverlay;
   private readonly _chunkOverlay:    ChunkOverlay;
   private readonly particles: ParticleSystem;
-  /** "crumble" death-style handler (T-339) — registered under that style id
-   *  in the constructor; `onEntityDied`/`render()` drive it. */
+  /** "crumble" death-style handler (T-339) — injected from game.ts, which
+   *  registers it under that style id before the content cross-check runs;
+   *  `onEntityDied`/`render()` drive it. */
   private readonly crumbleController: CrumbleController;
   /** Physics gravity constant (T-340/T-339) — pre-hydration placeholder
    *  only, overwritten by setParticlePhysics() the moment content loads.
@@ -386,6 +385,7 @@ export class VoximRenderer {
 
   constructor(
     canvas: HTMLCanvasElement,
+    crumbleController: CrumbleController,
     supersample: { min: number; max: number } = PRE_BOOTSTRAP_RENDER_TUNING.supersample,
   ) {
     this.instancePool = new InstancePool(this.scene);
@@ -401,15 +401,7 @@ export class VoximRenderer {
     this.debugOverlayManager.register("hitbox",    new HitboxDebugOverlay());
 
     this.particles = new ParticleSystem(this.instancePool);
-    // T-339: the real, stateful "crumble" handler — overwrites the
-    // placeholder death_style_registry.ts's registerBuiltinDeathStyles()
-    // registered before this renderer existed (see that file's header for
-    // why the ordering is safe).
-    this.crumbleController = new CrumbleController();
-    registerDeathStyle(
-      "crumble",
-      (entityId, mesh, def, durationTicks, ctx) => this.crumbleController.onDeath(entityId, mesh, def, durationTicks, ctx),
-    );
+    this.crumbleController = crumbleController;
 
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
     // Supersample: render the whole pipeline at clamp(devicePixelRatio, min,
@@ -439,9 +431,9 @@ export class VoximRenderer {
     const aspect = (canvas.clientWidth || canvas.width || 320) / (canvas.clientHeight || canvas.height || 180);
     this.cameraRig = new CameraRig(aspect);
     this.camera = this.cameraRig.camera;
-    // Boot placement before the first frame: dt=0 and no facing target yet, so
-    // the yaw holds at its boot value (join screen / pre-spawn).
-    this.cameraRig.update(this.cameraTarget, 0);
+    // Boot placement before the first frame: no facing target yet, so the yaw
+    // holds at its boot value (join screen / pre-spawn).
+    this.cameraRig.update(this.cameraTarget);
     this.gateMarkers = new GateMarkerRenderer(this.scene, this.camera, this.renderer.domElement);
     this.entities = new EntityMeshRegistry(
       this.scene, this.instancePool, this.weaponActionsMap, this.itemPrefabMap,
@@ -1366,9 +1358,9 @@ export class VoximRenderer {
       } else {
         const alpha = Math.max(0, Math.min(1, (renderTime - buf[lo].t) / (buf[hi].t - buf[lo].t)));
         mesh.group.position.set(
-          lerpN(buf[lo].x, buf[hi].x, alpha),
-          lerpN(buf[lo].y, buf[hi].y, alpha) + mesh.rollLiftY,
-          lerpN(buf[lo].z, buf[hi].z, alpha),
+          lerp(buf[lo].x, buf[hi].x, alpha),
+          lerp(buf[lo].y, buf[hi].y, alpha) + mesh.rollLiftY,
+          lerp(buf[lo].z, buf[hi].z, alpha),
         );
         mesh.group.rotation.y = lerpAngle(buf[lo].ry, buf[hi].ry, alpha);
       }
@@ -1462,7 +1454,7 @@ export class VoximRenderer {
     // mouse-Y). update() re-places the camera from the current (yaw, pitch)
     // each frame around the player target.
     if (localFacing != null) this.cameraRig.setYaw(localFacing);
-    this.cameraRig.update(this.cameraTarget, dt);
+    this.cameraRig.update(this.cameraTarget);
 
     // Day/night lerp + shadow-frustum follow/snap + sky-locked sun disc — all
     // off the now-settled camera target. (After cameraRig.update so the sun disc

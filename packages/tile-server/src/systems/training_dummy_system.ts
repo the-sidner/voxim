@@ -22,11 +22,16 @@ import { TrainingDummy } from "../components/training_dummy.ts";
 export class TrainingDummySystem implements System {
   private serverTick = 0;
 
+  /** Dev-only, like its sibling DebugCommandSystem — the dummy is a tuning
+   *  aid; production ticks skip the query entirely. */
+  constructor(private readonly devMode: boolean) {}
+
   prepare(serverTick: number): void {
     this.serverTick = serverTick;
   }
 
   run(world: World, _events: EventEmitter, _dt: number): void {
+    if (!this.devMode) return;
     for (const { entityId, trainingDummy } of world.query(TrainingDummy)) {
       const health = world.get(entityId, Health);
       if (!health) continue;

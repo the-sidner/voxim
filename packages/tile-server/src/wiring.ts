@@ -831,7 +831,7 @@ export function wireGameSystems(deps: WireGameSystemsDeps): System[] {
     // Auto-heal for T-327's practice target — the actual "never dies"
     // guarantee is the Health floor in health_hit_handler.ts; this just
     // recovers it after healDelayTicks so no respawn is needed mid-session.
-    new TrainingDummySystem(),
+    new TrainingDummySystem(devMode),
     deathSystem,
   ];
   return sortSystemsByDependencies(declared);

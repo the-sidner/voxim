@@ -37,7 +37,8 @@ import { RoofRenderer } from "./render/roof_renderer.ts";
 import { DecalRenderer } from "./render/decal_renderer.ts";
 import { crossCheckDecals } from "./render/decal_sources.ts";
 import { crossCheckParticles } from "./render/particle_sources.ts";
-import { crossCheckDeathStyles } from "./render/death_style_registry.ts";
+import { crossCheckDeathStyles, registerDeathStyle } from "./render/death_style_registry.ts";
+import { CrumbleController } from "./render/crumble_controller.ts";
 import { AimIndicatorRenderer } from "./render/aim_indicator.ts";
 import { canopyFade } from "./render/canopy_fade.ts";
 import { InteractionSystem } from "./interaction/interaction_system.ts";
@@ -364,6 +365,15 @@ export class VoximGame {
     // client and server agree on content version — no drift, no mismatched
     // ids. Subsequent reconnects pick up server-side content edits for free.
     const blob = this.connection.bootstrapBlob();
+    // T-339/T-357: the "crumble" death-style handler is stateful
+    // (CrumbleController), so construct it and register the REAL handler
+    // here — before crossCheckDeathStyles runs below — then inject the
+    // controller into VoximRenderer. No placeholder/overwrite dance.
+    const crumbleController = new CrumbleController();
+    registerDeathStyle(
+      "crumble",
+      (entityId, mesh, def, durationTicks, ctx) => crumbleController.onDeath(entityId, mesh, def, durationTicks, ctx),
+    );
     if (blob) {
       this.contentService = await BootstrapSource.load(blob);
       setContentService(this.contentService);
@@ -401,7 +411,7 @@ export class VoximGame {
     // Content hydrated above → the SSAA band (game_config render.supersample,
     // T-356) threads straight into construction; the renderer sizes every
     // post-FX target from it exactly once.
-    this.renderer = new VoximRenderer(canvas, this.contentService?.getGameConfig().render.supersample);
+    this.renderer = new VoximRenderer(canvas, crumbleController, this.contentService?.getGameConfig().render.supersample);
     this.renderer.setLocalPlayer(this.playerId!);
     setLocalPlayerId(this.playerId!);
     this.renderer.setClientWorld(this.world);

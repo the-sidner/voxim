@@ -19,7 +19,7 @@ function tick(s: TrainingDummySystem, w: World, serverTick: number): void {
 }
 
 Deno.test("stays at reduced health until healDelayTicks pass, then snaps to full", () => {
-  const s = new TrainingDummySystem();
+  const s = new TrainingDummySystem(true);
   const w = new World();
   const id = newEntityId();
   w.create(id);
@@ -36,7 +36,7 @@ Deno.test("stays at reduced health until healDelayTicks pass, then snaps to full
 });
 
 Deno.test("a fresh hit restarts the delay clock instead of healing early", () => {
-  const s = new TrainingDummySystem();
+  const s = new TrainingDummySystem(true);
   const w = new World();
   const id = newEntityId();
   w.create(id);
@@ -61,7 +61,7 @@ Deno.test("a fresh hit restarts the delay clock instead of healing early", () =>
 });
 
 Deno.test("a full-health dummy is left alone (no-op)", () => {
-  const s = new TrainingDummySystem();
+  const s = new TrainingDummySystem(true);
   const w = new World();
   const id = newEntityId();
   w.create(id);
@@ -70,4 +70,17 @@ Deno.test("a full-health dummy is left alone (no-op)", () => {
 
   for (let t = 1; t <= 20; t++) tick(s, w, t);
   assertEquals(w.get(id, Health)!.current, 100);
+});
+
+Deno.test("run() is a no-op when devMode is off", () => {
+  const s = new TrainingDummySystem(false);
+  const w = new World();
+  const id = newEntityId();
+  w.create(id);
+  w.write(id, Health, { current: 40, max: 100 });
+  w.write(id, TrainingDummy, { healDelayTicks: 5, lastHitTick: 0, lastObservedHealth: 40 });
+
+  // Well past the delay window — still never heals with devMode off.
+  for (let t = 1; t <= 20; t++) tick(s, w, t);
+  assertEquals(w.get(id, Health)!.current, 40);
 });

@@ -3,7 +3,8 @@
  *
  * Runs as a System (not a HitHandler) because terrain has no entity to hit.
  * Fires on the first tick of the active phase for shovel-wielding entities.
- * Targets the cell 1 unit in front of the player along their facing direction.
+ * Targets the cell `terrain.digTargetDistance` world units in front of the
+ * player along their facing direction.
  *
  * T-034: reduces Heightmap cell by digStep * digPower (snapped to HEIGHT_STEP).
  * T-035: spawns a material drop (dirt, stone, etc.) based on the cell's MaterialGrid value.
@@ -55,10 +56,10 @@ export class TerrainDigSystem implements System {
       const totalDig = snapHeight(cfg.digStep * digPower);
       if (totalDig <= 0) continue;
 
-      // Target the cell 1 unit ahead along the player's facing direction
+      // Target the cell digTargetDistance ahead along the player's facing direction
       const facing = world.get(entityId, InputState)?.facing ?? 0;
-      const targetX = position.x + Math.sin(facing) * 1.0;
-      const targetY = position.y + Math.cos(facing) * 1.0;
+      const targetX = position.x + Math.sin(facing) * cfg.digTargetDistance;
+      const targetY = position.y + Math.cos(facing) * cfg.digTargetDistance;
 
       const cellX = Math.floor(targetX);
       const cellY = Math.floor(targetY);
