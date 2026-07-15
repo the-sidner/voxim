@@ -68,7 +68,6 @@ import { crossCheckTextureStyles } from "./render/material_textures.ts";
 import { crossCheckFlickerCurves } from "./render/flicker_curves.ts";
 import { crossCheckCliffVoxelisers } from "./render/cliff_voxeliser.ts";
 import type { ContentService, Prefab, SwingableData } from "@voxim/content";
-import gameConfigData from "../../content/data/game_config.json" with { type: "json" };
 
 export interface GameConfig {
   canvas: HTMLCanvasElement;
@@ -627,12 +626,13 @@ export class VoximGame {
       this.contentService?.getGameConfig().building.roofHeightAboveFloor ?? 2.0,
     );
 
-    // Step 5: predictor + render loop
+    // Step 5: predictor + render loop. Tuning comes from the bootstrap-fresh
+    // ContentService like every other config read — never a static bundle-time
+    // game_config.json import, which would silently ignore server-side edits.
+    const prediction = this.contentService?.getGameConfig().prediction;
     this.predictor = new Predictor(DEFAULT_PHYSICS, {
-      // deno-lint-ignore no-explicit-any
-      correctionHalfLifeMs: (gameConfigData as any).prediction?.correctionHalfLifeMs ?? 60,
-      // deno-lint-ignore no-explicit-any
-      hardSnapThresholdUnits: (gameConfigData as any).prediction?.hardSnapThresholdUnits ?? 2.0,
+      correctionHalfLifeMs: prediction?.correctionHalfLifeMs ?? 60,
+      hardSnapThresholdUnits: prediction?.hardSnapThresholdUnits ?? 2.0,
     });
     this.lastFrameTime = performance.now();
     this.running = true;
