@@ -69,25 +69,27 @@ const PRE_BOOTSTRAP_RENDER_TUNING: PreBootstrapRenderTuning = {
 // skeletons (wolf) lack the torso bones — the ease just no-ops on missing bones.
 const SPRING_BONES = ["torso_lower", "torso_mid", "torso_upper", "head"] as const;
 const _springTargetQ = new THREE.Quaternion();
+const _springE = new THREE.Euler();
 
 /**
  * Ease the follow-through bones toward the composed target pose with a
  * framerate-corrected exponential lerp (a = 1 − e^(−ω·dt)). Stateless toward a
  * moving target: it cannot overshoot or float (the user's hard "snappy, not
  * physics-velocity" constraint), it only smooths the per-frame pose change so
- * the spine/head settle organically instead of snapping. Mutates the THREE.Euler
+ * the spine/head settle organically instead of snapping. Mutates the rotation
  * values already in `pose`. Seeds to target on first sight (no startup lurch).
  */
-function applyBoneSprings(mesh: EntityMeshGroup, pose: Map<string, THREE.Euler>, dtMs: number, springOmega: number) {
+function applyBoneSprings(mesh: EntityMeshGroup, pose: Map<string, BoneRotation>, dtMs: number, springOmega: number) {
   const a = 1 - Math.exp(-springOmega * (Math.min(dtMs, 100) / 1000));
   for (const bone of SPRING_BONES) {
     const target = pose.get(bone);
     if (!target) continue;
-    _springTargetQ.setFromEuler(target);
+    _springTargetQ.setFromEuler(_springE.set(target.x, target.y, target.z));
     let q = mesh.boneSprings.get(bone);
     if (!q) { q = _springTargetQ.clone(); mesh.boneSprings.set(bone, q); }
     else { q.slerp(_springTargetQ, a); }
-    target.setFromQuaternion(q);
+    _springE.setFromQuaternion(q);
+    target.x = _springE.x; target.y = _springE.y; target.z = _springE.z;
   }
 }
 import { SkeletonOverlay } from "./skeleton_overlay.ts";
@@ -1243,7 +1245,6 @@ export class VoximRenderer {
         // Crossfade the raw 20Hz layer snapshot so state transitions (idle→walk,
         // swing in/out) ease in/out instead of hard-cutting the pose (T-291).
         const layers = blendAnimationLayers(mesh.layerFades, rawLayers, animDtMs);
-        const animForPose = anim ? { ...anim, layers } : (telegraph ? { layers, weaponActionId: "", ticksIntoAction: 0, dissolutionPhase: 0 } : null);
 
         // Fused pose pipeline (pose_composer.ts): gait/crouch (legs) →
         // locomotion lean (spine) → swing overlay (arms) → foot-terrain IK →
@@ -1293,11 +1294,11 @@ export class VoximRenderer {
           gaitPhase = mesh.gaitDistance / gaitDef.strideLength;
         }
 
-        let pose: Map<string, THREE.Euler>;
+        let pose: Map<string, BoneRotation>;
         if (skeleton && (swingWA?.swingPath || loco || dropY > 0)) {
           const boneIndex = this.content.getBoneIndex(mesh.skeletonId);
           const baseLayers = swingWA?.swingPath ? layers.filter((l) => l.clipId !== swingWA.clipId) : layers;
-          const base: Map<string, BoneRotation> = evaluatePose(skeleton, clipIndex, maskIndex, anim ? { ...anim, layers: baseLayers } : null);
+          const base: Map<string, BoneRotation> = evaluatePose(skeleton, clipIndex, maskIndex, anim ? baseLayers : null, mesh.poseScratch);
           // Normalised swing time — hoisted out of the swing producer because
           // it reads per-mesh extrapolation state. `anim!` is safe: swingWA is
           // looked up from anim.weaponActionId, so it resolving implies anim.
@@ -1308,7 +1309,7 @@ export class VoximRenderer {
             swingT = Math.max(0, Math.min(ticks / total, 1));
           }
           const world = this.world;
-          const rot = composePose({
+          pose = composePose({
             skeleton, boneIndex,
             scale: mesh.modelScale, morphParams: mesh.modelMorphs,
             loco, gaitDef, gaitPhase, dropY,
@@ -1317,11 +1318,10 @@ export class VoximRenderer {
             heightAt: world ? (wx, wy) => world.getTerrainHeight(wx, wy) : null,
             lookAtGain: this.lookAtGain,
           }, base);
-          // rewrap the mixed map (THREE.Euler for untouched bones, {x,y,z} for overridden) to THREE.Euler
-          pose = new Map<string, THREE.Euler>();
-          for (const [bone, r] of rot) pose.set(bone, r instanceof THREE.Euler ? r : new THREE.Euler(r.x, r.y, r.z));
         } else {
-          pose = evaluatePose(skeleton, clipIndex, maskIndex, animForPose);
+          // Base FK only. Telegraph-only entities (anim null) still pose off
+          // the blended layers, matching the old animForPose fallback.
+          pose = evaluatePose(skeleton, clipIndex, maskIndex, (anim || telegraph) ? layers : null, mesh.poseScratch);
         }
 
         // Secondary motion: ease the spine/head toward the composed pose (snappy,

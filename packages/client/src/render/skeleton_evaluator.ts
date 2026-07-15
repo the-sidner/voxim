@@ -10,30 +10,36 @@
  * trail ribbon and hit capsule are guaranteed to match.
  */
 import * as THREE from "three";
-import type { SkeletonDef, AnimationClip, BoneMask, AnimationStateData, WeaponBladeDef } from "@voxim/content";
+import type { SkeletonDef, AnimationClip, BoneMask, BoneRotation, AnimationLayer, WeaponBladeDef } from "@voxim/content";
 import { evaluateAnimationLayers } from "@voxim/content";
 import type { EntityMeshGroup } from "./entity_mesh.ts";
 
 // ---- FK pose evaluation ----
 
 /**
- * Evaluate a full skeleton pose from an AnimationStateData layer stack.
+ * Evaluate a full skeleton pose from an animation layer stack.
  *
- * @returns Map from boneId to THREE.Euler (XYZ, radians).
+ * @param out  Optional map reused across frames (`EntityMeshGroup.poseScratch`)
+ *             — threaded straight into evaluateAnimationLayers' zero-alloc
+ *             path; both the map and its per-bone rotation objects are
+ *             mutated in place, so results must be consumed before the next
+ *             call with the same map.
+ * @returns Map from boneId to Euler XYZ BoneRotation (radians).
  */
 export function evaluatePose(
   skeleton: SkeletonDef | undefined,
   clipIndex: ReadonlyMap<string, AnimationClip>,
   maskIndex: ReadonlyMap<string, BoneMask>,
-  animState: AnimationStateData | null,
-): Map<string, THREE.Euler> {
-  if (!skeleton || !animState || animState.layers.length === 0) return new Map();
-  const boneRotations = evaluateAnimationLayers(skeleton, clipIndex, maskIndex, animState.layers);
-  const out = new Map<string, THREE.Euler>();
-  for (const [bone, rot] of boneRotations) {
-    out.set(bone, new THREE.Euler(rot.x, rot.y, rot.z));
+  layers: readonly AnimationLayer[] | null,
+  out?: Map<string, BoneRotation>,
+): Map<string, BoneRotation> {
+  if (!skeleton || !layers || layers.length === 0) {
+    // Empty result contract: no bones written this frame (the rig holds its
+    // last pose) — a reused scratch map must not leak the previous pose.
+    if (out) { out.clear(); return out; }
+    return new Map();
   }
-  return out;
+  return evaluateAnimationLayers(skeleton, clipIndex, maskIndex, layers, out);
 }
 
 // ---- weapon blade endpoints from FK (used by trail + attachment + debug overlay) ----

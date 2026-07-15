@@ -6,13 +6,15 @@
  * Bone rotations are Euler XYZ in radians — the format solveSkeleton() expects.
  *
  * Performance notes:
- *   - Pass an `out` map to reuse storage across ticks (zero allocation on hot path).
+ *   - Pass an `out` map to reuse storage across ticks (zero allocation on the
+ *     hot path — the map AND its per-bone BoneRotation objects are reused and
+ *     mutated in place; don't retain references to entries across calls).
  *   - ClipIndex / maskIndex are pre-built once by ContentService and passed in as refs.
  *   - Binary search over keyframes is O(log K) per bone per layer.
  */
 
 import type { SkeletonDef, AnimationClip, AnimationLibrary, AnimationLayer, BoneMask, AnimationKeyframe } from "./types.ts";
-import type { BoneRotation } from "./ik_solver.ts";
+import type { BoneRotation, Quat } from "./ik_solver.ts";
 import { quatFromEulerXYZ, eulerFromQuat, slerpQuat } from "./ik_solver.ts";
 
 /**
@@ -55,7 +57,12 @@ export function buildMaskIndex(skeleton: SkeletonDef): ReadonlyMap<string, BoneM
  * @param clipIndex  Pre-built clip map from ContentService.getClipIndex(skeletonId).
  * @param maskIndex  Pre-built mask map from ContentService.getMaskIndex(skeletonId).
  * @param layers     Ordered animation layer stack, bottom to top.
- * @param out        Optional output map reused across calls — cleared on entry.
+ * @param out        Optional output map reused across calls — entries for the
+ *                   same skeleton's bones are mutated in place (see the
+ *                   module's performance notes). A caller that reuses one map
+ *                   across DIFFERENT skeletons must clear it on the swap (the
+ *                   client does, in clearMeshContent); a bone-count mismatch
+ *                   is caught and cleared here as a cheap guard.
  * @returns          Map from boneId to Euler XYZ BoneRotation (radians), for solveSkeleton().
  */
 export function evaluateAnimationLayers(
@@ -66,7 +73,7 @@ export function evaluateAnimationLayers(
   out?: Map<string, BoneRotation>,
 ): Map<string, BoneRotation> {
   const result: Map<string, BoneRotation> = out ?? new Map();
-  if (out) out.clear();
+  if (out && out.size !== skeleton.bones.length) out.clear();
 
   // Seed every bone with its rest rotation. Bones that no layer's clip
   // animates (e.g. root) must end up here at rest, not at identity — the
@@ -75,11 +82,18 @@ export function evaluateAnimationLayers(
   // Without this seed, a clip lacking a "root" track would sample ZERO_ROT
   // and overwrite the bind, leaving the whole rig facing 180° wrong.
   for (const bone of skeleton.bones) {
-    result.set(bone.id, {
-      x: bone.restRotX ?? 0,
-      y: bone.restRotY ?? 0,
-      z: bone.restRotZ ?? 0,
-    });
+    const prev = result.get(bone.id);
+    if (prev) {
+      prev.x = bone.restRotX ?? 0;
+      prev.y = bone.restRotY ?? 0;
+      prev.z = bone.restRotZ ?? 0;
+    } else {
+      result.set(bone.id, {
+        x: bone.restRotX ?? 0,
+        y: bone.restRotY ?? 0,
+        z: bone.restRotZ ?? 0,
+      });
+    }
   }
 
   for (const layer of layers) {
@@ -88,11 +102,12 @@ export function evaluateAnimationLayers(
     const clip = clipIndex.get(layer.clipId);
     if (!clip) continue;
 
-    // Resolve bone mask: empty maskId = full body.
+    // Resolve bone mask: empty maskId = full body. The Set is built once per
+    // BoneMask ever (WeakMap keyed on the def itself), not per layer per call.
     let maskedBones: ReadonlySet<string> | null = null;
     if (layer.maskId) {
       const mask = maskIndex.get(layer.maskId);
-      if (mask) maskedBones = new Set(mask.boneIds);
+      if (mask) maskedBones = maskBoneSet(mask);
     }
 
     const w = layer.weight;
@@ -107,16 +122,14 @@ export function evaluateAnimationLayers(
       // a missing track is "no opinion", not "force to zero".
       const track = clip.tracks[bone.id];
       if (!track) continue;
-      const clipRot = sampleTrack(track, t);
+      const clipRot = sampleTrack(track, t, _sampled);
 
       const cur = result.get(bone.id)!;
 
       if (layer.blend === "additive") {
-        result.set(bone.id, {
-          x: cur.x + clipRot.x * w,
-          y: cur.y + clipRot.y * w,
-          z: cur.z + clipRot.z * w,
-        });
+        cur.x += clipRot.x * w;
+        cur.y += clipRot.y * w;
+        cur.z += clipRot.z * w;
       } else {
         // override: slerp from the accumulated pose to this layer's pose by
         // weight (quaternions, not per-component Euler lerp — a partial-weight
@@ -124,11 +137,13 @@ export function evaluateAnimationLayers(
         // otherwise sweep limbs through garbage). At w=1 this is an exact
         // replace; at w<1 (a layer fading in/out) it's a clean orientation blend.
         if (w >= 0.999) {
-          result.set(bone.id, clipRot);
+          cur.x = clipRot.x;
+          cur.y = clipRot.y;
+          cur.z = clipRot.z;
         } else {
-          const qc = quatFromEulerXYZ(cur.x, cur.y, cur.z);
-          const ql = quatFromEulerXYZ(clipRot.x, clipRot.y, clipRot.z);
-          result.set(bone.id, eulerFromQuat(slerpQuat(qc, ql, w)));
+          const qc = quatFromEulerXYZ(cur.x, cur.y, cur.z, _qCur);
+          const ql = quatFromEulerXYZ(clipRot.x, clipRot.y, clipRot.z, _qLayer);
+          eulerFromQuat(slerpQuat(qc, ql, w, _qBlend), cur);
         }
       }
     }
@@ -137,25 +152,52 @@ export function evaluateAnimationLayers(
   return result;
 }
 
+/** Per-BoneMask membership Set, built once ever per mask def. */
+const maskSetCache = new WeakMap<BoneMask, ReadonlySet<string>>();
+function maskBoneSet(mask: BoneMask): ReadonlySet<string> {
+  let s = maskSetCache.get(mask);
+  if (!s) {
+    s = new Set(mask.boneIds);
+    maskSetCache.set(mask, s);
+  }
+  return s;
+}
+
 // ---- internal helpers ----
 
-const ZERO_ROT: BoneRotation = { x: 0, y: 0, z: 0 };
+// Module-level scratch — single-threaded on both server (tick loop) and
+// client (render loop); results are consumed/copied before the next call.
+const _sampled: BoneRotation = { x: 0, y: 0, z: 0 };
+const _qCur:   Quat = { x: 0, y: 0, z: 0, w: 1 };
+const _qLayer: Quat = { x: 0, y: 0, z: 0, w: 1 };
+const _qBlend: Quat = { x: 0, y: 0, z: 0, w: 1 };
+const _qa:     Quat = { x: 0, y: 0, z: 0, w: 1 };
+const _qb:     Quat = { x: 0, y: 0, z: 0, w: 1 };
+const _qs:     Quat = { x: 0, y: 0, z: 0, w: 1 };
+
+function setRot(out: BoneRotation, x: number, y: number, z: number): BoneRotation {
+  out.x = x; out.y = y; out.z = z;
+  return out;
+}
 
 /**
  * Sample an animation track at normalized time t ∈ [0, 1].
  * Linearly interpolates between adjacent keyframes.
  * Keyframes must be sorted by ascending `time`.
+ *
+ * @param out  Optional result object written in place (hot-path reuse).
  */
-export function sampleTrack(track: AnimationKeyframe[], t: number): BoneRotation {
-  if (track.length === 0) return ZERO_ROT;
-  if (track.length === 1) return { x: track[0].rotX, y: track[0].rotY, z: track[0].rotZ };
+export function sampleTrack(track: AnimationKeyframe[], t: number, out?: BoneRotation): BoneRotation {
+  const o = out ?? { x: 0, y: 0, z: 0 };
+  if (track.length === 0) return setRot(o, 0, 0, 0);
+  if (track.length === 1) return setRot(o, track[0].rotX, track[0].rotY, track[0].rotZ);
 
   const tc = Math.max(0, Math.min(1, t));
 
   // Fast-path: before first or after last keyframe.
-  if (tc <= track[0].time) return { x: track[0].rotX, y: track[0].rotY, z: track[0].rotZ };
+  if (tc <= track[0].time) return setRot(o, track[0].rotX, track[0].rotY, track[0].rotZ);
   const last = track[track.length - 1];
-  if (tc >= last.time) return { x: last.rotX, y: last.rotY, z: last.rotZ };
+  if (tc >= last.time) return setRot(o, last.rotX, last.rotY, last.rotZ);
 
   // Binary search for the interval containing tc.
   let lo = 0;
@@ -177,7 +219,7 @@ export function sampleTrack(track: AnimationKeyframe[], t: number): BoneRotation
   // through x,z ≈ ±π mid-slash), which is the "crippled swing / weird rotations"
   // bug. The Euler→quat→Euler round-trip is lossless for the FK: solveSkeleton
   // re-converts to a quaternion, so only the orientation matters.
-  const qa = quatFromEulerXYZ(a.rotX, a.rotY, a.rotZ);
-  const qb = quatFromEulerXYZ(b.rotX, b.rotY, b.rotZ);
-  return eulerFromQuat(slerpQuat(qa, qb, alpha));
+  const qa = quatFromEulerXYZ(a.rotX, a.rotY, a.rotZ, _qa);
+  const qb = quatFromEulerXYZ(b.rotX, b.rotY, b.rotZ, _qb);
+  return eulerFromQuat(slerpQuat(qa, qb, alpha, _qs), o);
 }

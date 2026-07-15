@@ -107,7 +107,8 @@ function quatFromUnitVectors(from: Vec3, to: Vec3): Quat {
  * which sweeps through garbage poses when the rotation is large or near gimbal
  * lock (the "crippled swing / weird rotations" of the Mixamo melee clips).
  */
-export function slerpQuat(a: Quat, b: Quat, t: number): Quat {
+export function slerpQuat(a: Quat, b: Quat, t: number, out?: Quat): Quat {
+  const o = out ?? { x: 0, y: 0, z: 0, w: 1 };
   let dot = a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w;
   let bx = b.x, by = b.y, bz = b.z, bw = b.w;
   if (dot < 0) { dot = -dot; bx = -bx; by = -by; bz = -bz; bw = -bw; } // shortest arc
@@ -115,16 +116,19 @@ export function slerpQuat(a: Quat, b: Quat, t: number): Quat {
     // Nearly parallel — lerp + normalize avoids the sin(theta)→0 blow-up.
     const x = a.x + (bx - a.x) * t, y = a.y + (by - a.y) * t, z = a.z + (bz - a.z) * t, w = a.w + (bw - a.w) * t;
     const inv = 1 / Math.hypot(x, y, z, w);
-    return { x: x * inv, y: y * inv, z: z * inv, w: w * inv };
+    o.x = x * inv; o.y = y * inv; o.z = z * inv; o.w = w * inv;
+    return o;
   }
   const theta0 = Math.acos(dot);
   const sin0 = Math.sin(theta0);
   const s0 = Math.sin((1 - t) * theta0) / sin0;
   const s1 = Math.sin(t * theta0) / sin0;
-  return { x: a.x * s0 + bx * s1, y: a.y * s0 + by * s1, z: a.z * s0 + bz * s1, w: a.w * s0 + bw * s1 };
+  o.x = a.x * s0 + bx * s1; o.y = a.y * s0 + by * s1; o.z = a.z * s0 + bz * s1; o.w = a.w * s0 + bw * s1;
+  return o;
 }
 
-export function eulerFromQuat(q: Quat): BoneRotation {
+export function eulerFromQuat(q: Quat, out?: BoneRotation): BoneRotation {
+  const o = out ?? { x: 0, y: 0, z: 0 };
   const x2 = q.x * 2, y2 = q.y * 2, z2 = q.z * 2;
   const xx = q.x * x2, xy = q.x * y2, xz = q.x * z2;
   const yy = q.y * y2, yz = q.y * z2, zz = q.z * z2;
@@ -133,18 +137,16 @@ export function eulerFromQuat(q: Quat): BoneRotation {
   const m13 = xz + wy;
   const ey = Math.asin(Math.max(-1, Math.min(1, m13)));
   if (Math.abs(m13) < 0.9999999) {
-    return {
-      x: Math.atan2(-(yz - wx), 1 - (xx + yy)),
-      y: ey,
-      z: Math.atan2(-(xy - wz), 1 - (yy + zz)),
-    };
+    o.x = Math.atan2(-(yz - wx), 1 - (xx + yy));
+    o.y = ey;
+    o.z = Math.atan2(-(xy - wz), 1 - (yy + zz));
+    return o;
   }
   // Gimbal lock
-  return {
-    x: Math.atan2(xy + wz, 1 - (xx + zz)),
-    y: ey,
-    z: 0,
-  };
+  o.x = Math.atan2(xy + wz, 1 - (xx + zz));
+  o.y = ey;
+  o.z = 0;
+  return o;
 }
 
 // ---- public API ----
@@ -225,16 +227,16 @@ export function solveTwoBoneIK(
  * Convert Euler XYZ angles to a unit quaternion.
  * Inverse of eulerFromQuat — useful for applying a BoneRotation to a direction.
  */
-export function quatFromEulerXYZ(x: number, y: number, z: number): Quat {
+export function quatFromEulerXYZ(x: number, y: number, z: number, out?: Quat): Quat {
+  const o = out ?? { x: 0, y: 0, z: 0, w: 1 };
   const c1 = Math.cos(x / 2), s1 = Math.sin(x / 2);
   const c2 = Math.cos(y / 2), s2 = Math.sin(y / 2);
   const c3 = Math.cos(z / 2), s3 = Math.sin(z / 2);
-  return {
-    x: s1 * c2 * c3 + c1 * s2 * s3,
-    y: c1 * s2 * c3 - s1 * c2 * s3,
-    z: c1 * c2 * s3 + s1 * s2 * c3,
-    w: c1 * c2 * c3 - s1 * s2 * s3,
-  };
+  o.x = s1 * c2 * c3 + c1 * s2 * s3;
+  o.y = c1 * s2 * c3 - s1 * c2 * s3;
+  o.z = c1 * c2 * s3 + s1 * s2 * c3;
+  o.w = c1 * c2 * c3 - s1 * s2 * s3;
+  return o;
 }
 
 /** Multiply two unit quaternions: result represents applying b after a. */
