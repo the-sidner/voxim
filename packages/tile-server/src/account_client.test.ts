@@ -12,16 +12,24 @@ import { AccountClient } from "./account_client.ts";
 
 const SECRET = "0123456789abcdef";
 
-/** Serve on an ephemeral port; the handler decides stall vs answer. */
+/** Serve on an ephemeral port; the handler stalls until the client aborts. */
 function stallServer(): { url: string; shutdown: () => Promise<void> } {
+  const ac = new AbortController();
   const server = Deno.serve(
-    { port: 0, onListen: () => {} },
-    // Never resolves — the request hangs until the client aborts.
-    () => new Promise<Response>(() => {}),
+    { port: 0, onListen: () => {}, signal: ac.signal },
+    // Stall, but settle on client abort — a handler that never settles would
+    // wedge shutdown the same way the untimed fetch wedged teardownSession.
+    (req) =>
+      new Promise<Response>((resolve) => {
+        req.signal.addEventListener("abort", () => resolve(new Response(null, { status: 408 })));
+      }),
   );
   return {
     url: `http://127.0.0.1:${server.addr.port}`,
-    shutdown: () => server.shutdown(),
+    shutdown: async () => {
+      ac.abort();
+      await server.finished.catch(() => {});
+    },
   };
 }
 
