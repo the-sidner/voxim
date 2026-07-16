@@ -44,7 +44,7 @@ the static model, seed-unique per equipped instance, with zero change to the T-3
 Effort: S   Status: todo   (renumbered from a T-328 collision — T-328 is the landed camera ticket; numbers are never reused)
 
 ### T-361 · Stabilization sweep — 34 verified bug/perf/confusion findings from the post-merge audit
-Effort: L   Status: in-progress   (2026-07-15)
+Effort: L   Status: done   Commit: 86cb10ea   (all 34 fixed across 5 lanes, 31 commits, +64 tests; highlights: teardownPlayer two-phase — destroy before any await, account fetches carry abort timeouts; handoff freeze window + fog isolation + handoff exits through teardown; death ends in a perpetual held phase; cooldown/reaction/knockback writes compose; idle actors ship zero physics deltas; uuid encode 59x; snapshot pages encode once; terrain probes 3.2x alloc-free; AoI exit hysteresis; InstancePool dirty-span uploads; zero-alloc pose hot path; one interact-reach gate, one day-phase source, one applyLocalPlayerState. Spawned T-362–366)
 
 ### T-362 · Block/parry arc geometry looks inverted
 Effort: S   Status: todo   (found during T-361 lane s2)
