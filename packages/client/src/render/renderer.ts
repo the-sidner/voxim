@@ -290,8 +290,7 @@ export class VoximRenderer {
    *  `mist.densityByPhase[currentDayPhase]` the same way envLighting's
    *  lightCur lerps colors, so mist doesn't snap on a phase change. */
   private mistWeightCur = 0;
-  /** Last day-phase name set via setDayPhase() (DayPhaseChanged events) —
-   *  mist's phase weight follows the same discrete-phase bucket the colour
+  /** Mist's phase weight follows the same discrete-phase bucket the colour
    *  ramp does, not a continuous curve (no second FieldExpr-shaped mechanism
    *  for a 4-point lookup). */
   private currentDayPhase = "noon";
@@ -1019,10 +1018,7 @@ export class VoximRenderer {
 
   // ---- day/night ----
 
-  /**
-   * Called when a DayPhaseChanged event arrives.
-   * Lighting smoothly interpolates toward the target values each render frame.
-   */
+  /** Lighting smoothly interpolates toward the target values each render frame. */
   setDayPhase(phase: string): void {
     this.envLighting.setPhase(phase);
     this.currentDayPhase = phase;

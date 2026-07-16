@@ -46,6 +46,56 @@ Effort: S   Status: todo   (renumbered from a T-328 collision — T-328 is the l
 ### T-361 · Stabilization sweep — 34 verified bug/perf/confusion findings from the post-merge audit
 Effort: L   Status: in-progress   (2026-07-15)
 
+### T-362 · Block/parry arc geometry looks inverted
+Effort: S   Status: todo   (found during T-361 lane s2)
+
+`health_hit_handler.ts:74-77` computes `incomingAngle` as the attacker→target
+travel direction and requires it within `blockArcHalfRadians` of the target's
+FACING — as written, a block registers only when the target faces AWAY from
+the attacker, the opposite convention of `frontBackDot` twenty lines below
+(front = facing toward the attacker). No test covers the geometry. Verify
+against intended design, fix the convention, pin with a test.
+
+### T-363 · Idle actors still ship ~150 B/tick — remaining delta churn sources
+Effort: M   Status: todo   (found during T-361 lane s3; physics churn fixed in 7bbeabb1)
+
+After the physics fix, idle actors still emit per-tick deltas from: dispatcher
+`ticksInPhase` writes on held slots, `AnimationState` clip-time advancing, and
+Resource vitals micro-rates. Gate each on actual change (or restructure the
+tick-counter fields off the networked component). The claims in
+`component_registry.ts:180-186` comments ("only changed components ship")
+remain false until this lands — fix or delete them per the doc doctrine.
+Related latent shape: `upsertResourceKey` (`resources/mutate.ts`) uses
+committed-view has()/set-else-mutate — safe only while nothing removes the
+whole Resource component; convert to the stampedThisRun pattern from ce84943d.
+
+### T-364 · WorldSnapshot channel has no AoI filter — tile-wide broadcast
+Effort: M   Status: todo   (found during T-361 lane s3)
+
+The WorldSnapshot datagram pages carry Position+Hitbox for ALL entities in the
+tile to every session — bandwidth waste and a wallhack information leak (any
+client sees every player/NPC position regardless of AoI). Filter pages per
+session by AoI (or page by spatial region so sessions subscribe to nearby
+pages); encode-once-broadcast-many from 04c1dd19 must be preserved per region.
+
+### T-365 · Tile transition re-hydrates content but not the renderer's content cache
+Effort: S   Status: todo   (found during T-361 lane s5)
+
+`_transitionToTile` calls `content.setBootstrapService()` but never re-runs
+`renderer.setContentCache()` — grade, canopy/textureStyle params, camera
+config, and palette stay at the PREVIOUS tile's values after a transition
+(the texture cache itself was fixed in 90c91e5f). Re-apply the full renderer
+content cache on transition; verify with two tiles that differ in atmosphere.
+
+### T-366 · Equipment component survives death pointing at destroyed item entities
+Effort: S   Status: todo   (found during T-361 lane s5)
+
+`equip_cleanup` destroys carried item ENTITIES on death but never rewrites the
+corpse's `Equipment` component. The crumble style now releases anchors
+client-side (d3f960ec), but a DISSOLVE-styled armed NPC still per-frame anchors
+the visual of a destroyed entity. Empty (or rewrite) Equipment in the same
+death hook that destroys the items, so no corpse references dead entity ids.
+
 An 8-dimension find+adversarial-verify pass over freshly merged main confirmed
 34 findings (each survived two independent refuters): 2 T-354 regressions
 (entity destroy deferred behind an untimed account fetch; reconnect-during-
