@@ -25,6 +25,7 @@ import { snapHeight } from "@voxim/world";
 import { ClientWorld } from "./state/client_world.ts";
 import type { ClientChunk } from "./state/client_world.ts";
 import { ContentCache } from "./state/content_cache.ts";
+import { applyContentToRenderer } from "./state/apply_content_to_renderer.ts";
 import { FogOfWar } from "./state/fog_of_war.ts";
 import { VoximRenderer } from "./render/renderer.ts";
 import { SwingPredictor } from "./render/swing_predictor.ts";
@@ -418,12 +419,14 @@ export class VoximGame {
     this.renderer.setLocalPlayer(this.playerId!);
     setLocalPlayerId(this.playerId!);
     this.renderer.setClientWorld(this.world);
-    this.renderer.setContentCache(this.content);
-    // T-331: rebuild any chunk the renderer deferred because it baked before
-    // content was ready. A no-op here (the renderer was just constructed, so
-    // nothing could have baked yet) — matters on the tile-transition path
-    // below, where the renderer survives the reconnect.
-    this.renderer.onContentHydrated();
+    // applyContentToRenderer → setContentCache applies every piece of
+    // content-derived renderer state (palette/grade/canopy/textureStyle/
+    // camera config) and, as its last internal step, the T-331
+    // deferred-chunk rebuild + texture-cache invalidation — a no-op here
+    // since the renderer was just constructed and nothing could have baked
+    // yet. _transitionToTile below calls the SAME shared function so a tile
+    // transition can't drift from what boot applies (T-365).
+    applyContentToRenderer(this.renderer, this.content);
     // Renderer-facing weapon actions + item prefabs sourced from the
     // bootstrap-delivered ContentService (T-177 phase 3).  Items are
     // filtered to those that look like inventory items (have an
@@ -724,12 +727,19 @@ export class VoximGame {
         this.fog.applyLosConfig(this.contentService.getGameConfig().fogOfWar);
         console.log(`[Game] content service re-hydrated for new tile`);
       }
-      // T-331: the renderer survives the reconnect, so if any chunk of the
-      // new tile arrived and baked before content re-hydrated (the same
-      // ordering hazard the initial join closes structurally, but here the
-      // renderer is never null so the deferral gate is what saves it),
-      // rebuild it now.
-      this.renderer?.onContentHydrated();
+      // T-365: re-apply content to the renderer now that it's re-hydrated,
+      // through the SAME shared applyContentToRenderer the boot path above
+      // calls — setContentCache is the renderer's single content-apply
+      // entry point (grade, palette, canopy/textureStyle params, camera
+      // config, plus — as its last internal step — the T-331 deferred-chunk
+      // rebuild + texture-cache invalidation, 90c91e5f). The renderer and
+      // this ContentCache object both survive the reconnect, so without
+      // re-running it, the previous tile's derived render state would
+      // silently leak into the new one — the exact bug T-365 fixed. Runs
+      // synchronously right after setBootstrapService above (no `await` in
+      // between), so no terrain chunk from the new connection can bake
+      // before this applies.
+      applyContentToRenderer(this.renderer, this.content);
       console.log(`[Game] transition complete; reconnected as ${this.playerId.slice(0, 8)}`);
     } catch (err) {
       console.error("[Game] tile transition failed:", err);

@@ -598,6 +598,19 @@ export class VoximRenderer {
     this.entities.setClientWorld(world);
   }
 
+  /**
+   * The single entry point for pushing a (re-)hydrated ContentService into
+   * the renderer — called once at initial boot and again after every tile
+   * transition (T-365), always on the SAME renderer instance and the SAME
+   * ContentCache object (both survive a transition; only the ContentService
+   * inside the cache is swapped). Applies every piece of renderer state
+   * that's derived from content — palette, grade, canopy/textureStyle
+   * params, camera config — and finishes by invalidating whatever baked
+   * against the previous content (`onContentHydrated`, folded in here so
+   * the two can never be called out of step, T-365). A caller that pushes
+   * new content without this full apply is the exact bug T-365 fixed:
+   * grade/palette/canopy/camera silently kept the previous tile's values.
+   */
   setContentCache(cache: ContentCache): void {
     this.content = cache;
     this.entities.setContent(cache);
@@ -647,6 +660,7 @@ export class VoximRenderer {
       this.springOmega = cfg.render.pose.springOmega;
       this.remoteInterpDelayMs = cfg.prediction.remoteInterpDelayMs;
     }
+    this.onContentHydrated();
   }
 
 
@@ -654,13 +668,15 @@ export class VoximRenderer {
 
   /**
    * Rebuild every chunk whose bake was deferred by the content-hydration gate
-   * in `_rebuildChunk` (T-331). Call once the bootstrap ContentService is
-   * wired — on the initial join right after `setContentCache`, and again
-   * after a tile transition's content re-hydrates, since the renderer (and
-   * any chunks queued against it) survives the reconnect. No-op when nothing
-   * is pending, so it's safe to call unconditionally.
+   * in `_rebuildChunk` (T-331), and drop the per-material texture cache so
+   * nothing baked against it stays stale (T-365, folds in 90c91e5f). Private:
+   * `setContentCache` is the only caller, always as its last step, so the two
+   * can never run out of step or be called independently again. No-op when
+   * nothing is pending, so it's safe to call unconditionally — at initial
+   * boot (nothing could have baked yet) as much as after a tile transition
+   * (the renderer, and any chunks queued against it, survives the reconnect).
    */
-  onContentHydrated(): void {
+  private onContentHydrated(): void {
     // Fresh content invalidates the per-material procedural texture cache
     // (keyed by materialId alone): a re-hydration can carry a changed
     // material colour / render.textureStyle / game_config style params, and

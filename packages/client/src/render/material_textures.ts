@@ -368,10 +368,11 @@ export function getVoxelTexture(
 }
 
 /** Drop every cached texture. Called on every content (re)hydration
- *  (VoximRenderer.onContentHydrated — initial join AND tile-transition
- *  reconnect) so a changed MaterialDef colour/style or game_config
- *  textureStyle params can never be shadowed by a texture generated from
- *  the previous content version; also used by studio teardown. */
+ *  (VoximRenderer.setContentCache's final step, via the private
+ *  onContentHydrated — initial join AND tile-transition reconnect, T-365)
+ *  so a changed MaterialDef colour/style or game_config textureStyle params
+ *  can never be shadowed by a texture generated from the previous content
+ *  version; also used by studio teardown. */
 export function disposeVoxelTextures(): void {
   for (const t of cache.values()) t.dispose();
   cache.clear();
