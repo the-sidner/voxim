@@ -79,7 +79,7 @@ session by AoI (or page by spatial region so sessions subscribe to nearby
 pages); encode-once-broadcast-many from 04c1dd19 must be preserved per region.
 
 ### T-365 · Tile transition re-hydrates content but not the renderer's content cache
-Effort: S   Status: todo   (found during T-361 lane s5)
+Effort: S   Status: done   Commit: c3d84519   (shared applyContentToRenderer() used by boot AND _transitionToTile; setContentCache folds in onContentHydrated (now private) so texture-cache invalidation + deferred-chunk rebuild can't drift from the cache apply; palette/grade/canopy/camera/pose-tuning were the stale captures, atmosphere was already live via biomeTag; 4 unit tests; live two-tile grade check still worth doing when next in the testplay harness)
 
 `_transitionToTile` calls `content.setBootstrapService()` but never re-runs
 `renderer.setContentCache()` — grade, canopy/textureStyle params, camera
