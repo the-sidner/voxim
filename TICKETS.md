@@ -41,7 +41,7 @@ the static model, seed-unique per equipped instance, with zero change to the T-3
 ## Lore & Skills
 
 ### T-360 · Externalise Lore UI — write a learned fragment to a blank tome
-Effort: S   Status: in-progress   (renumbered from a T-328 collision — T-328 is the landed camera ticket; numbers are never reused)
+Effort: S   Status: done   Commit: ab5d98c5 (+a56855ef)   (renumbered from a T-328 collision — numbers are never reused. The dormant server handler was NOT rotted — T-344 had already modernised DynastySystem to the T-260b LoreLoadout shape; what was missing was purely the client entry point. InventoryPanel's context-menu idiom: a blank_tome slot gets one "Write: <fragment>" action per learned fragment (the action list IS the selector, no new panel), shown only with ≥1 learned fragment; learnedFragmentIds surfaced client-side for the first time via mapLoreLoadoutToUI; new write_tome UIAction → CommandType.Externalise. Round trip Externalise→Internalise now test-pinned server-side)
 
 Found while building T-072 (heir-ritual UI): `CommandType.Internalise` (read a
 tome, T-020) now has a client entry point (InventoryPanel's "Read" action),
