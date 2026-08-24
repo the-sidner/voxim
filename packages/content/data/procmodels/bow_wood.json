@@ -1,0 +1,20 @@
+{
+  "_comment": "T-346: procedural recurve bow -- two mirrored curved LIMB spines mounted at the ends of a leather-wrapped SOLID riser, tapering toward the nock, with a bone-string LIMB anchored to the resolved limb tips. Purely visual (bow_grammar has no server trace consumer -- arrow collision radius lives on ProjectileActionConfig, untouched). Params are pre-modelScale (see wooden_bow.json's modelScale 0.13), matching the raw voxel-grid extents of the authored model_bow_basic.json it replaces.",
+  "id": "bow_wood",
+  "generator": "bow_grammar",
+  "params": {
+    "variant": "bow",
+    "limbLengthRange": [7.5, 8.5],
+    "limbHalfWidthRange": [0.45, 0.6],
+    "curveRange": [1.2, 2.2],
+    "voxelSize": 1,
+    "riserLength": 2,
+    "riserHalfWidth": 0.55,
+    "stringOffset": 1,
+    "materials": {
+      "limb": "oak",
+      "riser": "dark_leather",
+      "string": "bone"
+    }
+  }
+}

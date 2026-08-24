@@ -1,0 +1,8 @@
+{
+  "_comment": "T-346: held-model anchor for a bow_grammar weapon -- empty nodes (the visual voxels come from the generator at bake time, keyed off swingable.bowGrammar, not authored here). Same declarative-anchor role generated_blade.json plays for blade_grammar weapons: the prefab needs a modelId to resolve, but the geometry is generator-sourced. Shared by both wooden_bow and wooden_crossbow -- their distinct shapes come entirely from which ProcModelDef swingable.bowGrammar names.",
+  "id": "generated_bow",
+  "version": 1,
+  "nodes": [],
+  "subObjects": [],
+  "materials": []
+}

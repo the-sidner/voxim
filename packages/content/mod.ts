@@ -158,6 +158,11 @@ export type { BladeStyle, BladeGrammarParams, BladeGeometry } from "./src/blade_
 export { deriveBladeGeometry, bladeGrammarAtoms } from "./src/blade_grammar.ts";
 export type { ArmorPlateSpec, ArmorGrammarParams } from "./src/armor_grammar.ts";
 export { armorGrammarAtoms } from "./src/armor_grammar.ts";
+// bow_grammar (T-346) is purely visual (no server trace consumer — see the
+// file doc), but lives here for the same "one evaluator, THREE-free" reason
+// armor_grammar does.
+export type { BowVariant, BowGrammarParams, BowGeometry } from "./src/bow_grammar.ts";
+export { deriveBowGeometry, bowGrammarAtoms } from "./src/bow_grammar.ts";
 
 // ---- sweep math (shared server + client) ----
 export type { Vec3 } from "./src/sweep_math.ts";

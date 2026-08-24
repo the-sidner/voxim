@@ -683,6 +683,22 @@ export interface SwingableData {
    * weapons like `iron_sword`).
    */
   bladeGrammar?: string;
+  /**
+   * T-346 — names a `ProcModelDef` (generator: "bow_grammar") whose bow/
+   * crossbow is THIS weapon's own geometry rather than an authored
+   * `model_bow_basic`/`model_crossbow_basic`. Boot-cross-checked (loader.ts)
+   * against `store.procModels` membership, the exact same discipline as
+   * `bladeGrammar` above. Unlike `bladeGrammar`, there is no server-side
+   * consumer: a bow has no hit-sweep capsule of its own (the arrow/bolt's
+   * collision radius lives on its own `ProjectileActionConfig`), so this
+   * field only ever affects the client's held-model bake
+   * (`entity_mesh_registry.ts` syncHandSlot -> bakeGeneratedBow). `seed` is
+   * `hash32(weaponEntityId)` — the same derivation `bladeGrammar` uses, for
+   * the same reason (seed-unique per equipped instance, zero wire cost).
+   * Absent -> this weapon's model is whatever its prefab's static
+   * `ModelDefinition.nodes` already provides.
+   */
+  bowGrammar?: string;
 }
 export interface ToolData { toolType: string; }
 export interface DeployableData { prefabId: string; }

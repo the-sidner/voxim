@@ -1,0 +1,21 @@
+{
+  "_comment": "T-346: procedural crossbow -- the SAME bow_grammar composition (two mirrored curved LIMB spines + SOLID riser/stock + bone-string LIMB) placed with variant:crossbow: the worn-iron prod mounts horizontally at the stock's front face, the oak stock trails back to the shoulder, and an iron mechanism block reads as the trigger/lock. Purely visual (see bow_wood.json / bow_grammar.ts's file doc). Params are pre-modelScale (wooden_crossbow.json's modelScale 0.13), matching the raw voxel-grid extents of the authored model_crossbow_basic.json it replaces.",
+  "id": "crossbow_wood",
+  "generator": "bow_grammar",
+  "params": {
+    "variant": "crossbow",
+    "limbLengthRange": [4.0, 4.8],
+    "limbHalfWidthRange": [0.5, 0.65],
+    "curveRange": [0.8, 1.4],
+    "voxelSize": 1,
+    "riserLength": 12,
+    "riserHalfWidth": 0.8,
+    "stringOffset": 0.8,
+    "materials": {
+      "limb": "worn_iron",
+      "riser": "oak",
+      "string": "bone",
+      "mechanism": "iron"
+    }
+  }
+}

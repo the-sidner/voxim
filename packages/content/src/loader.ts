@@ -389,6 +389,14 @@ async function loadContentStoreInternal(
         `[content] prefab "${p.id}" swingable.bladeGrammar references unknown procModel "${swingable.bladeGrammar}"`,
       );
     }
+    // T-346: same discipline for swingable.bowGrammar (purely visual — no
+    // server-side consumer, unlike bladeGrammar, but the id must still
+    // resolve at boot).
+    if (swingable?.bowGrammar && !store.procModels.get(swingable.bowGrammar)) {
+      throw new Error(
+        `[content] prefab "${p.id}" swingable.bowGrammar references unknown procModel "${swingable.bowGrammar}"`,
+      );
+    }
     const armor = p.components["armor"] as ArmorData | undefined;
     if (armor?.armorGrammar && !store.procModels.get(armor.armorGrammar)) {
       throw new Error(

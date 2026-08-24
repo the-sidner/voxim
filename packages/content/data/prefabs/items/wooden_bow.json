@@ -1,6 +1,7 @@
 {
+  "_comment": "T-346: the bow is generated per-instance (swingable.bowGrammar -> bow_wood) -- every crafted/spawned copy gets its own item EntityId -> its own seed -> a seed-unique recurve shape. Purely visual (bow_grammar has no server trace consumer); zero change to the T-338 hold-to-aim mechanic.",
   "id": "wooden_bow",
-  "modelId": "model_bow_basic",
+  "modelId": "generated_bow",
   "modelScale": 0.13,
   "components": {
     "equippable": {
@@ -18,7 +19,8 @@
       ],
       "heavyChargeMs": 350,
       "swingActionId": "bow_draw",
-      "damage": 18
+      "damage": 18,
+      "bowGrammar": "bow_wood"
     },
     "weight": {
       "baseWeight": 1

@@ -29,8 +29,9 @@ import type {
   SkeletonDef,
   BladeGrammarParams,
   ArmorGrammarParams,
+  BowGrammarParams,
 } from "@voxim/content";
-import { resolveSubObjects, resolveMorphParams, bladeGrammarAtoms } from "@voxim/content";
+import { resolveSubObjects, resolveMorphParams, bladeGrammarAtoms, bowGrammarAtoms } from "@voxim/content";
 import { humanoidGrammarByBone } from "./procmodel/generators/humanoid_grammar.ts";
 import { armorGrammarByBone } from "./procmodel/generators/armor_grammar.ts";
 import type { HoverOutlineSink } from "./renderer.ts";
@@ -726,13 +727,19 @@ export class EntityMeshRegistry {
     // T-306: a generated blade shares one anchor `modelId` (`generated_blade`)
     // across every procedural sword, so the modelId-unchanged early-exit can't
     // tell two different generated swords apart — key the generated case on the
-    // ITEM entity id too.
-    const bladeGrammarId = (prefab?.components?.["swingable"] as { bladeGrammar?: string } | undefined)?.bladeGrammar ?? null;
+    // ITEM entity id too. T-346: `bowGrammar` is the same shape (a generated
+    // bow/crossbow shares one `generated_bow` anchor) so it needs the same
+    // item-id keying.
+    const swingableComp = prefab?.components?.["swingable"] as
+      | { bladeGrammar?: string; bowGrammar?: string }
+      | undefined;
+    const bladeGrammarId = swingableComp?.bladeGrammar ?? null;
+    const bowGrammarId = swingableComp?.bowGrammar ?? null;
     const itemId = slot?.entityId ?? null;
 
     const existing = mesh.attachments.get(slotId);
     const unchanged = modelId === (existing?.modelId ?? null) &&
-      (!bladeGrammarId || itemId === (existing?.builtItemId ?? null));
+      (!(bladeGrammarId || bowGrammarId) || itemId === (existing?.builtItemId ?? null));
     if (unchanged) {
       // The model didn't change, but the graph-resolved bone may have
       // (e.g. it just resolved out of "unresolved") — keep restBoneId current
@@ -769,6 +776,15 @@ export class EntityMeshRegistry {
     // swept hitbox share one geometry.
     if (bladeGrammarId && itemId) {
       this.bakeGeneratedBlade(mesh, slotId, modelId, itemId, bladeGrammarId, prefab, weaponScale, holdBoneId);
+      return;
+    }
+
+    // T-346: a bow_grammar weapon bakes its held model the same way a
+    // blade_grammar weapon does — see bakeGeneratedBow's doc for how the
+    // anchor semantics carry over unchanged (purely visual, no server
+    // trace consumer).
+    if (bowGrammarId && itemId) {
+      this.bakeGeneratedBow(mesh, slotId, modelId, itemId, bowGrammarId, prefab, weaponScale, holdBoneId);
       return;
     }
 
@@ -872,6 +888,97 @@ export class EntityMeshRegistry {
     // AABB in model space (blade axis = model +z, per blade_grammar). Anchor
     // the model's lowest z (pommel butt) at the hand bone, same as the authored
     // path — model z → three.js y (buildVoxelMesh swap), so shift +(-minZ) on y.
+    let minX = Infinity, minZ = Infinity, maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+    let minY = Infinity;
+    for (const a of atoms) {
+      minX = Math.min(minX, a.cx - a.sx / 2); maxX = Math.max(maxX, a.cx + a.sx / 2);
+      minY = Math.min(minY, a.cy - a.sy / 2); maxY = Math.max(maxY, a.cy + a.sy / 2);
+      minZ = Math.min(minZ, a.cz - a.sz / 2); maxZ = Math.max(maxZ, a.cz + a.sz / 2);
+    }
+    const mats = new Map<number, MaterialDef>();
+    for (const a of atoms) {
+      const m = this.content.getMaterialSync(a.materialId);
+      if (m) mats.set(a.materialId, m);
+    }
+    const anchorOffset = { x: 0, y: -minZ, z: 0 };
+    attachAtomsToSlot(mesh, slotId, modelId, atoms, mats, false, anchorOffset);
+
+    if (slotId === "main_hand") {
+      mesh.bladeDimensions = {
+        length: (maxZ - minZ),
+        halfCross: Math.max(maxX - minX, maxY - minY) / 2,
+      };
+    }
+
+    const swingable = (prefab?.components?.["swingable"] as
+      | { chain?: { light: string; heavy: string }[] }
+      | undefined);
+    const primaryAction = swingable?.chain?.[0]?.light
+      ? this.weaponActions.get(swingable.chain[0].light)
+      : undefined;
+    const slotHoldBone = holdBoneId
+      ?? primaryAction?.holdHand
+      ?? (slotId === "off_hand" ? "hand_l" : "hand_r");
+    const newSlot = mesh.attachments.get(slotId);
+    if (newSlot) {
+      newSlot.builtItemId = itemId;
+      newSlot.restBoneId = slotHoldBone;
+      if (primaryAction?.blade) {
+        newSlot.bladeAttach = {
+          base: [primaryAction.blade.baseLocal[0], primaryAction.blade.baseLocal[1], primaryAction.blade.baseLocal[2]],
+          tip:  [primaryAction.blade.tipLocal[0],  primaryAction.blade.tipLocal[1],  primaryAction.blade.tipLocal[2]],
+          holdBone: slotHoldBone,
+        };
+      }
+    }
+  }
+
+  /**
+   * T-346 — bake a hand slot from a `bow_grammar` generator's seed-unique
+   * atoms (a procedural bow/crossbow) instead of the empty-nodes anchor
+   * model. Structurally identical to `bakeGeneratedBlade` (same seed
+   * derivation, same minZ-anchor convention, same bladeDimensions/
+   * bladeAttach bookkeeping every main-hand item gets) — kept as a separate
+   * method rather than generalized because the two grammars' anchor
+   * semantics only coincide by construction; `armor_grammar`'s
+   * `syncArmorSlot` is the precedent for one dedicated bake method per
+   * grammar rather than a shared abstraction. Unlike blade, there is no
+   * server-side geometry to keep in sync — a bow is purely visual (see
+   * `bow_grammar.ts`'s file doc), so this is the ONLY consumer of the seed.
+   */
+  private bakeGeneratedBow(
+    mesh: EntityMeshGroup,
+    slotId: "main_hand" | "off_hand",
+    modelId: string,
+    itemId: string,
+    bowGrammarId: string,
+    prefab: Prefab | null,
+    weaponScale: number,
+    holdBoneId: string | null,
+  ): void {
+    if (!this.content) return;
+    const procModel = this.content.getProcModelSync(bowGrammarId);
+    const currentSlot = mesh.attachments.get(slotId);
+    if (!procModel || !mesh.boneGroups || currentSlot?.modelId !== modelId) return;
+
+    const seed = hash32(itemId);
+    const rawAtoms = bowGrammarAtoms(seed, procModel.params as BowGrammarParams, (name) => {
+      const m = this.content!.getMaterialByName(name);
+      if (!m) throw new Error(`[bow_grammar] procModel "${bowGrammarId}" uses unknown material "${name}"`);
+      return m.id;
+    });
+    // Scale generator atoms (authored in world units) by the weapon's modelScale.
+    const atoms = rawAtoms.map((a) => ({
+      ...a,
+      cx: a.cx * weaponScale, cy: a.cy * weaponScale, cz: a.cz * weaponScale,
+      sx: a.sx * weaponScale, sy: a.sy * weaponScale, sz: a.sz * weaponScale,
+    }));
+
+    // AABB in model space (limb axis = model z, per bow_grammar). Anchor the
+    // model's lowest z at the hand bone, same convention bakeGeneratedBlade
+    // uses (and the authored path used before it, via the generic
+    // loadSlotModel AABB anchor below) — model z -> three.js y (buildVoxelMesh
+    // swap), so shift +(-minZ) on y.
     let minX = Infinity, minZ = Infinity, maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
     let minY = Infinity;
     for (const a of atoms) {

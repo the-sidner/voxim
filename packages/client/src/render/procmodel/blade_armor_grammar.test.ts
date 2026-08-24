@@ -1,16 +1,21 @@
 /**
- * blade_grammar / armor_grammar client generators (T-306) — pins that the
- * registered generators are THIN wrappers over the shared @voxim/content
- * cores (no duplicated geometry), pass the boot cross-checks, and bake
- * crack-free. The seed→geometry parity (client render == server trace) is
- * proven in @voxim/content's blade_grammar.test.ts; this file proves the
- * client's registry-side wiring resolves and delegates to that same core.
+ * blade_grammar / armor_grammar / bow_grammar client generators (T-306,
+ * T-346) — pins that the registered generators are THIN wrappers over the
+ * shared @voxim/content cores (no duplicated geometry), pass the boot
+ * cross-checks, and bake crack-free. The seed→geometry parity (client
+ * render == server trace) is proven in @voxim/content's
+ * blade_grammar.test.ts (blade_grammar's server-trace consumer only);
+ * bow_grammar has no server consumer to prove parity against (purely
+ * visual — see bow_grammar.ts's file doc), so its shape invariants live in
+ * @voxim/content's bow_grammar.test.ts instead. This file proves the
+ * client's registry-side wiring resolves and delegates to the shared cores.
  */
 import { assert, assertEquals } from "jsr:@std/assert";
-import { JsonSource, bladeGrammarAtoms, armorGrammarAtoms } from "@voxim/content";
-import type { BladeGrammarParams, ArmorGrammarParams } from "@voxim/content";
+import { JsonSource, bladeGrammarAtoms, armorGrammarAtoms, bowGrammarAtoms } from "@voxim/content";
+import type { BladeGrammarParams, ArmorGrammarParams, BowGrammarParams } from "@voxim/content";
 import { bladeGrammar } from "./generators/blade_grammar.ts";
 import { armorGrammar, armorGrammarByBone } from "./generators/armor_grammar.ts";
+import { bowGrammar } from "./generators/bow_grammar.ts";
 import { crossCheckProcModels } from "./mod.ts";
 import { crossCheckDesignLanguage } from "./design_language_check.ts";
 import { bakeVoxels } from "../voxel_bake.ts";
@@ -21,11 +26,13 @@ const ctx = {
   getSkeleton: (id: string) => content.skeletons.get(id),
 };
 
-Deno.test("T-306: blade + armor procModels register and pass the boot cross-checks", () => {
+Deno.test("T-306/T-346: blade + armor + bow procModels register and pass the boot cross-checks", () => {
   crossCheckProcModels(content);      // generator ids resolve
   crossCheckDesignLanguage(content);  // materials resolve, no signal hue on structural mass
   assertEquals(content.procModels.get("blade_iron_straight")!.generator, "blade_grammar");
   assertEquals(content.procModels.get("plate_armor_iron")!.generator, "armor_grammar");
+  assertEquals(content.procModels.get("bow_wood")!.generator, "bow_grammar");
+  assertEquals(content.procModels.get("crossbow_wood")!.generator, "bow_grammar");
 });
 
 Deno.test("T-306: the registered blade generator delegates to the shared core (byte-identical atoms)", () => {
@@ -68,4 +75,26 @@ Deno.test("T-306: the registered armor generator flattens per-bone plates to mod
   let total = 0;
   for (const atoms of byBone.values()) total += atoms.length;
   assertEquals(flat.length, total, "flat == sum of per-bone plates");
+});
+
+Deno.test("T-346: the registered bow generator delegates to the shared core (byte-identical atoms), both variants", () => {
+  for (const id of ["bow_wood", "crossbow_wood"]) {
+    const params = content.procModels.get(id)!.params as BowGrammarParams;
+    const viaRegistry = bowGrammar(1234, params, ctx);
+    const viaCore = bowGrammarAtoms(1234, params, ctx.resolveMaterial);
+    assertEquals(JSON.stringify(viaRegistry), JSON.stringify(viaCore), `${id}: registry wrapper == shared core`);
+    assert(viaRegistry.length > 0);
+  }
+});
+
+Deno.test("T-346: bow atoms bake crack-free (24 verts / 36 indices per atom), both variants", () => {
+  for (const id of ["bow_wood", "crossbow_wood"]) {
+    const params = content.procModels.get(id)!.params as BowGrammarParams;
+    const atoms = bowGrammar(1, params, ctx);
+    const matId = atoms[0].materialId;
+    const only = atoms.filter((a) => a.materialId === matId);
+    const baked = bakeVoxels(atoms, matId);
+    assertEquals(baked.positions.length, only.length * 24 * 3, `${id}: positions`);
+    assertEquals(baked.indices.length, only.length * 36, `${id}: indices`);
+  }
 });

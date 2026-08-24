@@ -12,6 +12,7 @@ import { mushroom } from "./generators/mushroom.ts";
 import { humanoidGrammar } from "./generators/humanoid_grammar.ts";
 import { bladeGrammar } from "./generators/blade_grammar.ts";
 import { armorGrammar } from "./generators/armor_grammar.ts";
+import { bowGrammar } from "./generators/bow_grammar.ts";
 
 let _registered = false;
 
@@ -26,6 +27,7 @@ export function registerBuiltinGenerators(): void {
   registerGenerator("humanoid_grammar", humanoidGrammar);
   registerGenerator("blade_grammar", bladeGrammar);
   registerGenerator("armor_grammar", armorGrammar);
+  registerGenerator("bow_grammar", bowGrammar);
 }
 
 /**
