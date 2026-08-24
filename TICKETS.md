@@ -19,7 +19,7 @@ Effort: **S** < half a day · **M** half–two days · **L** multi-day or archit
 ## Combat
 
 ### T-346 · Procedural bow/crossbow generation (T-306 composition)
-Effort: M   Status: in-progress   (deferred from T-338, 2026-07-14; renumbered from a T-340 collision — T-340 was already the particles ticket, and numbers are never reused)
+Effort: M   Status: done   Commit: de35b992   (ONE grammar (bow_grammar.ts, `variant: bow|crossbow` param): two mirrored curved limbs + riser/stock + string anchored to resolved limb tips; crossbow mounts the prod perpendicular (+x) on the stock and draws along z, plus a mechanism block. Purely visual — ProjectileActionConfig.radius untouched, no tile-server file touched, T-338 mechanic tests unmodified green. SwingableData.bowGrammar boot-cross-checked; seed = hash32(itemEntityId) per equipped instance; model_bow_basic/model_crossbow_basic DELETED for the generated_bow anchor model; 9-case grammar test file + client bake parity checks. Live in-hand screenshot via testplay still worth doing)
 
 T-338 (bow/crossbow hold-to-aim path) shipped `wooden_bow`/`wooden_crossbow` on their existing
 AUTHORED models (`model_bow_basic`/`model_crossbow_basic`) rather than composing with T-306's
