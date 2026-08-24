@@ -558,6 +558,7 @@ export const modelRefCodec: Serialiser<ModelRefData> = {
 //   u8   blend         (0 = override, 1 = additive)
 //   f32  speedScaleVal (-1.0 sentinel = "velocity")
 //   f32  speedReference (0 when not applicable)
+//   u8   loop          (0/1 — T-363, mirrors the source AnimationClip)
 //
 // dissolutionPhase (T-311 P5c) is appended AFTER ticksIntoAction — purely
 // additive at the tail, every existing byte offset is unchanged.
@@ -574,6 +575,7 @@ export const animationStateCodec: Serialiser<AnimationStateData> = {
       w.writeU8(l.blend === "additive" ? 1 : 0);
       w.writeF32(typeof l.speedScale === "number" ? l.speedScale : -1.0);
       w.writeF32(l.speedReference ?? 0);
+      w.writeU8(l.loop ? 1 : 0);
     }
     w.writeStr(v.weaponActionId);
     w.writeU16(v.ticksIntoAction);
@@ -593,7 +595,8 @@ export const animationStateCodec: Serialiser<AnimationStateData> = {
       const speedScaleVal  = r.readF32();
       const speedReference = r.readF32();
       const speedScale: AnimationLayer["speedScale"] = speedScaleVal < 0 ? "velocity" : speedScaleVal;
-      layers.push({ clipId, maskId, time, weight, blend, speedScale, speedReference: speedReference || undefined });
+      const loop           = r.readU8() === 1;
+      layers.push({ clipId, maskId, time, weight, blend, speedScale, speedReference: speedReference || undefined, loop });
     }
     return {
       layers,

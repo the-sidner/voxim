@@ -56,11 +56,44 @@ export const ActorSlots = defineComponent({
   default: (): ActorSlotsData => ({ slots: [] }),
 });
 
+/**
+ * Wire-equality for ActiveActions (T-363): ignores `ticksInPhase`. A
+ * perpetual phase (`ticks: -1` — idle's `hold`, death's `dead`, a held
+ * block/bow-draw) advances `ticksInPhase` every tick the dispatcher runs,
+ * so comparing it verbatim made an idle actor or a lingering corpse re-ship
+ * ActiveActions forever — the "only re-sent when a slot's state changes"
+ * claim was false the moment a slot held anything perpetual. The client
+ * never reads ticksInPhase as a resync target: it extrapolates elapsed time
+ * locally from the tick it actually received (telegraph.ts, the weapon-swing
+ * IK's `ticksIntoAction` sibling). Every other field is compared verbatim —
+ * actionId/phase/initiator/scratch changes ARE what the client resyncs on.
+ */
+function activeActionsWireEqual(a: ActiveActionsData, b: ActiveActionsData): boolean {
+  const aSlots = Object.keys(a.states);
+  const bSlots = Object.keys(b.states);
+  if (aSlots.length !== bSlots.length) return false;
+  for (const slot of aSlots) {
+    const x = a.states[slot];
+    const y = b.states[slot];
+    if (!y) return false;
+    if (
+      x.actionId !== y.actionId ||
+      x.phase !== y.phase ||
+      x.initiator !== y.initiator ||
+      JSON.stringify(x.scratch ?? null) !== JSON.stringify(y.scratch ?? null)
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 export const ActiveActions = defineComponent({
   name: "activeActions" as const,
   wireId: ComponentType.activeActions,
   codec: networkedCodec<ActiveActionsData>(ComponentType.activeActions),
   default: (): ActiveActionsData => ({ states: {} }),
+  wireEquals: activeActionsWireEqual,
 });
 
 /**

@@ -311,7 +311,21 @@ export class World {
           if (!prev) this.indexAdd(entityId, tokenId);
           const version = (prev?.version ?? 0) + 1;
           entity.set(tokenId, { version, data: slot.data });
-          appliedSets.push({ entityId, token: slot.token, data: slot.data, version });
+          // Wire-equals gate (T-363): the commit above always lands — every
+          // internal reader (world.get) sees the true value this tick
+          // regardless of what happens next. A component may additionally
+          // declare `wireEquals` to say "these two values are
+          // indistinguishable on the wire" even though they differ (a
+          // perpetual action phase's ticksInPhase counter, a vitals
+          // resource's sub-visible drift, a looping clip's time). Only the
+          // OUTBOUND delta is suppressed in that case — buildDeltaMap never
+          // sees this entry, so nothing ships, but nothing server-side ever
+          // reads a stale value either. A brand-new component (no `prev`)
+          // always ships — there is nothing to compare against.
+          const wireEquals = prev !== undefined && slot.token.networked ? slot.token.wireEquals : undefined;
+          if (!wireEquals || !wireEquals(prev!.data, slot.data)) {
+            appliedSets.push({ entityId, token: slot.token, data: slot.data, version });
+          }
           // A deferred Parent set (world.reparent, T-219/T-220) reaches the
           // wire correctly via the ops walk above — but the reverse child
           // index above (childIndex) is maintained separately from

@@ -55,6 +55,30 @@ export interface NetworkedComponentDef<T, N extends string = string>
   extends ComponentDefBase<T, N> {
   readonly networked: true;
   readonly wireId: number;
+  /**
+   * Optional wire-equality override (T-363). `World.applyChangeset` always
+   * commits a `set`/`mutate` to the entity store — internal readers
+   * (`world.get`) see the true value every tick regardless of this hook, so
+   * nothing that reads committed state for gameplay logic (a parry window,
+   * a bow-charge threshold, an integrating resource) ever sees a stale
+   * value. `wireEquals` decides ONLY whether that commit also produces a
+   * wire delta: when it returns true for (previously-committed,
+   * newly-committed), the write is real but the client couldn't tell the
+   * two values apart, so the changeset entry is dropped before
+   * `buildDeltaMap` ever sees it. Use it for fields that must advance every
+   * tick for internal correctness (a perpetual action phase's tick
+   * counter, a continuously-integrating vitals resource) but whose
+   * per-tick delta is not itself wire-meaningful. Absent = every commit
+   * ships, the historical behaviour.
+   *
+   * Declared with method-shorthand syntax (not a `readonly` function-typed
+   * property) so TS checks it bivariantly — a property-typed function here
+   * would make every `NetworkedComponentDef<T>` fail to widen to
+   * `ComponentDef<unknown>` (world.query's tuple element type) under
+   * `strictFunctionTypes`, the same reason `Serialiser<T>` above uses
+   * method shorthand for `encode`/`decode`.
+   */
+  wireEquals?(a: T, b: T): boolean;
 }
 
 /**
@@ -97,6 +121,7 @@ export function defineComponent<T, N extends string>(opts: {
   schema?: ComponentSchema<T>;
   requires?: readonly string[];
   networked?: true;
+  wireEquals?: (a: T, b: T) => boolean;
 }): NetworkedComponentDef<T, N>;
 
 /**
@@ -127,6 +152,7 @@ export function defineComponent<T, N extends string>(opts: {
   schema?: ComponentSchema<T>;
   requires?: readonly string[];
   networked?: boolean;
+  wireEquals?: (a: T, b: T) => boolean;
 }): ComponentDef<T, N> {
   if (opts.networked === false) {
     return {
@@ -148,5 +174,6 @@ export function defineComponent<T, N extends string>(opts: {
     ...(opts.requires !== undefined && { requires: opts.requires }),
     networked: true,
     wireId: opts.wireId!,
+    ...(opts.wireEquals !== undefined && { wireEquals: opts.wireEquals }),
   };
 }

@@ -386,7 +386,15 @@ export class ActionDispatcher implements System {
   }
 }
 
-/** Structural equality of two slot→state maps (avoids needless deltas). */
+/**
+ * Structural equality of two slot→state maps — including `ticksInPhase`,
+ * deliberately. This only gates whether `world.set` is even CALLED; it must
+ * stay sensitive to ticksInPhase so a perpetual phase's counter keeps
+ * committing every tick (gate reads like parry-window / bow-charge duration
+ * depend on the committed value being live). Whether that commit also ships
+ * on the wire is a separate decision — see `ActiveActions`' `wireEquals`
+ * (T-363), which ignores ticksInPhase for exactly that reason.
+ */
 function sameStates(
   a: Record<string, ActiveActionState>,
   b: Record<string, ActiveActionState>,

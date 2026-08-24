@@ -3091,6 +3091,14 @@ export interface AnimationLayer {
   maskId: string;
   /** Normalized time position within the clip [0, 1]. Advanced by AnimationSystem each tick. */
   time: number;
+  /**
+   * Mirrors the source AnimationClip's `loop` flag (T-363). Lets the client
+   * extrapolate `time` locally between wire updates for a looping,
+   * fixed-rate layer (the server stops re-shipping pure time advancement —
+   * see `wireEquals` on the `AnimationState` component def) instead of
+   * needing a content lookup by `clipId` to find out.
+   */
+  loop: boolean;
   /** Blend weight [0, 1]. 1.0 = fully replace lower layers on masked bones. */
   weight: number;
   /** override: lerp toward this layer's pose. additive: add rotations on top of lower layers. */

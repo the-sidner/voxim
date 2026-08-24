@@ -157,6 +157,39 @@ export const ModelRef = defineComponent({
 
 // ---- AnimationState ---- current animation mode; written by AnimationSystem each tick
 
+/**
+ * Wire-equality for AnimationState (T-363): every field is compared
+ * verbatim EXCEPT a looping, fixed-rate layer's `time` — AnimationSystem
+ * fully replaces this component every tick (world.set), so an idle actor's
+ * breathing loop advanced its clip time by a real, non-epsilon amount every
+ * single tick forever, the "clip-time advancing" churn source. The client
+ * doesn't puppet a velocity-scaled or one-shot clip's `time` locally (no
+ * local clock drives it — see renderer.ts), so those keep shipping exactly
+ * as before; only a `loop: true` layer with a numeric `speedScale` is safe
+ * to hold back, because `renderer.ts` extrapolates exactly that shape
+ * locally from `mesh.lastAnimUpdateMs` (mirroring the existing
+ * `ticksIntoAction`/`ticksInPhase` extrapolation pattern).
+ */
+function animationStateWireEqual(a: AnimationStateData, b: AnimationStateData): boolean {
+  if (a.weaponActionId !== b.weaponActionId) return false;
+  if (a.ticksIntoAction !== b.ticksIntoAction) return false;
+  if (a.dissolutionPhase !== b.dissolutionPhase) return false;
+  if (a.layers.length !== b.layers.length) return false;
+  for (let i = 0; i < a.layers.length; i++) {
+    const la = a.layers[i], lb = b.layers[i];
+    if (la.clipId !== lb.clipId) return false;
+    if (la.weight !== lb.weight) return false;
+    if (la.blend !== lb.blend) return false;
+    if (la.maskId !== lb.maskId) return false;
+    if (la.speedScale !== lb.speedScale) return false;
+    if (la.speedReference !== lb.speedReference) return false;
+    if (la.loop !== lb.loop) return false;
+    const clientExtrapolates = la.loop && typeof la.speedScale === "number";
+    if (!clientExtrapolates && la.time !== lb.time) return false;
+  }
+  return true;
+}
+
 export const AnimationState = defineComponent({
   name: "animationState" as const,
   wireId: ComponentType.animationState,
@@ -167,6 +200,7 @@ export const AnimationState = defineComponent({
     ticksIntoAction: 0,
     dissolutionPhase: 0,
   }),
+  wireEquals: animationStateWireEqual,
 });
 
 // ---- Name ---- display label rendered above the entity's head on the client.

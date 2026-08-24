@@ -176,12 +176,25 @@ export const NETWORKED_DEFS: ReadonlyArray<NetworkedComponentDef<any>> = [
   GateLink,
   Name,
   // Action runtime (T-226): ActiveActions is networked — the client renders
-  // the cast bar off slot/phase; it only changes when a slot's phase/action
-  // changes. ActorSlots went server-only (T-349, see ALL_DEFS below).
+  // the cast bar off slot/phase. `ticksInPhase` advances every tick a slot
+  // holds a perpetual (ticks:-1) phase — idle, a lingering corpse's `dead`,
+  // a held block/bow-draw — so "only changes when a slot's phase/action
+  // changes" held only until a slot held one of those; the def's
+  // `wireEquals` (T-363) is what actually makes it true now, dropping the
+  // wire delta for a ticksInPhase-only change while the committed value
+  // still advances every tick for gate reads (parry window, bow-charge
+  // threshold). ActorSlots went server-only (T-349, see ALL_DEFS below).
   ActiveActions,
   // Resource (T-262) — vitals on the wire so the client HUD shows
-  // stamina/hunger/thirst/poise. Server-only until now (T-238); the delta is
-  // change-gated by ResourceSystem so a rested actor ships nothing.
+  // stamina/hunger/thirst/poise. Server-only until now (T-238). ResourceSystem
+  // gates the mutate itself on the integrated value actually moving, so a
+  // resource sitting at a bound (stamina/poise at max) ships nothing — but
+  // hunger/thirst have no such fixpoint (they drift toward their thresholds
+  // every tick) and shipped a delta every tick regardless. The def's
+  // `wireEquals` (T-363) closes that: it quantises each key to the HUD bar's
+  // rendered precision before comparing, so only a drift the player could
+  // actually see reaches the wire; the committed value stays exact every
+  // tick underneath (thresholds and affordability checks are unaffected).
   Resource,
   // ActionCooldowns (T-265) — per-action cooldowns + GCD so the skill bar
   // draws cooldown sweeps. Only churns during the brief post-cast window.

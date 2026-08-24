@@ -55,9 +55,9 @@ const MASKS: ReadonlyMap<string, BoneMask> = new Map<string, BoneMask>([
 ]);
 
 const LAYERS: readonly AnimationLayer[] = [
-  { clipId: "kick", maskId: "", time: 0.5, weight: 1, blend: "override", speedScale: 1 },
-  { clipId: "wave", maskId: "arms_only", time: 0.5, weight: 0.6, blend: "override", speedScale: 1 },
-  { clipId: "wave", maskId: "arms_only", time: 0.25, weight: 0.3, blend: "additive", speedScale: 1 },
+  { clipId: "kick", maskId: "", time: 0.5, loop: true, weight: 1, blend: "override", speedScale: 1 },
+  { clipId: "wave", maskId: "arms_only", time: 0.5, loop: true, weight: 0.6, blend: "override", speedScale: 1 },
+  { clipId: "wave", maskId: "arms_only", time: 0.25, loop: true, weight: 0.3, blend: "additive", speedScale: 1 },
 ];
 
 function assertPosesEqual(a: ReadonlyMap<string, BoneRotation>, b: ReadonlyMap<string, BoneRotation>) {
@@ -94,8 +94,8 @@ Deno.test("zero-alloc contract: repeated out-calls return the same map AND the s
   for (let frame = 0; frame < 50; frame++) {
     const t = frame / 50;
     const layers: AnimationLayer[] = [
-      { clipId: "kick", maskId: "", time: t, weight: 1, blend: "override", speedScale: 1 },
-      { clipId: "wave", maskId: "arms_only", time: t, weight: 0.5, blend: "override", speedScale: 1 },
+      { clipId: "kick", maskId: "", time: t, loop: true, weight: 1, blend: "override", speedScale: 1 },
+      { clipId: "wave", maskId: "arms_only", time: t, loop: true, weight: 0.5, blend: "override", speedScale: 1 },
     ];
     const r = evaluateAnimationLayers(skeleton, CLIPS, MASKS, layers, scratch);
     assert(r === scratch);

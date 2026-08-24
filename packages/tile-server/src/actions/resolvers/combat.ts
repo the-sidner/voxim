@@ -430,7 +430,7 @@ function computeBladeWorld(
   attackerOrigin: Vec3,
   attackFacing: number,
 ): { base: Vec3; tip: Vec3 } | null {
-  const layers: AnimationLayer[] = [{ clipId, maskId: "", time: clipTime, weight: 1, blend: "override", speedScale: 1 }];
+  const layers: AnimationLayer[] = [{ clipId, maskId: "", time: clipTime, loop: false, weight: 1, blend: "override", speedScale: 1 }];
   const rotations = evaluateAnimationLayers(skeleton, clipIndex, maskIndex, layers);
   const transforms = solveSkeleton(skeleton, boneIndex, rotations, entityScale, morphValues);
   const hand = transforms.get(handBone);

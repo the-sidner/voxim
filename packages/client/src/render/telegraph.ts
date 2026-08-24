@@ -23,6 +23,7 @@ export interface TelegraphLayer {
   clipId: string;
   maskId: string;
   time: number;
+  loop: false;
   weight: number;
   blend: "override";
   speedScale: number;
@@ -67,6 +68,7 @@ export function computeTelegraphLayer(
     clipId: def.preWindup.clipId,
     maskId: "",
     time,
+    loop: false,
     weight: 1,
     blend: "override",
     speedScale: 1,

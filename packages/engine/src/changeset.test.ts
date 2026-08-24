@@ -31,6 +31,17 @@ const Tag = defineComponent({
   codec: counterCodec as unknown as Serialiser<Record<never, never>>,
   default: () => ({}),
 });
+// A networked counter whose wireEquals ignores everything but `n`'s low bit
+// — a stand-in for "a field that must commit every tick for internal
+// correctness, but whose full value isn't wire-meaningful" (T-363's
+// ActiveActions.ticksInPhase / Resource's quantised drift).
+const NetCounter = defineComponent({
+  name: "netCounter" as const,
+  wireId: 1,
+  codec: counterCodec,
+  default: (): CounterData => ({ n: 0 }),
+  wireEquals: (a: CounterData, b: CounterData) => (a.n % 2) === (b.n % 2),
+});
 
 Deno.test("set then remove nets to a removal (program order)", () => {
   const world = new World();
@@ -150,4 +161,66 @@ Deno.test("ops on a destroyed entity are dropped", () => {
   const cs = world.applyChangeset();
   assertEquals(cs.sets.length, 0);
   assert(cs.destroys.includes(id));
+});
+
+// ---- wireEquals (T-363) ----------------------------------------------------
+
+Deno.test("wireEquals: a wire-equal set still commits (world.get sees the true value) but is absent from cs.sets", () => {
+  const world = new World();
+  const id = world.create();
+  world.write(id, NetCounter, { n: 0 });
+
+  world.set(id, NetCounter, { n: 100 }); // even → even: wire-equal to 0
+  const cs = world.applyChangeset();
+
+  assertEquals(world.get(id, NetCounter), { n: 100 }, "the commit always lands");
+  assertEquals(cs.sets.length, 0, "wireEquals suppresses the changeset entry");
+});
+
+Deno.test("wireEquals: a wire-unequal set commits AND ships", () => {
+  const world = new World();
+  const id = world.create();
+  world.write(id, NetCounter, { n: 0 });
+
+  world.set(id, NetCounter, { n: 1 }); // odd vs even: wire-unequal
+  const cs = world.applyChangeset();
+
+  assertEquals(world.get(id, NetCounter), { n: 1 });
+  assertEquals(cs.sets.length, 1);
+  assertEquals(cs.sets[0].data, { n: 1 });
+});
+
+Deno.test("wireEquals: the very first set for a fresh component always ships (nothing to compare against)", () => {
+  const world = new World();
+  const id = world.create();
+
+  world.set(id, NetCounter, { n: 0 });
+  const cs = world.applyChangeset();
+
+  assertEquals(cs.sets.length, 1, "a brand-new component has no prior value — wireEquals never runs");
+});
+
+Deno.test("wireEquals: version still bumps on a suppressed commit (it's a real write, just not a wire-visible one)", () => {
+  const world = new World();
+  const id = world.create();
+  world.write(id, NetCounter, { n: 0 });
+  const v0 = world.getVersion(id, NetCounter);
+
+  world.set(id, NetCounter, { n: 2 }); // even → even: suppressed
+  world.applyChangeset();
+
+  assertEquals(world.getVersion(id, NetCounter), v0 + 1, "version tracks writes, not wire visibility");
+});
+
+Deno.test("wireEquals: repeated suppressed writes keep composing internally across many ticks", () => {
+  const world = new World();
+  const id = world.create();
+  world.write(id, NetCounter, { n: 0 });
+
+  for (let i = 1; i <= 50; i++) {
+    world.set(id, NetCounter, { n: world.get(id, NetCounter)!.n + 2 }); // always stays even
+    const cs = world.applyChangeset();
+    assertEquals(cs.sets.length, 0, `tick ${i}: an always-even counter stays wire-equal`);
+  }
+  assertEquals(world.get(id, NetCounter), { n: 100 }, "the true value still accumulated every tick underneath");
 });

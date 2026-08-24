@@ -151,7 +151,7 @@ function buildArc() {
       if (s) arcPts.set([s.tip.x, s.tip.y, s.tip.z], i * 3);
       continue;
     }
-    const rot = evaluateAnimationLayers(skeleton, clipIndex, maskIndex, [{ clipId: curWA.clipId ?? "", maskId: "", time: t, weight: 1, blend: "override" as const, speedScale: 1 }]);
+    const rot = evaluateAnimationLayers(skeleton, clipIndex, maskIndex, [{ clipId: curWA.clipId ?? "", maskId: "", time: t, loop: false, weight: 1, blend: "override" as const, speedScale: 1 }]);
     const tf = solveSkeleton(skeleton, boneIndex, rot, 1, undefined);
     const hand = tf.get(curWA.holdHand ?? HOLD_BONE);
     if (hand && curWA.blade) {
@@ -176,7 +176,7 @@ function setPose(t: number) {
     rot = solveSwingPose(skeleton, boneIndex, rot, 1, curWA.swingPath!, t, {});
     tf = solveSkeleton(skeleton, boneIndex, rot, 1, undefined, undefined, dropY > 1e-4 ? { x: 0, y: -dropY, z: 0 } : undefined);
   } else {
-    tf = solveSkeleton(skeleton, boneIndex, evaluateAnimationLayers(skeleton, clipIndex, maskIndex, [{ clipId: curWA.clipId ?? "", maskId: "", time: t, weight: 1, blend: "override" as const, speedScale: 1 }]), 1, undefined);
+    tf = solveSkeleton(skeleton, boneIndex, evaluateAnimationLayers(skeleton, clipIndex, maskIndex, [{ clipId: curWA.clipId ?? "", maskId: "", time: t, loop: false, weight: 1, blend: "override" as const, speedScale: 1 }]), 1, undefined);
   }
 
   // bone segments + joints

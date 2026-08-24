@@ -340,6 +340,7 @@ export function projectLocomotion(
     clipId,
     maskId: anim.mask ?? "",
     time,
+    loop,
     weight: 1,
     blend: "override",
     speedScale,
