@@ -36,6 +36,7 @@ import { EntityMeshRegistry } from "./entity_mesh_registry.ts";
 import { EnvironmentLighting } from "./environment_lighting.ts";
 import { updateSkeletonPose, blendAnimationLayers, type EntityMeshGroup } from "./entity_mesh.ts";
 import { computeTelegraphLayer } from "./telegraph.ts";
+import { extrapolateLoopingLayers } from "./loop_extrapolate.ts";
 import { computeIframeFlash, applyIframeFlash } from "./iframe_flash.ts";
 import { InstancePool } from "./instance_pool.ts";
 import type { CrumbleController } from "./crumble_controller.ts";
@@ -1275,7 +1276,13 @@ export class VoximRenderer {
         const telegraph = this.content
           ? computeTelegraphLayer(mesh.activeActions, (id) => this.content!.getAction(id), mesh.lastAnimUpdateMs, now)
           : null;
-        const rawLayers = telegraph ? [...(anim?.layers ?? []), telegraph] : (anim?.layers ?? []);
+        // Locally extrapolate a looping, fixed-rate layer's clip time (T-363)
+        // — the server stops re-shipping AnimationState purely because such
+        // a layer's `time` advanced (wireEquals on the animationState def),
+        // so between wire updates this keeps an idle breathing loop etc.
+        // playing smoothly instead of freezing on the last received frame.
+        const extrapolatedLayers = extrapolateLoopingLayers(anim?.layers ?? [], mesh.lastAnimUpdateMs, now);
+        const rawLayers = telegraph ? [...extrapolatedLayers, telegraph] : extrapolatedLayers;
 
         // Crossfade the raw 20Hz layer snapshot so state transitions (idle→walk,
         // swing in/out) ease in/out instead of hard-cutting the pose (T-291).
