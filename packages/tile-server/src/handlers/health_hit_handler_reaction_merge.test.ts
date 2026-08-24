@@ -92,13 +92,11 @@ Deno.test("a same-tick hit on a parried attacker does not erase the parry's puni
   world.create(third);
 
   const handler = newHandler();
-  // Attacker swings into the parry (geometry inside the block arc as the
-  // handler computes it: attack travel direction aligned with the
-  // parrier's facing) → stagger_heavy requested on the ATTACKER.
-  handler.onHit(world, new EventBus(), {
-    ...frontalHit(attacker, parrier, 20, 3),
-    attackerX: -2,
-  });
+  // Attacker swings into the parry (geometry inside the block arc: the
+  // parrier faces toward the attacker, T-362) → stagger_heavy requested on
+  // the ATTACKER. frontalHit()'s default geometry already places the
+  // attacker in front of the target's facing, so no override is needed.
+  handler.onHit(world, new EventBus(), frontalHit(attacker, parrier, 20, 3));
   // An unrelated hit lands on the attacker the same tick → hit_front
   // request, which must not replace the punish.
   handler.onHit(world, new EventBus(), frontalHit(third, attacker, 15, 3));

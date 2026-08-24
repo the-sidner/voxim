@@ -104,8 +104,13 @@ export class HealthHitHandler implements HitHandler {
     // tick; lag-comp rewind precision is accepted retune per the
     // structure-over-parity pivot). The damage handler reads the tag rather
     // than re-deriving block from raw input bits.
+    // Angle from the target TOWARD the attacker (same convention as
+    // frontBackDot below and check_target_flanking.ts's defender-side
+    // check): the target's facing has to point AT the attacker to block.
+    // Using the attacker→target travel direction here instead would invert
+    // the arc — blocking only while facing AWAY from the attacker (T-362).
     const stamGated = staminaValue(world, ctx.targetId) <= 0;
-    const incomingAngle = Math.atan2(ctx.targetY - ctx.attackerY, ctx.targetX - ctx.attackerX);
+    const incomingAngle = Math.atan2(ctx.attackerY - ctx.targetY, ctx.attackerX - ctx.targetX);
     const isBlocking = !stamGated &&
       world.has(ctx.targetId, Blocking) &&
       angleDiff(incomingAngle, ctx.targetSnapshotFacing) <= combatCfg.blockArcHalfRadians;
