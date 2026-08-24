@@ -74,7 +74,10 @@ export function vitalsPatch(resource: ResourceData): Partial<UIState> {
  * networked ActionCooldowns component (T-265), keyed by action id.
  */
 export function mapLoreLoadoutToUI(loadout: LoreLoadoutData): SkillLoadoutState {
-  return { slots: loadout.skills.map((actionId, index) => ({ index, actionId: actionId ?? null })) };
+  return {
+    slots: loadout.skills.map((actionId, index) => ({ index, actionId: actionId ?? null })),
+    learnedFragmentIds: loadout.learnedFragmentIds,
+  };
 }
 
 /**

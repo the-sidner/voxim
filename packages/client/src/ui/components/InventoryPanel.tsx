@@ -22,6 +22,12 @@ const deployablePrefabs = computed<ReadonlySet<string>>(() => {
   return out;
 });
 
+// The player's learned-but-not-yet-externalised Lore fragments (T-360).
+// Index in this array is the wire's fragIndex for CommandType.Externalise.
+const learnedFragmentIds = computed<readonly string[]>(() =>
+  uiState.value.skillLoadout?.learnedFragmentIds ?? []
+);
+
 // First letter of the item, displayed inside the cell. Replace with proper
 // rune / SVG glyph dictionary once content lands per-prefab icons.
 function glyphFor(item: ItemStack): string {
@@ -51,6 +57,22 @@ function ItemSlotCell({ item, index, onAction }: {
     // then it's here in the burden to read.
     if (item.itemType === contentService.value?.getGameConfig().lore.tomeItemType) {
       actions.push({ label: "Read", onSelect: () => onAction({ type: "read_tome", fromSlot: index }) });
+    }
+    // A blank tome can be written with any fragment the player has learned
+    // but not yet externalised (T-019 server substrate; T-360 client
+    // wiring) — one context-menu action per fragment doubles as the
+    // selector, shown only when there's at least one to pick.
+    if (
+      item.itemType === contentService.value?.getGameConfig().lore.blankTomeItemType &&
+      learnedFragmentIds.value.length > 0
+    ) {
+      learnedFragmentIds.value.forEach((fragmentId, fragIndex) => {
+        const name = contentService.value?.loreFragments.get(fragmentId)?.name ?? fragmentId;
+        actions.push({
+          label: `Write: ${name}`,
+          onSelect: () => onAction({ type: "write_tome", fragIndex }),
+        });
+      });
     }
     if (deployablePrefabs.value.has(item.itemType)) {
       actions.push({ label: "Place", onSelect: () => onAction({ type: "deploy_item", fromSlot: index }) });

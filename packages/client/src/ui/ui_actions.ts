@@ -20,6 +20,11 @@ export type UIAction =
   // Read a tome sitting in an inventory slot — internalises its Lore fragment
   // (T-072 heir ritual; T-020 server substrate).
   | { type: "read_tome";   fromSlot: number }
+  // Write a learned Lore fragment to a blank tome in the burden (T-019 server
+  // substrate; T-360 client wiring). fragIndex indexes the player's
+  // learnedFragmentIds (SkillLoadoutState) — the same index CommandType.Externalise
+  // expects. The server locates the blank tome itself; no fromSlot needed.
+  | { type: "write_tome";  fragIndex: number }
 
   // Hotbar (T-309 prerequisite — client-local; see ui_store.ts HotbarState)
   | { type: "hotbar_assign"; inventorySlot: number; hotbarSlot: number }

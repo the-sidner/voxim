@@ -107,6 +107,12 @@ const handlers: UIActionHandlers = {
     game._sendCommand({ cmd: CommandType.Internalise, inventorySlot: action.fromSlot });
   },
 
+  // Externalise a learned Lore fragment into a blank tome (T-019 server
+  // substrate; first client wiring, T-360).
+  write_tome: (game, action) => {
+    game._sendCommand({ cmd: CommandType.Externalise, fragIndex: action.fragIndex });
+  },
+
   load_workstation: (game, action) => {
     game._sendCommand({
       cmd: CommandType.LoadWorkstation,

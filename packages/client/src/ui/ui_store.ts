@@ -111,6 +111,10 @@ export interface SkillSlot {
 
 export interface SkillLoadoutState {
   slots: SkillSlot[];
+  /** Lore fragment ids the player has learned (internal state, T-020/T-360) —
+   * usable for Externalise (write to a blank tome) but lost on death. Index
+   * in this array is the wire's `fragIndex` for CommandType.Externalise. */
+  learnedFragmentIds: string[];
 }
 
 // ── Workstation panel ───────────────────────────────────────────────────────────
