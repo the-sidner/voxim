@@ -14,6 +14,9 @@ export { World } from "./src/world.ts";
 export { Parent, SCENE_PARENT_WIRE_ID, composeTransform, IDENTITY_TRANSFORM } from "./src/scene.ts";
 export type { ParentData, Transform } from "./src/scene.ts";
 
+export { EngineInspector } from "./src/inspector.ts";
+export type { EntityFilter, EntitySnapshot, SceneTreeNode, ComponentSummaryRow } from "./src/inspector.ts";
+
 export { spawnPrefab } from "./src/prefab.ts";
 export type { PrefabLike, PrefabSpawnContext, ChildSpawn } from "./src/prefab.ts";
 

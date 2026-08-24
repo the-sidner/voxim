@@ -5,11 +5,13 @@
  */
 import { serveDir } from "@std/http/file-server";
 import type { World, EntityId } from "@voxim/engine";
-import { newEntityId } from "@voxim/engine";
+import { newEntityId, EngineInspector } from "@voxim/engine";
+import type { ComponentDef } from "@voxim/engine";
 import type { ContentService } from "@voxim/content";
 import { SERVICE_SECRET_HEADER, verifyServiceSecret } from "@voxim/protocol";
 import { restorePlayer } from "./handoff.ts";
 import { JobBoard, AssignedJobBoard } from "./components/job_board.ts";
+import { ALL_DEFS, DEF_BY_NAME } from "./component_registry.ts";
 
 export interface AdminServerDeps {
   world: World;
@@ -39,25 +41,70 @@ export interface AdminServerDeps {
 /** Control-plane endpoints requiring the shared service secret (T-258). */
 const CONTROL_PATHS = new Set(["/handoff", "/jobs", "/assign-job-board"]);
 
+/**
+ * Resolve a comma-separated `?with=health,npcTag` query param into
+ * ComponentDefs via the registry's name index (T-224). Null input (param
+ * absent) resolves to an empty filter, not an error.
+ */
+function resolveDefNames(
+  raw: string | null,
+): { defs: ComponentDef<unknown>[] } | { error: string } {
+  if (!raw) return { defs: [] };
+  const names = raw.split(",").map((s) => s.trim()).filter((s) => s.length > 0);
+  const defs: ComponentDef<unknown>[] = [];
+  for (const name of names) {
+    const def = DEF_BY_NAME.get(name);
+    if (!def) return { error: `unknown component "${name}"` };
+    defs.push(def);
+  }
+  return { defs };
+}
+
+/**
+ * JSON-encode an inspector snapshot, summarising typed-array payloads
+ * (Heightmap/MaterialGrid/OpenMask/... cells) instead of dumping every
+ * element — the same problem (and fix) the client's ScenePanel BULK_KEYS
+ * list solves for the debug tree view. A terrain-chunk entity carries a
+ * multi-thousand-element grid per component; JSON.stringify on a raw
+ * TypedArray expands it to one object key per index.
+ */
+function jsonSummarized(value: unknown): Response {
+  const body = JSON.stringify(value, (_key, v) => {
+    if (ArrayBuffer.isView(v) && !(v instanceof DataView)) {
+      const ta = v as unknown as { length: number; constructor: { name: string } };
+      return { __typedArray: ta.constructor.name, length: ta.length };
+    }
+    return v;
+  });
+  return new Response(body, { headers: { "content-type": "application/json" } });
+}
+
 export function startAdminServer(port: number, deps: AdminServerDeps): void {
   // Bounded cache of handoffIds seen recently; a second POST with the same id
   // is acked immediately without re-spawning. Capped to avoid unbounded growth
   // from a misbehaving source; oldest ids are evicted first.
   const seenHandoffs = new Map<string, number>();
   const HANDOFF_CACHE_MAX = 1024;
+  // T-224: one EngineInspector over the live World, built once against
+  // ALL_DEFS (the tile-server's full component registry — networked +
+  // server-only, same list the prefab loader resolves names against). The
+  // World reference is a fixed field on TileServer, never reassigned, so
+  // constructing this once and closing over it stays live for the process.
+  const inspector = new EngineInspector(deps.world, ALL_DEFS);
 
   Deno.serve(
     { port, hostname: "0.0.0.0" },
-    (req) => handleAdminRequest(req, deps, seenHandoffs, HANDOFF_CACHE_MAX),
+    (req) => handleAdminRequest(req, deps, seenHandoffs, HANDOFF_CACHE_MAX, inspector),
   );
   console.log(`[TileServer] admin HTTP listening on 0.0.0.0:${port}`);
 }
 
-async function handleAdminRequest(
+export async function handleAdminRequest(
   req: Request,
   deps: AdminServerDeps,
   seenHandoffs: Map<string, number>,
   handoffCacheMax: number,
+  inspector: EngineInspector,
 ): Promise<Response> {
   const url = new URL(req.url);
 
@@ -168,6 +215,43 @@ async function handleAdminRequest(
     } catch (err) {
       return new Response(`save failed: ${(err as Error).message}`, { status: 400 });
     }
+  }
+
+  // ---- /inspect — EngineInspector specialisation (T-224) ----
+  // Read-only live-World introspection: entity list (+ component filters),
+  // one entity's full snapshot, the scene forest, and per-component counts.
+  // Dev-only, same flag /debug/save-action gates on — a prod deploy
+  // shouldn't leak live player position/inventory over the admin HTTP port.
+  if (req.method === "GET" && url.pathname.startsWith("/inspect")) {
+    if (!deps.devMode) return new Response("dev mode disabled", { status: 403 });
+
+    if (url.pathname === "/inspect/entities") {
+      const withDefs = resolveDefNames(url.searchParams.get("with"));
+      const withoutDefs = resolveDefNames(url.searchParams.get("without"));
+      if ("error" in withDefs) return new Response(withDefs.error, { status: 400 });
+      if ("error" in withoutDefs) return new Response(withoutDefs.error, { status: 400 });
+      const entities = inspector.listEntities({ with: withDefs.defs, without: withoutDefs.defs });
+      return Response.json({ count: entities.length, entities });
+    }
+
+    const entityMatch = url.pathname.match(/^\/inspect\/entity\/(.+)$/);
+    if (entityMatch) {
+      const snapshot = inspector.inspectEntity(entityMatch[1] as EntityId);
+      if (!snapshot) return new Response("entity not found or not alive", { status: 404 });
+      return jsonSummarized(snapshot);
+    }
+
+    if (url.pathname === "/inspect/tree") {
+      const root = url.searchParams.get("root");
+      const forest = inspector.sceneTree(root ? [root as EntityId] : undefined);
+      return Response.json({ roots: forest.length, forest });
+    }
+
+    if (url.pathname === "/inspect/summary") {
+      return Response.json({ components: inspector.summary() });
+    }
+
+    return new Response("not found", { status: 404 });
   }
 
   if (req.method === "GET" && url.pathname === "/cert-hash") {
