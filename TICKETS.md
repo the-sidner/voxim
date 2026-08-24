@@ -70,7 +70,7 @@ committed-view has()/set-else-mutate — safe only while nothing removes the
 whole Resource component; convert to the stampedThisRun pattern from ce84943d.
 
 ### T-364 · WorldSnapshot channel has no AoI filter — tile-wide broadcast
-Effort: M   Status: todo   (found during T-361 lane s3)
+Effort: M   Status: done   Commit: 5ddd6fe3   (snapshot_paging.ts buckets positioned entities into 128-unit regions, each page encoded ONCE per tick — buildSnapshotPages takes no session input, so encode-once is structural; per-session circle-vs-region-AABB filter at aoiRadius+AOI_EXIT_MARGIN so delta + snapshot channels agree; wire format unchanged, client applySnapshot already subset-tolerant; 6 tests incl. encode-call-count pin)
 
 The WorldSnapshot datagram pages carry Position+Hitbox for ALL entities in the
 tile to every session — bandwidth waste and a wallhack information leak (any
