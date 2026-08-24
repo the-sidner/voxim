@@ -682,7 +682,7 @@ LLM-assisted seeding (SPEC L22) is the intended accelerant. Without this arc, T-
 engine rendering a sparse world — the capability gap is closed but the look is not yet authored.
 
 ### T-330 · Water planar-reflection probe — the canal-city mirror
-Effort: M   Status: todo
+Effort: M   Status: in-progress
 
 Split off T-313 item 4 (deliberately deferred, not built there — see that ticket's closing note). P5b
 (`water_renderer.ts`) already ships a cheap screen-space sky-tinted `reflect()` streak keyed off the
