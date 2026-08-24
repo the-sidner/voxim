@@ -33,6 +33,7 @@ import { ClientSession } from "./session.ts";
 import { sanitizeAndMergeInputs } from "./input_merge.ts";
 import { TickLoop } from "./tick_loop.ts";
 import { DeferredEventQueue } from "./deferred_events.ts";
+import { resetResourceStamps } from "./resources/mutate.ts";
 import { StateHistoryBuffer } from "./state_history.ts";
 import { AccountClient } from "./account_client.ts";
 import type { SessionInfo } from "./account_client.ts";
@@ -656,6 +657,10 @@ export class TileServer {
     this.spatial.rebuild(this.world);
     const ctx: TickContext = { spatial: this.spatial, pendingCommands };
     const deferredEvents = new DeferredEventQueue();
+    // Same-tick Resource creation stamps (T-363) — cleared once here, before
+    // any system runs, since upsertResourceKey's callers span multiple
+    // systems/handlers rather than one system's own run().
+    resetResourceStamps();
     for (const system of this.systems) {
       const _st = performance.now();
       system.prepare?.(serverTick, ctx);
