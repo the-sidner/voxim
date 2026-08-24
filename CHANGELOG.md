@@ -8194,6 +8194,44 @@ the old event_router.ts translate params instead of these interfaces. Stale
 types on the bus boundary invite silently-wrong subscribers: reconcile each
 payload interface with its publishers, delete unused ones.
 
+### T-361 · Stabilization sweep — 34 verified bug/perf/confusion findings from the post-merge audit
+Effort: L   Status: done   Commit: 86cb10ea   (all 34 fixed across 5 lanes, 31 commits, +64 tests; highlights: teardownPlayer two-phase — destroy before any await, account fetches carry abort timeouts; handoff freeze window + fog isolation + handoff exits through teardown; death ends in a perpetual held phase; cooldown/reaction/knockback writes compose; idle actors ship zero physics deltas; uuid encode 59x; snapshot pages encode once; terrain probes 3.2x alloc-free; AoI exit hysteresis; InstancePool dirty-span uploads; zero-alloc pose hot path; one interact-reach gate, one day-phase source, one applyLocalPlayerState. Spawned T-362–366)
+
+An 8-dimension find+adversarial-verify pass over freshly merged main confirmed
+34 findings (each survived two independent refuters): 2 T-354 regressions
+(entity destroy deferred behind an untimed account fetch; reconnect-during-
+teardown race), a death-reaction loop on lingering corpses, handoff-window
+item duplication + cross-tile fog contamination + cache leaks, crumble corpses
+with floating weapons + surviving tile transitions, delta channel degenerating
+to a 20 Hz full broadcast for moving actors, InstancePool full-buffer re-uploads,
+pose-pipeline per-frame allocation storms, and a set of confusion consolidations
+(dual day-phase derivation, four stacked interact-reach gates, unreachable
+consumeHandedOff branch). Fix in five file-disjoint lanes; findings archive in
+the session scratchpad (lane_s1..s5 JSON).
+
+### T-362 · Block/parry arc geometry looks inverted
+Effort: S   Status: done   Commit: 6cde7efa   (confirmed inverted — incomingAngle used the attacker→target travel direction; now target→attacker, matching frontBackDot/check_target_flanking; a reaction-merge test had baked the bug in and was corrected; 3 regression tests pin the arc)
+
+`health_hit_handler.ts` computed `incomingAngle` as the attacker→target
+travel direction and required it within `blockArcHalfRadians` of the target's
+FACING — a block registered only when the target faced AWAY from the attacker,
+the opposite convention of `frontBackDot` twenty lines below.
+
+### T-363 · Idle actors still ship ~150 B/tick — remaining delta churn sources
+Effort: M   Status: done   Commit: 3b3b75f8 (+406eeced, 4a7430ee)   (new engine primitive: optional `wireEquals(a,b)` on NetworkedComponentDef — applyChangeset always COMMITS the write (internal reads stay live) but omits the wire delta when the values are wire-indistinguishable. Silenced: dispatcher ticksInPhase on held/perpetual phases (gates still read it live), Resource vitals quantized to 0.1%-of-max buckets (committed value stays exact for thresholds), AnimationState clip time for loop:true layers — client extrapolates those locally (loop_extrapolate.ts; AnimationLayer gained `loop` on the wire). upsertResourceKey → stampedThisRun (reset per tick from server.ts since callers span systems); component_registry doc claims rewritten to describe the real mechanism. 6 new test files incl. clobber-catch verified by temporary revert)
+
+### T-364 · WorldSnapshot channel has no AoI filter — tile-wide broadcast
+Effort: M   Status: done   Commit: 5ddd6fe3   (snapshot_paging.ts buckets positioned entities into 128-unit regions, each page encoded ONCE per tick — buildSnapshotPages takes no session input, so encode-once is structural; per-session circle-vs-region-AABB filter at aoiRadius+AOI_EXIT_MARGIN so delta + snapshot channels agree; wire format unchanged, client applySnapshot already subset-tolerant; 6 tests incl. encode-call-count pin)
+
+The WorldSnapshot datagram pages carried Position+Hitbox for ALL entities in the
+tile to every session — bandwidth waste and a wallhack information leak.
+
+### T-365 · Tile transition re-hydrates content but not the renderer's content cache
+Effort: S   Status: done   Commit: c3d84519   (shared applyContentToRenderer() used by boot AND _transitionToTile; setContentCache folds in onContentHydrated (now private) so texture-cache invalidation + deferred-chunk rebuild can't drift from the cache apply; palette/grade/canopy/camera/pose-tuning were the stale captures, atmosphere was already live via biomeTag; 4 unit tests; live two-tile grade check still worth doing when next in the testplay harness)
+
+### T-366 · Equipment component survives death pointing at destroyed item entities
+Effort: S   Status: done   Commit: 61fa93f5   (resolved WITHOUT the ticket's literal fix: StaleSlotCleanupSystem (T-344) already scrubs dead-entity slots one tick later — verified live, no EntityDied rides that delta. The same-tick Equipment clear was tried and REVERTED: componentDeltas apply before events in the client's onStateMessage, so it disposes held-gear meshes before CrumbleController.onDeath can fling them — would have regressed crumble debris for most of the roster. Pinned by two two-tick pipeline tests (dissolve + crumble NPC) + a constraint comment on destroyCarriedItemEntities)
+
 ## Retired / superseded / deferred
 
 These tickets' premise was retired by a refactor, or the work folded into another ticket — deliberately not built as written.

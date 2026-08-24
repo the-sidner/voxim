@@ -19,7 +19,7 @@ Effort: **S** < half a day · **M** half–two days · **L** multi-day or archit
 ## Combat
 
 ### T-346 · Procedural bow/crossbow generation (T-306 composition)
-Effort: M   Status: todo   (deferred from T-338, 2026-07-14; renumbered from a T-340 collision — T-340 was already the particles ticket, and numbers are never reused)
+Effort: M   Status: in-progress   (deferred from T-338, 2026-07-14; renumbered from a T-340 collision — T-340 was already the particles ticket, and numbers are never reused)
 
 T-338 (bow/crossbow hold-to-aim path) shipped `wooden_bow`/`wooden_crossbow` on their existing
 AUTHORED models (`model_bow_basic`/`model_crossbow_basic`) rather than composing with T-306's
@@ -41,62 +41,7 @@ the static model, seed-unique per equipped instance, with zero change to the T-3
 ## Lore & Skills
 
 ### T-360 · Externalise Lore UI — write a learned fragment to a blank tome
-Effort: S   Status: todo   (renumbered from a T-328 collision — T-328 is the landed camera ticket; numbers are never reused)
-
-### T-361 · Stabilization sweep — 34 verified bug/perf/confusion findings from the post-merge audit
-Effort: L   Status: done   Commit: 86cb10ea   (all 34 fixed across 5 lanes, 31 commits, +64 tests; highlights: teardownPlayer two-phase — destroy before any await, account fetches carry abort timeouts; handoff freeze window + fog isolation + handoff exits through teardown; death ends in a perpetual held phase; cooldown/reaction/knockback writes compose; idle actors ship zero physics deltas; uuid encode 59x; snapshot pages encode once; terrain probes 3.2x alloc-free; AoI exit hysteresis; InstancePool dirty-span uploads; zero-alloc pose hot path; one interact-reach gate, one day-phase source, one applyLocalPlayerState. Spawned T-362–366)
-
-### T-362 · Block/parry arc geometry looks inverted
-Effort: S   Status: done   Commit: 6cde7efa   (confirmed inverted — incomingAngle used the attacker→target travel direction; now target→attacker, matching frontBackDot/check_target_flanking; a reaction-merge test had baked the bug in and was corrected; 3 regression tests pin the arc)
-
-`health_hit_handler.ts:74-77` computes `incomingAngle` as the attacker→target
-travel direction and requires it within `blockArcHalfRadians` of the target's
-FACING — as written, a block registers only when the target faces AWAY from
-the attacker, the opposite convention of `frontBackDot` twenty lines below
-(front = facing toward the attacker). No test covers the geometry. Verify
-against intended design, fix the convention, pin with a test.
-
-### T-363 · Idle actors still ship ~150 B/tick — remaining delta churn sources
-Effort: M   Status: done   Commit: 3b3b75f8 (+406eeced, 4a7430ee)   (new engine primitive: optional `wireEquals(a,b)` on NetworkedComponentDef — applyChangeset always COMMITS the write (internal reads stay live) but omits the wire delta when the values are wire-indistinguishable. Silenced: dispatcher ticksInPhase on held/perpetual phases (gates still read it live), Resource vitals quantized to 0.1%-of-max buckets (committed value stays exact for thresholds), AnimationState clip time for loop:true layers — client extrapolates those locally (loop_extrapolate.ts; AnimationLayer gained `loop` on the wire). upsertResourceKey → stampedThisRun (reset per tick from server.ts since callers span systems); component_registry doc claims rewritten to describe the real mechanism. 6 new test files incl. clobber-catch verified by temporary revert)
-
-### T-364 · WorldSnapshot channel has no AoI filter — tile-wide broadcast
-Effort: M   Status: done   Commit: 5ddd6fe3   (snapshot_paging.ts buckets positioned entities into 128-unit regions, each page encoded ONCE per tick — buildSnapshotPages takes no session input, so encode-once is structural; per-session circle-vs-region-AABB filter at aoiRadius+AOI_EXIT_MARGIN so delta + snapshot channels agree; wire format unchanged, client applySnapshot already subset-tolerant; 6 tests incl. encode-call-count pin)
-
-The WorldSnapshot datagram pages carry Position+Hitbox for ALL entities in the
-tile to every session — bandwidth waste and a wallhack information leak (any
-client sees every player/NPC position regardless of AoI). Filter pages per
-session by AoI (or page by spatial region so sessions subscribe to nearby
-pages); encode-once-broadcast-many from 04c1dd19 must be preserved per region.
-
-### T-365 · Tile transition re-hydrates content but not the renderer's content cache
-Effort: S   Status: done   Commit: c3d84519   (shared applyContentToRenderer() used by boot AND _transitionToTile; setContentCache folds in onContentHydrated (now private) so texture-cache invalidation + deferred-chunk rebuild can't drift from the cache apply; palette/grade/canopy/camera/pose-tuning were the stale captures, atmosphere was already live via biomeTag; 4 unit tests; live two-tile grade check still worth doing when next in the testplay harness)
-
-`_transitionToTile` calls `content.setBootstrapService()` but never re-runs
-`renderer.setContentCache()` — grade, canopy/textureStyle params, camera
-config, and palette stay at the PREVIOUS tile's values after a transition
-(the texture cache itself was fixed in 90c91e5f). Re-apply the full renderer
-content cache on transition; verify with two tiles that differ in atmosphere.
-
-### T-366 · Equipment component survives death pointing at destroyed item entities
-Effort: S   Status: done   Commit: 61fa93f5   (resolved WITHOUT the ticket's literal fix: StaleSlotCleanupSystem (T-344) already scrubs dead-entity slots one tick later — verified live, no EntityDied rides that delta. The same-tick Equipment clear was tried and REVERTED: componentDeltas apply before events in the client's onStateMessage, so it disposes held-gear meshes before CrumbleController.onDeath can fling them — would have regressed crumble debris for most of the roster. Pinned by two two-tick pipeline tests (dissolve + crumble NPC) + a constraint comment on destroyCarriedItemEntities)
-
-`equip_cleanup` destroys carried item ENTITIES on death but never rewrites the
-corpse's `Equipment` component. The crumble style now releases anchors
-client-side (d3f960ec), but a DISSOLVE-styled armed NPC still per-frame anchors
-the visual of a destroyed entity. Empty (or rewrite) Equipment in the same
-death hook that destroys the items, so no corpse references dead entity ids.
-
-An 8-dimension find+adversarial-verify pass over freshly merged main confirmed
-34 findings (each survived two independent refuters): 2 T-354 regressions
-(entity destroy deferred behind an untimed account fetch; reconnect-during-
-teardown race), a death-reaction loop on lingering corpses, handoff-window
-item duplication + cross-tile fog contamination + cache leaks, crumble corpses
-with floating weapons + surviving tile transitions, delta channel degenerating
-to a 20 Hz full broadcast for moving actors, InstancePool full-buffer re-uploads,
-pose-pipeline per-frame allocation storms, and a set of confusion consolidations
-(dual day-phase derivation, four stacked interact-reach gates, unreachable
-consumeHandedOff branch). Fix in five file-disjoint lanes; findings archive in
-the session scratchpad (lane_s1..s5 JSON).
+Effort: S   Status: in-progress   (renumbered from a T-328 collision — T-328 is the landed camera ticket; numbers are never reused)
 
 Found while building T-072 (heir-ritual UI): `CommandType.Internalise` (read a
 tome, T-020) now has a client entry point (InventoryPanel's "Read" action),
@@ -113,7 +58,7 @@ a filled tome they can carry to the library.
 ## Crafting & Economy
 
 ### T-036 · Blueprint as saveable/storable Lore item
-Effort: M   Status: todo
+Effort: M   Status: in-progress   (scoped: player save/load-as-item half only, behind a scout gate — the ticket's "designing" premise is unverified against the code; NPC execution stays T-037)
 
 A blueprint (saved after designing) becomes a `blueprint_tome` — a Lore item storable in the
 family library, tradeable, and loadable by NPCs via a `build(blueprint_element)` job.
