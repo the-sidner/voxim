@@ -57,17 +57,7 @@ the attacker, the opposite convention of `frontBackDot` twenty lines below
 against intended design, fix the convention, pin with a test.
 
 ### T-363 · Idle actors still ship ~150 B/tick — remaining delta churn sources
-Effort: M   Status: todo   (found during T-361 lane s3; physics churn fixed in 7bbeabb1)
-
-After the physics fix, idle actors still emit per-tick deltas from: dispatcher
-`ticksInPhase` writes on held slots, `AnimationState` clip-time advancing, and
-Resource vitals micro-rates. Gate each on actual change (or restructure the
-tick-counter fields off the networked component). The claims in
-`component_registry.ts:180-186` comments ("only changed components ship")
-remain false until this lands — fix or delete them per the doc doctrine.
-Related latent shape: `upsertResourceKey` (`resources/mutate.ts`) uses
-committed-view has()/set-else-mutate — safe only while nothing removes the
-whole Resource component; convert to the stampedThisRun pattern from ce84943d.
+Effort: M   Status: done   Commit: 3b3b75f8 (+406eeced, 4a7430ee)   (new engine primitive: optional `wireEquals(a,b)` on NetworkedComponentDef — applyChangeset always COMMITS the write (internal reads stay live) but omits the wire delta when the values are wire-indistinguishable. Silenced: dispatcher ticksInPhase on held/perpetual phases (gates still read it live), Resource vitals quantized to 0.1%-of-max buckets (committed value stays exact for thresholds), AnimationState clip time for loop:true layers — client extrapolates those locally (loop_extrapolate.ts; AnimationLayer gained `loop` on the wire). upsertResourceKey → stampedThisRun (reset per tick from server.ts since callers span systems); component_registry doc claims rewritten to describe the real mechanism. 6 new test files incl. clobber-catch verified by temporary revert)
 
 ### T-364 · WorldSnapshot channel has no AoI filter — tile-wide broadcast
 Effort: M   Status: done   Commit: 5ddd6fe3   (snapshot_paging.ts buckets positioned entities into 128-unit regions, each page encoded ONCE per tick — buildSnapshotPages takes no session input, so encode-once is structural; per-session circle-vs-region-AABB filter at aoiRadius+AOI_EXIT_MARGIN so delta + snapshot channels agree; wire format unchanged, client applySnapshot already subset-tolerant; 6 tests incl. encode-call-count pin)
