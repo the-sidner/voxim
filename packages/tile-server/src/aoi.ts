@@ -59,8 +59,14 @@ const MAX_CHUNK_SPAWNS_PER_TICK = 12;
  * Two spatial-grid cells (2 × 16): nearby() is cell-quantized, so the
  * effective entry edge wobbles by up to a cell — the margin must clear that
  * wobble or hysteresis degrades back to a hard cut on cell boundaries.
+ *
+ * Exported: snapshot_paging.ts (T-364) reuses this margin so the unreliable
+ * WorldSnapshot channel and this reliable delta channel agree on the exact
+ * radius past which a client may no longer legitimately know an entity's
+ * position — one entity leaving both channels in the same tick, not deltas
+ * first and stray snapshot bytes trailing after.
  */
-const AOI_EXIT_MARGIN = 32;
+export const AOI_EXIT_MARGIN = 32;
 
 function buildSpawnComponents(world: World, entityId: EntityId): BinaryComponentEntry[] {
   const components: BinaryComponentEntry[] = [];

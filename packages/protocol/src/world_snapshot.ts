@@ -20,8 +20,12 @@
  *      f32      vz
  *
  * Max entities per datagram ≈ 27  (stays under 1 200-byte QUIC limit).
- * If a tile has more, the server paginates across multiple datagrams with
- * the same serverTick value.
+ * The server pages by spatial region (packages/tile-server/src/
+ * snapshot_paging.ts, T-364), sub-paging a single dense region across
+ * multiple datagrams at this same cap when needed — every page in a tick
+ * shares the same serverTick value. Each session only receives the pages
+ * whose region overlaps its AoI; this codec has no notion of that filter,
+ * it just (de)serialises whatever entity list one page's datagram carries.
  */
 import type { Serialiser } from "@voxim/engine";
 import { uuidToBytes, bytesToUuid } from "@voxim/codecs";

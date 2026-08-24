@@ -20,13 +20,14 @@ import { spawnGates } from "./gate.ts";
 import { applyFieldsToChunks, chunksFromBuffers, TILE_SIZE } from "@voxim/world";
 import { loadTerrainFromAtlas } from "./atlas_terrain.ts";
 import { placePois, spawnMobPois } from "./poi_placer.ts";
-import { binaryStateMessageCodec, worldSnapshotCodec, ACTION_BLOCK, ACTION_CROUCH, encodeFrame, makeFrameReader } from "@voxim/protocol";
+import { binaryStateMessageCodec, ACTION_BLOCK, ACTION_CROUCH, encodeFrame, makeFrameReader } from "@voxim/protocol";
 import { startAdminServer, registerWithGateway } from "./admin_server.ts";
 import { listenQuic } from "./quic_server.ts";
 import { GatewayLink } from "./gateway_link.ts";
 import { CommandType } from "@voxim/protocol";
-import type { BinaryComponentDelta, BootstrapHeader, CommandPayload, TileJoinRequest, TileJoinAck, WorldSnapshot } from "@voxim/protocol";
-import { computeAoiSharedInputs, computeSessionUpdate } from "./aoi.ts";
+import type { BinaryComponentDelta, BootstrapHeader, CommandPayload, TileJoinRequest, TileJoinAck } from "@voxim/protocol";
+import { computeAoiSharedInputs, computeSessionUpdate, AOI_EXIT_MARGIN } from "./aoi.ts";
+import { buildSnapshotPages, isPageVisible } from "./snapshot_paging.ts";
 import { JsonSource, validateRecipeGraph, encodeBootstrap, type ContentService } from "@voxim/content";
 import { ClientSession } from "./session.ts";
 import { sanitizeAndMergeInputs } from "./input_merge.ts";
@@ -704,6 +705,7 @@ export class TileServer {
     // ── 5. BUILD DELTA ──────────────────────────────────────────────────────
     const events = this.events.drain();
     const hasSessions = this.sessions.size > 0;
+    const aoiRadius = this.content.getGameConfig().network.aoiRadius;
 
     // Skip serialization and send entirely when no clients are connected.
     const _tSend = performance.now();
@@ -714,7 +716,6 @@ export class TileServer {
       const changedComponents = this.buildDeltaMap(changeset.sets);
       const removedComponents = this.buildRemovalMap(changeset.removals);
       const worldDestroys = new Set(changeset.destroys);
-      const aoiRadius = this.content.getGameConfig().network.aoiRadius;
       // Session-independent AoI inputs (chunk ids, always-visible set, container
       // list) are computed once per tick, not once per session (T-355).
       const sharedAoi = computeAoiSharedInputs(this.world);
@@ -762,12 +763,15 @@ export class TileServer {
     }
     this.stateHistory.push({ serverTick, timestamp: Date.now(), entities: snapEntities });
 
-    // ── 7b. SEND UNRELIABLE SNAPSHOTS ───────────────────────────────────────
-    // Each datagram must stay under the QUIC datagram MTU (~1200 bytes).
-    // WorldSnapshot layout: 6-byte header + 44 bytes/entity → max 27 entities/datagram.
-    // Paginate across multiple datagrams with the same serverTick.
+    // ── 7b. SEND UNRELIABLE SNAPSHOTS (region-paged AoI filter, T-364) ──────
+    // Pages are built once per tick, independent of session count (encode-
+    // once-broadcast-many, preserved from 04c1dd19) — buildSnapshotPages
+    // takes no per-session input. Each session then receives only the pages
+    // whose region overlaps its AoI circle (aoiRadius + AOI_EXIT_MARGIN, the
+    // same exit-hysteresis radius the reliable delta channel uses, T-361) —
+    // a session no longer receives raw position bytes for entities it was
+    // never told about via the reliable spawn channel.
     if (hasSessions) {
-      const PAGE_SIZE = 27;
       // actions intentionally excluded from the wire snapshot — a remote
       // player's behaviour reaches clients as the networked AnimationState
       // (derived from their ActiveActions), never as raw input. InputState is
@@ -780,15 +784,14 @@ export class TileServer {
         facing: e.facing,
         vx: e.velocityX, vy: e.velocityY, vz: e.velocityZ,
       }));
-      for (let offset = 0; offset < snapEntitiesMapped.length || offset === 0; offset += PAGE_SIZE) {
-        const page = snapEntitiesMapped.slice(offset, offset + PAGE_SIZE);
-        const snap: WorldSnapshot = { serverTick, entities: page };
-        // A page's bytes are identical for every session — encode once,
-        // broadcast the shared buffer (same doctrine as buildDeltaMap's
-        // encode-each-component-once on the reliable path).
-        const bytes = worldSnapshotCodec.encode(snap);
-        for (const session of this.sessions.values()) {
-          if (session.isOpen) session.sendSnapshot(bytes);
+      const pages = buildSnapshotPages(snapEntitiesMapped, serverTick);
+      const snapshotRadius = aoiRadius + AOI_EXIT_MARGIN;
+      for (const [playerId, session] of this.sessions) {
+        if (!session.isOpen) continue;
+        const pos = this.world.get(playerId, Position);
+        if (!pos) continue;
+        for (const page of pages) {
+          if (isPageVisible(page, pos.x, pos.y, snapshotRadius)) session.sendSnapshot(page.bytes);
         }
       }
     }
