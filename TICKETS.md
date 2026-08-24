@@ -58,12 +58,26 @@ a filled tome they can carry to the library.
 ## Crafting & Economy
 
 ### T-036 · Blueprint as saveable/storable Lore item
-Effort: M   Status: in-progress   (scoped: player save/load-as-item half only, behind a scout gate — the ticket's "designing" premise is unverified against the code; NPC execution stays T-037)
+Effort: M   Status: needs-design   (premise has no referent in the code — scouted 2026-08-24, no code written)
 
 A blueprint (saved after designing) becomes a `blueprint_tome` — a Lore item storable in the
 family library, tradeable, and loadable by NPCs via a `build(blueprint_element)` job.
 Done when: a designed blueprint can be saved as a tome item; another character or NPC can load
 and execute it.
+
+SCOUT FINDING (2026-08-24): there is no in-game "design" step to save. `Blueprint` is a
+networked component on ONE pending-construction cell; structure types are pre-authored content
+prefabs picked freely from the hammer radial menu; placement commits instantly per click (T-131:
+"no staging, no confirm") and the Blueprint entity is DESTROYED on completion — no plan state is
+ever retained anywhere, and no Save/Design command exists in the protocol. The substrate for the
+ITEM half is all present and cheap once a design exists (Inscribed-pattern instance component,
+DynastySystem's Externalise/Internalise idiom, TraderSystem trades any prefab). Design call
+needed, two candidate shapes: (1) minimal "stamp" tool — capture a footprint of already-built
+cells into `{structureType, [{dx,dy}]}` on a blueprint_tome; loading pre-seeds build mode (still
+manual placement); (2) a real plan-mode UI (compose + confirm before materials are spent, named
+plans) matching the ticket's literal wording — materially bigger than Effort: M, would need a
+ticket split. T-037 stays blocked on whichever shape is picked (its `build(blueprint_element)`
+job needs the same resolved data format).
 
 ### T-037 · NPC builder job assignment to blueprint element
 Effort: S   Status: todo
