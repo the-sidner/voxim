@@ -419,10 +419,19 @@ Migration phases (each its own ticket):
     the Three.js scene: those are two different trees on purpose (entities supply
     structure, content supplies pose), and conflating them would hide the bug you opened
     the panel to find.
-    STILL OPEN: the generalisation the ticket actually names — one `EngineInspector`
-    module taking any `World` (bake-time / runtime / replicated), with the atlas
-    inspector and a tile-server admin endpoint as specialisations of it. The client panel
-    is a purpose-built consumer, not that shared module.
+    RESIDUAL DONE (commit 500fe5fb, 2026-08-24): `EngineInspector` in `@voxim/engine`
+    (`engine/src/inspector.ts` — takes any `World` + the caller's `ComponentDef[]`:
+    listEntities w/ with/without filters, inspectEntity snapshot, cycle-guarded
+    orphan-tolerant sceneTree, per-component summary) + tile-server admin
+    `GET /inspect/entities|entity/:id|tree|summary` as the thin specialisation
+    (dev-mode gated — live player state; TypedArray payloads summarized not dumped;
+    handleAdminRequest exported as the first admin test seam). Deliberately NOT
+    converged: the atlas inspector (typed-array bake planes, no World/ECS anywhere —
+    forcing it through would be dishonest) and the client ScenePanel (reads
+    ClientWorld, purpose-built per the ticket's own scoping). Second real consumer
+    confirmed during scout: coordinator instantiates engine World too (route wiring
+    left for when it's wanted). 20 new tests (12 engine synthetic-World, 8 admin
+    with real content prefabs).
 
 The T-214 IR + reducer + rasterizer split work is the substrate this
 builds on. Snapshot determinism stays the invariant across every
