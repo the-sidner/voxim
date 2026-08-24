@@ -88,7 +88,7 @@ config, and palette stay at the PREVIOUS tile's values after a transition
 content cache on transition; verify with two tiles that differ in atmosphere.
 
 ### T-366 · Equipment component survives death pointing at destroyed item entities
-Effort: S   Status: todo   (found during T-361 lane s5)
+Effort: S   Status: done   Commit: 61fa93f5   (resolved WITHOUT the ticket's literal fix: StaleSlotCleanupSystem (T-344) already scrubs dead-entity slots one tick later — verified live, no EntityDied rides that delta. The same-tick Equipment clear was tried and REVERTED: componentDeltas apply before events in the client's onStateMessage, so it disposes held-gear meshes before CrumbleController.onDeath can fling them — would have regressed crumble debris for most of the roster. Pinned by two two-tick pipeline tests (dissolve + crumble NPC) + a constraint comment on destroyCarriedItemEntities)
 
 `equip_cleanup` destroys carried item ENTITIES on death but never rewrites the
 corpse's `Equipment` component. The crumble style now releases anchors
