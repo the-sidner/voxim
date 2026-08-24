@@ -82,6 +82,32 @@ function emptyEquipment(): EquipmentData {
  * this, every NPC kill and player disconnect leaked ItemData entities into
  * the world forever (deathHooks was empty; the cleanup paths destroyed
  * only the holder). Stack slots are plain data, nothing to destroy.
+ *
+ * T-366: this function deliberately does NOT also null out the holder's
+ * Equipment/Inventory slots that pointed at the entities destroyed here —
+ * that is exactly StaleSlotCleanupSystem's job (`systems/stale_slot_cleanup.ts`,
+ * T-344), which already runs FIRST every tick and scrubs any slot whose
+ * entity died last tick, for every cause (this hook, crafting consumption,
+ * decay, trade), not just death. Duplicating that clear here, inside the
+ * SAME tick's DeathSystem pass, was tried and reverted: for a death that
+ * votes `{linger: true}` (dissolve/crumble — shed_dissolve.ts/
+ * shed_crumble.ts), the resulting Equipment delta would ride the SAME
+ * BinaryStateMessage as this tick's EntityDied event, and the client's
+ * message handler (wire_handlers.ts's onStateMessage) applies
+ * componentDeltas BEFORE it dispatches events — so `syncEquipment` would
+ * detach and DISPOSE the corpse's held-weapon/worn-armor meshes before
+ * CrumbleController.onDeath (registered for the "crumble" style, T-339)
+ * gets a chance to reparent them as falling debris. Bone-parented armor
+ * anchors ride along with their bone group "for free" (CrumbleController's
+ * own comment) only if their geometry is still attached when it grabs the
+ * group — an immediate same-tick clear disposes it first, so crumbling
+ * NPCs (most of the roster — bandit/archer/rotten_knight/wolf/
+ * heavy_thrower/shield_knight) would shed their armor and drop their
+ * weapon instantly instead of flinging it as a physical piece. Leaving
+ * this to StaleSlotCleanupSystem's next-tick pass (no EntityDied riding
+ * alongside it) sidesteps the race entirely while still closing the gap
+ * within one 50ms tick — see equip_cleanup.test.ts's T-366 case for the
+ * pinned two-tick assertion.
  */
 export function destroyCarriedItemEntities(world: World, holderId: EntityId): void {
   const eq = world.get(holderId, Equipment);
