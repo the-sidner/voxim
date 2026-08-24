@@ -109,6 +109,28 @@ Deno.test("T-344: Externalise declines cleanly when a same-tick race already con
   assert(slots.some((s) => s.kind === "unique"), "DynastySystem's mutate ran first in program order and won the blank tome");
 });
 
+Deno.test("Round trip: a tome written by Externalise teaches the same fragment on Internalise", () => {
+  // T-360: pins that Externalise's output (a unique tome entity with ItemData
+  // prefabId=cfg.tomeItemType + Inscribed{fragmentId}) is EXACTLY what
+  // Internalise consumes — no separate "filled tome" shape.
+  const w = new World();
+  const writer = makeEntity(w, [{ kind: "stack", prefabId: cfg.blankTomeItemType, quantity: 1 }], ["keen_edge"]);
+  runBatch(w, [[writer, { cmd: CommandType.Externalise, fragIndex: 0 }]]);
+
+  const writerSlots = w.get(writer, Inventory)!.slots;
+  assert(writerSlots[0].kind === "unique", "externalise produced a unique tome entity");
+  const tomeId = writerSlots[0].entityId as string;
+
+  // Hand the freshly-written tome to a second entity (a different player
+  // receiving it, or the same entity carrying it to a reader) and read it.
+  const reader = makeEntity(w, [{ kind: "unique", entityId: tomeId }], []);
+  runBatch(w, [[reader, { cmd: CommandType.Internalise, inventorySlot: 0 }]]);
+
+  assertEquals(w.get(reader, Inventory)!.slots.length, 0, "tome consumed on read");
+  assertEquals(w.isAlive(tomeId), false, "tome entity destroyed on read");
+  assertEquals(w.get(reader, LoreLoadout)!.learnedFragmentIds, ["keen_edge"], "reader learned the fragment the writer externalised");
+});
+
 Deno.test("Internalise: consumes the tome and learns the fragment", () => {
   const w = new World();
   const id = makeEntity(w, [], []);
